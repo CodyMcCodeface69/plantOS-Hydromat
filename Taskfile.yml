@@ -1,0 +1,25 @@
+version: '3'
+
+vars:
+  ENTRY_POINT: plantos.yaml
+
+tasks:
+  build:
+    desc: Build plantOS.
+    cmds:
+      - esphome compile {{.ENTRY_POINT}}
+
+  flash:
+    desc: Flash plantOS onto MCU.
+    cmds:
+      - esphome upload {{.ENTRY_POINT}}
+
+  run:
+    desc: Builds, flashes and attaches to MCU log stream.
+    cmds:
+      - esphome run {{.ENTRY_POINT}}
+
+  clean:
+    desc: Clean cached files
+    cmds:
+      - esphome clean {{.ENTRY_POINT}}

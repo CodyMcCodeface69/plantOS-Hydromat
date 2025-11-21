@@ -1,0 +1,49 @@
+# Hardware
+esphome:
+  name: plantos
+
+esp32:
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
+  framework:
+    type: esp-idf
+    version: recommended
+
+logger:
+  level: DEBUG
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  - platform: esphome
+
+web_server:
+  port: 80
+
+external_components:
+  - source: components
+
+# Components
+light:
+  - platform: esp32_rmt_led_strip
+    pin: 8
+    num_leds: 1
+    rgb_order: RGB
+    name: "Built-in LED"
+    id: system_led
+    chipset: WS2812
+    default_transition_length: 0s
+
+sensor:
+  - id: sensor_dummy_id
+    platform: sensor_dummy
+    name: "My Dummy Value"
+    update_interval: 1s
+
+# Controller Config
+controller:
+  id: my_logic_controller
+  sensor_source: sensor_dummy_id
+  light_target: system_led

@@ -103,6 +103,22 @@ text_sensor:
     # The controller will call publish_state() to update this
 
 ################################################################################
+# Button: Reset Controller
+#
+# Provides a manual reset button in the web UI to force the controller back
+# to INIT state. Useful for testing, debugging, and manual recalibration.
+################################################################################
+button:
+  - platform: template
+    name: "Reset Controller"
+    on_press:
+      # Lambda action calls the controller's reset_to_init() method
+      # This triggers an immediate transition to INIT state
+      then:
+        - lambda: |-
+            id(my_logic_controller)->reset_to_init();
+
+################################################################################
 # System Controller: Finite State Machine
 #
 # The controller is the "brain" of plantOS, implementing a finite state machine
@@ -118,7 +134,7 @@ text_sensor:
 # 3. Testability: Different configurations can reuse the same controller logic
 ################################################################################
 controller:
-  id: my_logic_controller
+  id: controller
 
   # sensor_source: ID reference to any ESPHome sensor component
   # The controller subscribes to this sensor's state changes via callback

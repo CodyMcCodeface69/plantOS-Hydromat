@@ -136,6 +136,18 @@ class Controller : public Component {
   void set_light_target(light::LightState *l) { light_target_ = l; }
   void set_state_text(text_sensor::TextSensor *t) { state_text_ = t; }
 
+  /**
+   * reset_to_init() - Manually trigger a reset to INIT state
+   *
+   * PUBLIC API for external components (e.g., button actions) to force
+   * the controller back to INIT state. Useful for:
+   * - Testing state transitions
+   * - Debugging FSM behavior
+   * - Manual recovery from ERROR state
+   * - User-initiated recalibration
+   */
+  void reset_to_init();
+
  private:
   // ===== Component Dependencies (injected via setters) =====
 

@@ -473,5 +473,42 @@ void Controller::publish_state() {
   this->state_text_->publish_state(state_name);
 }
 
+// ============================================================================
+// PUBLIC API: reset_to_init
+// ============================================================================
+/**
+ * Manually force a reset to INIT state.
+ *
+ * WHY THIS METHOD:
+ * - Allows external components (buttons, services, automations) to reset the FSM
+ * - Useful for testing: Can trigger state transitions on demand
+ * - Useful for debugging: Can recover from stuck states
+ * - Useful for users: Manual reset button in web UI
+ *
+ * IMPLEMENTATION:
+ * - Transitions to INIT state immediately
+ * - Resets timing counters as if the state was naturally entered
+ * - Publishes state change to text sensor
+ * - Logs the manual reset for debugging
+ *
+ * SAFETY:
+ * - Can be called at any time from any state
+ * - No side effects beyond state transition
+ * - Thread-safe (called from ESPHome main loop)
+ */
+void Controller::reset_to_init() {
+  ESP_LOGI(TAG, "Manual reset to INIT state requested");
+
+  // Transition to INIT state
+  this->current_state_ = &Controller::state_init;
+
+  // Reset timing counters
+  this->state_start_time_ = millis();
+  this->state_counter_ = 0;
+
+  // Publish the new state
+  publish_state();
+}
+
 } // namespace controller
 } // namespace esphome

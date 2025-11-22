@@ -23,7 +23,7 @@ The development shell includes: esphome, python3, cmake, ninja, and other requir
 
 ## Common Commands
 
-All commands are managed via Taskfile (Task runner). The entry point is `plantos.yaml`.
+All commands are managed via Taskfile (Task runner). The entry point is `plantOS.yaml`.
 
 ```bash
 # Build the firmware
@@ -41,17 +41,17 @@ task clean
 
 Underlying ESPHome commands (if needed directly):
 ```bash
-esphome compile plantos.yaml
-esphome upload plantos.yaml
-esphome run plantos.yaml
-esphome clean plantos.yaml
+esphome compile plantOS.yaml
+esphome upload plantOS.yaml
+esphome run plantOS.yaml
+esphome clean plantOS.yaml
 ```
 
 ## Project Architecture
 
 ### Configuration Files
 
-- `plantos.yaml`: Main ESPHome configuration defining hardware, components, and their interconnections
+- `plantOS.yaml`: Main ESPHome configuration defining hardware, components, and their interconnections
 - `secrets.yaml`: WiFi credentials and other secrets (gitignored, see `secrets.example.yaml`)
 - `flake.nix`: Nix development environment and build configuration
 - `Taskfile.yml`: Task automation definitions

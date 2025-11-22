@@ -92,7 +92,7 @@ sensor:
 ################################################################################
 # System Controller: Finite State Machine
 #
-# The controller is the "brain" of PlantOS, implementing a finite state machine
+# The controller is the "brain" of plantOS, implementing a finite state machine
 # that processes sensor data and drives LED visual feedback. This architecture
 # cleanly separates:
 # - Input (sensor_source): What data to monitor

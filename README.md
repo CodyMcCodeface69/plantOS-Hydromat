@@ -15,7 +15,7 @@ ESPHome-based firmware for ESP32-C6 microcontrollers, implementing a plant monit
 - **Built-in LED**: WS2812 RGB on GPIO 8
 - **Framework**: ESP-IDF via ESPHome
 
-See `plantos.yaml` for complete hardware configuration details.
+See `plantOS.yaml` for complete hardware configuration details.
 
 ## Quick Start
 
@@ -28,7 +28,7 @@ See `plantos.yaml` for complete hardware configuration details.
 
 ```bash
 # Clone and enter directory
-cd plantos
+cd plantOS
 
 # Allow direnv (if using direnv)
 direnv allow
@@ -73,8 +73,8 @@ See `Taskfile.yml` for implementation details.
 ## Project Structure
 
 ```
-plantos/
-├── plantos.yaml           # Main ESPHome config (hardware, components, integrations)
+plantOS/
+├── plantOS.yaml           # Main ESPHome config (hardware, components, integrations)
 ├── secrets.yaml          # WiFi credentials (gitignored)
 ├── secrets.example.yaml  # Template for secrets
 ├── components/           # Custom ESPHome components
@@ -95,7 +95,7 @@ Polling sensor that cycles values 0-100. See `components/sensor_dummy/` for impl
 ### controller
 Finite state machine with LED feedback (init → calibration → ready → error states). See `components/controller/` for implementation details.
 
-Usage examples in `plantos.yaml`.
+Usage examples in `plantOS.yaml`.
 
 ## Essential Documentation Links
 
@@ -129,7 +129,7 @@ Usage examples in `plantos.yaml`.
 
 ## Development Workflow
 
-1. **Modify hardware/components**: Edit `plantos.yaml`
+1. **Modify hardware/components**: Edit `plantOS.yaml`
 2. **Create custom components**: Add to `components/` directory (see ESPHome custom components guide)
 3. **Test changes**: `task run` to build, flash, and monitor logs
 4. **Access web interface**: Navigate to device IP (shown in logs) on port 80

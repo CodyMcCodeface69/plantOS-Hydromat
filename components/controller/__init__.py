@@ -41,7 +41,7 @@ This is safer than global variables and more flexible than hard-coded references
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor, light
+from esphome.components import sensor, light, text_sensor
 from esphome.const import CONF_ID
 
 # Create a C++ namespace for this controller
@@ -58,6 +58,7 @@ Controller = controller_ns.class_('Controller', cg.Component)
 # Configuration keys for YAML
 CONF_SENSOR_SOURCE = 'sensor_source'
 CONF_LIGHT_TARGET = 'light_target'
+CONF_STATE_TEXT = 'state_text'
 
 # Define the YAML configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -75,6 +76,11 @@ CONFIG_SCHEMA = cv.Schema({
     # this controller to work with any ESPHome light: addressable LEDs,
     # RGB lights, RGBW lights, single-channel lights, etc.
     cv.Required(CONF_LIGHT_TARGET): cv.use_id(light.LightState),
+
+    # state_text: Optional reference to a text sensor to publish FSM state
+    # Allows exposing the current state (INIT, CALIBRATION, READY, ERROR)
+    # in the web UI and for monitoring/debugging purposes
+    cv.Optional(CONF_STATE_TEXT): cv.use_id(text_sensor.TextSensor),
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -104,3 +110,9 @@ async def to_code(config):
     # This generates C++ code like: controller->set_light_target(system_led);
     lit = await cg.get_variable(config[CONF_LIGHT_TARGET])
     cg.add(var.set_light_target(lit))
+
+    # Optionally inject a text sensor for state publishing
+    # This allows the controller to expose its current FSM state in the web UI
+    if CONF_STATE_TEXT in config:
+        state_text = await cg.get_variable(config[CONF_STATE_TEXT])
+        cg.add(var.set_state_text(state_text))

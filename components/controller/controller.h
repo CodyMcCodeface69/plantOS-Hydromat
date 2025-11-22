@@ -2,6 +2,7 @@
 #include "esphome/core/component.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/light/light_state.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 
 namespace esphome {
 namespace controller {
@@ -133,6 +134,7 @@ class Controller : public Component {
    */
   void set_sensor_source(sensor::Sensor *s) { sensor_source_ = s; }
   void set_light_target(light::LightState *l) { light_target_ = l; }
+  void set_state_text(text_sensor::TextSensor *t) { state_text_ = t; }
 
  private:
   // ===== Component Dependencies (injected via setters) =====
@@ -156,6 +158,16 @@ class Controller : public Component {
    * - LightState provides a consistent API across all light types
    */
   light::LightState *light_target_{nullptr};
+
+  /**
+   * Optional pointer to text sensor for publishing FSM state.
+   *
+   * WHY OPTIONAL (nullptr-safe):
+   * - Not required for core functionality (visual feedback via LED)
+   * - Useful for debugging and monitoring via web UI/MQTT
+   * - Allows users to opt-in to state publishing
+   */
+  text_sensor::TextSensor *state_text_{nullptr};
 
   /**
    * Cached sensor value updated via callback.
@@ -321,6 +333,17 @@ class Controller : public Component {
    *   be visible anyway, but we want the light explicitly off)
    */
   void apply_light(float r, float g, float b, float brightness = 1.0);
+
+  /**
+   * publish_state() - Publish current FSM state to text sensor
+   *
+   * WHY SEPARATE METHOD:
+   * - Encapsulates text sensor publishing logic
+   * - Provides nullptr safety in one place
+   * - Called on state transitions to update web UI
+   * - Allows state to be monitored via MQTT/Home Assistant
+   */
+  void publish_state();
 };
 
 } // namespace controller

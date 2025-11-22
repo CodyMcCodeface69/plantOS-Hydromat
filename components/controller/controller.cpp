@@ -43,6 +43,9 @@ void Controller::setup() {
       this->current_sensor_value_ = x;
     });
   }
+
+  // Publish initial state to text sensor (if configured)
+  publish_state();
 }
 
 const char* Controller::get_state_name(StateHandler state) {
@@ -85,6 +88,7 @@ void Controller::loop() {
      * 2. Reset state_start_time_ to mark entry into new state
      * 3. Reset state_counter_ for stochastic transitions in new state
      * 4. Update current_state_ to the new state handler
+     * 5. Publish new state to text sensor (if configured)
      *
      * WHY RESET TIMING:
      * Each state's timing is relative to when it was entered. Without
@@ -96,6 +100,7 @@ void Controller::loop() {
         this->state_start_time_ = millis();
         this->state_counter_ = 0; // Reset counter for the new state
         this->current_state_ = next_state.func;
+        publish_state(); // Publish new state to text sensor
     }
   }
 }
@@ -435,6 +440,37 @@ void Controller::apply_light(float r, float g, float b, float brightness) {
 
   // Execute the light command (sends to hardware)
   call.perform();
+}
+
+// ============================================================================
+// HELPER FUNCTION: publish_state
+// ============================================================================
+/**
+ * Publish current FSM state to the text sensor (if configured).
+ *
+ * WHY THIS METHOD:
+ * - Allows monitoring FSM state via web UI, MQTT, Home Assistant, etc.
+ * - Useful for debugging state transitions and system behavior
+ * - Optional: Only publishes if state_text_ is configured in YAML
+ *
+ * WHEN CALLED:
+ * - In setup() to publish initial state
+ * - In loop() after each state transition
+ *
+ * nullptr SAFETY:
+ * If state_text_ is not configured in YAML, it remains nullptr.
+ * Early return prevents crashes and allows controller to work without
+ * state publishing.
+ */
+void Controller::publish_state() {
+  // Safety check: Do nothing if no text sensor is connected
+  if (this->state_text_ == nullptr) return;
+
+  // Get the human-readable name of the current state
+  const char* state_name = get_state_name(this->current_state_);
+
+  // Publish the state to the text sensor
+  this->state_text_->publish_state(state_name);
 }
 
 } // namespace controller

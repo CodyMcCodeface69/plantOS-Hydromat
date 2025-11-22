@@ -81,13 +81,26 @@ light:
 sensor:
   - id: sensor_dummy_id
     platform: sensor_dummy
-    name: "My Dummy Value"
+    name: "Dummy Sensor"
 
     # 1 second polling interval provides frequent updates for responsive
     # controller behavior without overwhelming the ESP32 event loop.
     # Real sensors might use different intervals based on measurement
     # characteristics (e.g., soil moisture changes slowly, could poll every 60s)
     update_interval: 1s
+
+################################################################################
+# Text Sensor: Controller State
+#
+# Publishes the current FSM state to the web UI for monitoring and debugging.
+# Shows state names: INIT, CALIBRATION, READY, ERROR
+################################################################################
+text_sensor:
+  - platform: template
+    name: "Controller State"
+    id: controller_state_text
+    # Text sensors don't have numerical state, just publish strings
+    # The controller will call publish_state() to update this
 
 ################################################################################
 # System Controller: Finite State Machine
@@ -114,3 +127,8 @@ controller:
   # light_target: ID reference to any ESPHome light component
   # The controller calls the light's API to set colors/brightness
   light_target: system_led
+
+  # state_text: ID reference to a text sensor for FSM state publishing
+  # The controller will publish state changes (INIT, CALIBRATION, READY, ERROR)
+  # to this text sensor for display in the web UI
+  state_text: controller_state_text

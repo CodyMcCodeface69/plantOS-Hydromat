@@ -75,7 +75,7 @@ A simple polling sensor component that cycles values 0-100 in increments of 10.
 sensor:
   - id: sensor_dummy_id
     platform: sensor_dummy
-    name: "My Dummy Value"
+    name: "Dummy Sensor"
     update_interval: 1s
 ```
 

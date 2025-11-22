@@ -116,7 +116,7 @@ button:
       # This triggers an immediate transition to INIT state
       then:
         - lambda: |-
-            id(my_logic_controller)->reset_to_init();
+            id(my_controller)->reset_to_init();
 
 ################################################################################
 # System Controller: Finite State Machine
@@ -134,7 +134,7 @@ button:
 # 3. Testability: Different configurations can reuse the same controller logic
 ################################################################################
 controller:
-  id: controller
+  id: my_controller
 
   # sensor_source: ID reference to any ESPHome sensor component
   # The controller subscribes to this sensor's state changes via callback

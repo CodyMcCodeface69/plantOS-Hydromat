@@ -85,18 +85,24 @@ The main logic controller implementing a finite state machine (FSM) with LED vis
 
 **Files:**
 - `__init__.py`: Config schema requiring a `sensor_source` and `light_target`
-- `controller.h/cpp`: FSM implementation
+- `controller.h`: FSM class declaration and interface
+- `controller.cpp`: Core FSM logic (setup, loop, helper functions)
+- `state_init.cpp`: INIT state implementation (boot sequence)
+- `state_calibration.cpp`: CALIBRATION state implementation (sensor stabilization)
+- `state_ready.cpp`: READY state implementation (normal operation with breathing animation)
+- `state_error.cpp`: ERROR state implementation (fault condition alert)
 
 **Architecture:**
 - FSM pattern using function pointers (`StateHandler`)
 - State transitions in `loop()` based on returned next state
 - Sensor data received via callback registered in `setup()`
 - Light control via ESPHome's `light::LightState` API
+- Each state implementation is in a separate file for better organization
 
 **States:**
 1. `state_init`: Boot sequence showing red → yellow → green
 2. `state_calibration`: Blinking yellow for 4 seconds
-3. `state_ready`: Breathing green effect with 5% random error probability per second
+3. `state_ready`: Breathing green effect with sensor threshold monitoring (triggers error if value >90)
 4. `state_error`: Fast red flashing for 5 seconds, then returns to init
 
 **Usage in YAML:**

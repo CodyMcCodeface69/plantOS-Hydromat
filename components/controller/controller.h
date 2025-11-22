@@ -6,41 +6,309 @@
 namespace esphome {
 namespace controller {
 
+/**
+ * Controller: Finite State Machine for Plant Monitoring System
+ *
+ * ============================================================================
+ * FSM ARCHITECTURE OVERVIEW
+ * ============================================================================
+ *
+ * This controller implements a function-pointer-based FSM that manages system
+ * states and provides visual feedback via an RGB LED.
+ *
+ * STATE DIAGRAM:
+ *
+ *                    ┌─────────────┐
+ *                    │    INIT     │  Boot sequence: Red → Yellow → Green
+ *                    │ (3 seconds) │  Shows system is starting up
+ *                    └──────┬──────┘
+ *                           │ after 3s
+ *                           ▼
+ *                    ┌─────────────┐
+ *                    │ CALIBRATION │  Blinking yellow for 4 seconds
+ *                    │ (4 seconds) │  Simulates sensor calibration period
+ *                    └──────┬──────┘
+ *                           │ after 4s
+ *                           ▼
+ *                    ┌─────────────┐
+ *              ┌────▶│    READY    │  Breathing green animation
+ *              │     │  (ongoing)  │  Normal operation mode
+ *              │     └──────┬──────┘
+ *              │            │ 5% chance per second (stochastic)
+ *              │            ▼
+ *              │     ┌─────────────┐
+ *              │     │    ERROR    │  Fast red flashing
+ *              └─────┤ (5 seconds) │  Shows fault condition
+ *                    └─────────────┘
+ *                      │ after 5s
+ *                      └──▶ returns to INIT (full restart)
+ *
+ * ============================================================================
+ * WHY FUNCTION POINTER FSM (vs switch/case or state pattern)
+ * ============================================================================
+ *
+ * 1. PERFORMANCE: Direct function pointer calls are faster than switch/case
+ *    with many states. Critical for loop() running at ~1000 Hz.
+ *
+ * 2. MEMORY EFFICIENCY: No vtable overhead from virtual functions (state pattern).
+ *    Important on constrained ESP32 with limited RAM.
+ *
+ * 3. CLEAN STATE TRANSITIONS: Each state returns the next state to execute.
+ *    Transitions are explicit and easy to trace: "return &Controller::state_ready"
+ *
+ * 4. NO GLOBAL STATE TABLE: Switch/case requires a separate mapping of state
+ *    enum → handler. Function pointers eliminate this indirection.
+ *
+ * TRADE-OFFS:
+ * - Less type-safe than enum-based FSMs (function pointer could be null)
+ * - Harder to visualize state transitions (no central state table)
+ * - We mitigate these with nullptr checks and comprehensive documentation
+ *
+ * ============================================================================
+ * FSM TIMING ARCHITECTURE
+ * ============================================================================
+ *
+ * Each state manages its own timing using:
+ * - state_start_time_: Timestamp when state was entered (millis())
+ * - elapsed = millis() - state_start_time_: Time spent in current state
+ *
+ * WHY NOT use delay():
+ * - delay() blocks the entire ESP32 event loop
+ * - WiFi, OTA, web server, other components would freeze
+ * - Non-blocking timing via millis() keeps the system responsive
+ *
+ * WHY NOT use PollingComponent:
+ * - FSM needs to run every loop iteration for smooth animations
+ * - PollingComponent adds overhead for timing we don't need
+ * - State transitions need millisecond precision, not second precision
+ *
+ * ============================================================================
+ * STOCHASTIC STATE TRANSITIONS (state_counter_ pattern)
+ * ============================================================================
+ *
+ * The READY state has a 5% per-second chance of transitioning to ERROR.
+ *
+ * WHY state_counter_:
+ * loop() runs ~1000 times per second. Without state_counter_, we'd roll the
+ * dice 1000 times per second, making errors far too frequent. state_counter_
+ * tracks which second we're in and only checks once per second.
+ *
+ * MATH:
+ * - Expected time in READY: 1 / 0.05 = 20 seconds average
+ * - Creates observable but not annoying error behavior for demonstration
+ *
+ * ============================================================================
+ * COMPONENT LIFECYCLE
+ * ============================================================================
+ *
+ * setup():  Called once at boot
+ *           - Initialize FSM to INIT state
+ *           - Register sensor callback to receive data updates
+ *           - Seed random number generator
+ *
+ * loop():   Called continuously (~1000 Hz) by ESPHome main loop
+ *           - Execute current state handler
+ *           - Check if state wants to transition
+ *           - Update current_state_ and reset timing if transitioning
+ *           - State handlers update LED via apply_light()
+ */
 class Controller : public Component {
  public:
+  /**
+   * setup() - Initialize the FSM and register sensor callback
+   */
   void setup() override;
-  void loop() override; // FSM Driver
 
+  /**
+   * loop() - FSM driver, executes current state and handles transitions
+   *
+   * Called continuously by ESPHome's main event loop. Runs at high frequency
+   * (~1000 Hz) to maintain smooth LED animations.
+   */
+  void loop() override;
+
+  /**
+   * Dependency injection setters (called by generated code from Python)
+   */
   void set_sensor_source(sensor::Sensor *s) { sensor_source_ = s; }
   void set_light_target(light::LightState *l) { light_target_ = l; }
 
  private:
+  // ===== Component Dependencies (injected via setters) =====
+
+  /**
+   * Pointer to sensor providing input data.
+   *
+   * WHY POINTER (not reference):
+   * - Can be nullptr, allowing nullptr checks for safety
+   * - Matches ESPHome's component linking pattern
+   * - Can be reassigned if needed (though we don't in this implementation)
+   */
   sensor::Sensor *sensor_source_{nullptr};
+
+  /**
+   * Pointer to light component for visual output.
+   *
+   * WHY light::LightState (not specific LED type):
+   * - Works with any ESPHome light: addressable, RGB, RGBW, monochrome
+   * - Loose coupling: controller doesn't care about LED hardware details
+   * - LightState provides a consistent API across all light types
+   */
   light::LightState *light_target_{nullptr};
 
+  /**
+   * Cached sensor value updated via callback.
+   *
+   * WHY CACHED (vs reading sensor->state directly in states):
+   * - Callback pattern ensures we always have the latest value
+   * - Atomic update (no risk of reading mid-update)
+   * - Future-proofing: allows preprocessing/filtering before states see it
+   */
   float current_sensor_value_{0.0};
 
-  // --- FSM Infrastructure ---
+  // ===== FSM Infrastructure =====
+
+  /**
+   * Forward declaration for StateFunc wrapper.
+   *
+   * WHY WRAPPER STRUCT (vs bare function pointer):
+   * - Allows implicit conversion from function pointers
+   * - Makes state handler return type more readable
+   * - Could be extended with state metadata (name, ID) if needed
+   *
+   * ALTERNATIVE CONSIDERED:
+   * Could use enum State + switch/case, but function pointers are faster
+   * and avoid the need for a state→handler mapping table.
+   */
   struct StateFunc;
+
+  /**
+   * Type alias for member function pointer to state handler.
+   *
+   * Syntax breakdown: StateFunc (Controller::*)()
+   * - Controller::  = Member of Controller class
+   * - *             = Pointer to member
+   * - ()            = Function taking no arguments
+   * - StateFunc     = Returns StateFunc wrapper
+   */
   using StateHandler = StateFunc (Controller::*)();
 
+  /**
+   * Wrapper struct for state handler function pointers.
+   *
+   * Allows state handlers to simply "return &Controller::state_name"
+   * instead of "return StateFunc(&Controller::state_name)".
+   */
   struct StateFunc {
     StateHandler func;
     StateFunc(StateHandler f) : func(f) {}
   };
 
+  /**
+   * Current active state (function pointer).
+   *
+   * WHY nullptr-initialized:
+   * - Allows detecting uninitialized FSM (safety check in loop())
+   * - setup() will set this to &Controller::state_init
+   */
   StateHandler current_state_{nullptr};
+
+  /**
+   * Timestamp (millis()) when current state was entered.
+   *
+   * Used by states to calculate elapsed time for animations and transitions.
+   * Reset to millis() whenever a state transition occurs.
+   */
   uint32_t state_start_time_{0};
 
-  // Counts 'events' within a state (e.g. seconds passed) to avoid repeated triggers
+  /**
+   * Event counter within current state.
+   *
+   * WHY NEEDED (stochastic transition pattern):
+   * loop() runs ~1000 times per second. For events that should happen once
+   * per second (like the 5% error chance), we use state_counter_ to track
+   * which second we're in. Only increment and check when the second changes.
+   *
+   * USAGE PATTERN (in state_ready):
+   *   uint32_t current_seconds = elapsed / 1000;
+   *   if (current_seconds > this->state_counter_) {
+   *     this->state_counter_ = current_seconds;
+   *     // Now check for stochastic transition (only once this second)
+   *   }
+   *
+   * Reset to 0 on every state transition.
+   */
   uint32_t state_counter_{0};
 
-  // --- State Functions ---
+  // ===== State Handler Functions =====
+
+  /**
+   * INIT state: Boot sequence showing red → yellow → green over 3 seconds.
+   *
+   * PURPOSE: Visual confirmation that the system is starting up.
+   * DURATION: 3 seconds
+   * VISUAL: Solid colors transitioning every 1 second
+   * NEXT STATE: CALIBRATION
+   */
   StateFunc state_init();
+
+  /**
+   * CALIBRATION state: Blinking yellow for 4 seconds.
+   *
+   * PURPOSE: Simulates sensor calibration period. In production, this could
+   *          perform actual sensor stabilization (e.g., soil moisture sensor
+   *          needs time to stabilize after power-on).
+   * DURATION: 4 seconds
+   * VISUAL: Yellow blinking at 1 Hz (500ms on, 500ms off)
+   * NEXT STATE: READY
+   */
   StateFunc state_calibration();
+
+  /**
+   * READY state: Normal operation with breathing green animation.
+   *
+   * PURPOSE: Indicates system is operating normally and monitoring sensors.
+   * DURATION: Indefinite (until random error)
+   * VISUAL: Breathing green (sine wave brightness modulation)
+   * STOCHASTIC TRANSITION: 5% chance per second to ERROR state
+   * NEXT STATE: ERROR (probabilistic) or stay in READY
+   */
   StateFunc state_ready();
+
+  /**
+   * ERROR state: Fast red flashing for 5 seconds, then restart.
+   *
+   * PURPOSE: Visual alert for fault conditions (simulated via random chance).
+   *          In production, this would be triggered by actual sensor errors,
+   *          connectivity issues, or threshold violations.
+   * DURATION: 5 seconds
+   * VISUAL: Red flashing at 5 Hz (100ms on, 100ms off) - very attention-grabbing
+   * NEXT STATE: INIT (performs full restart sequence)
+   */
   StateFunc state_error();
 
+  // ===== Helper Functions =====
+
+  /**
+   * apply_light() - Set LED color and brightness
+   *
+   * @param r Red component (0.0 to 1.0)
+   * @param g Green component (0.0 to 1.0)
+   * @param b Blue component (0.0 to 1.0)
+   * @param brightness Overall brightness (0.0 to 1.0, default 1.0)
+   *
+   * WHY THIS ABSTRACTION:
+   * - Encapsulates the ESPHome light API (make_call() pattern)
+   * - Provides consistent interface for all state handlers
+   * - Handles nullptr safety check in one place
+   * - Could be extended with color correction, gamma curves, etc.
+   *
+   * WHY brightness > 0.01 CHECK (in implementation):
+   * - ESPHome lights have a boolean "state" (on/off) separate from brightness
+   * - Setting brightness to 0.0 should turn the light off, not just dim to black
+   * - 0.01 threshold avoids floating-point precision issues (0.0001 wouldn't
+   *   be visible anyway, but we want the light explicitly off)
+   */
   void apply_light(float r, float g, float b, float brightness = 1.0);
 };
 

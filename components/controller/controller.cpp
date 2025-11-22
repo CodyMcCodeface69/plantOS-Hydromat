@@ -2,7 +2,6 @@
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
 #include <cmath>
-#include <cstdlib> // for rand()
 
 namespace esphome {
 namespace controller {
@@ -19,20 +18,6 @@ void Controller::setup() {
   this->current_state_ = &Controller::state_init;
   this->state_start_time_ = millis();
   this->state_counter_ = 0;
-
-  /**
-   * Seed the random number generator with current timestamp.
-   *
-   * WHY millis() FOR SEED:
-   * - Provides a different seed each time the device boots
-   * - More random than a fixed seed (would make error transitions predictable)
-   * - Cannot use true hardware RNG during setup (not yet initialized)
-   *
-   * ALTERNATIVE CONSIDERED:
-   * Could use ESP32's hardware RNG (esp_random()), but millis() is sufficient
-   * for the 5% error probability and has less overhead.
-   */
-  std::srand(millis());
 
   /**
    * Register callback to receive sensor updates.
@@ -217,12 +202,12 @@ Controller::StateFunc Controller::state_calibration() {
 // STATE: READY - Normal Operation
 // ============================================================================
 /**
- * Normal operating state with breathing green animation and stochastic errors.
+ * Normal operating state with breathing green animation and sensor monitoring.
  *
  * PURPOSE:
  * - Indicates system is functioning normally and monitoring sensors
  * - Breathing effect shows system is "alive" (not frozen)
- * - Random errors demonstrate fault handling (ERROR state)
+ * - Sensor threshold monitoring triggers ERROR state when exceeded
  *
  * VISUAL: Breathing Green Animation
  * - Base color: Pure green (r=0.0, g=1.0, b=0.0)
@@ -230,10 +215,10 @@ Controller::StateFunc Controller::state_calibration() {
  * - Period: ~1 second per breath cycle
  * - Effect: "Inhale/exhale" pulsing
  *
- * STOCHASTIC BEHAVIOR:
- * - 5% probability per second of transitioning to ERROR state
- * - Expected time in READY: 1/0.05 = 20 seconds average
- * - Creates observable fault handling without being annoying
+ * SENSOR MONITORING:
+ * - Checks sensor value against threshold once per second
+ * - High threshold (>90): Triggers ERROR state
+ * - Provides real sensor-based alerts instead of random errors
  *
  * TWO-PHASE IMPLEMENTATION:
  * 1. Transition logic (checked once per second)
@@ -247,32 +232,31 @@ Controller::StateFunc Controller::state_ready() {
   // PHASE 1: Stochastic Transition Logic
   // =========================================================================
   /**
-   * Check for random error transition ONCE PER SECOND.
+   * Check sensor threshold ONCE PER SECOND.
    *
    * WHY ONCE PER SECOND (not every loop iteration):
    * - loop() runs ~1000 times per second
-   * - Without gating, we'd check 1000 times per second
-   * - Even at 5% probability, we'd error almost immediately
+   * - Without gating, we'd trigger errors 1000 times per second
    * - state_counter_ tracks which second we're in, only checks on new seconds
+   * - Prevents error state spam when threshold is consistently violated
    *
    * HOW state_counter_ WORKS:
    * - current_seconds = elapsed / 1000 converts ms to seconds
    * - When current_seconds > state_counter_, a new second has started
-   * - We update state_counter_ and perform the random check
+   * - We update state_counter_ and perform threshold check
    * - Subsequent loop iterations in the same second skip this block
    *
-   * PROBABILITY MATH:
-   * - rand() % 100 gives random int from 0-99
-   * - Values 0-4 (5 values) = 5% probability
-   * - Expected value: E[X] = 1/p = 1/0.05 = 20 seconds
-   * - Standard deviation: σ = sqrt((1-p)/p²) ≈ 19.5 seconds (high variance)
+   * THRESHOLD STRATEGY:
+   * - High threshold (>90): Triggers alert for excessive sensor readings
+   * - Could indicate over-watering, sensor malfunction, or critical condition
+   * - For plant monitoring: adjust threshold based on plant species needs
    */
   if (current_seconds > this->state_counter_) {
     this->state_counter_ = current_seconds;
 
-    // Roll the dice: 5% chance to trigger error
-    if ((std::rand() % 100) < 5) {
-       ESP_LOGW(TAG, "Random error triggered!");
+    // Check high threshold: trigger error if value exceeds 90
+    if (this->current_sensor_value_ > 90.0f) {
+       ESP_LOGW(TAG, "High threshold exceeded! Sensor value: %.1f", this->current_sensor_value_);
        return &Controller::state_error;
     }
   }

@@ -34,7 +34,7 @@ namespace controller {
  *              ┌────▶│    READY    │  Breathing green animation
  *              │     │  (ongoing)  │  Normal operation mode
  *              │     └──────┬──────┘
- *              │            │ 5% chance per second (stochastic)
+ *              │            │ if sensor value >90
  *              │            ▼
  *              │     ┌─────────────┐
  *              │     │    ERROR    │  Fast red flashing
@@ -83,19 +83,20 @@ namespace controller {
  * - State transitions need millisecond precision, not second precision
  *
  * ============================================================================
- * STOCHASTIC STATE TRANSITIONS (state_counter_ pattern)
+ * SENSOR THRESHOLD MONITORING (state_counter_ pattern)
  * ============================================================================
  *
- * The READY state has a 5% per-second chance of transitioning to ERROR.
+ * The READY state monitors sensor values and transitions to ERROR if the
+ * threshold is exceeded.
  *
  * WHY state_counter_:
- * loop() runs ~1000 times per second. Without state_counter_, we'd roll the
- * dice 1000 times per second, making errors far too frequent. state_counter_
+ * loop() runs ~1000 times per second. Without state_counter_, we'd check
+ * the threshold 1000 times per second and spam error transitions. state_counter_
  * tracks which second we're in and only checks once per second.
  *
- * MATH:
- * - Expected time in READY: 1 / 0.05 = 20 seconds average
- * - Creates observable but not annoying error behavior for demonstration
+ * THRESHOLD:
+ * - High threshold: >90 (e.g., over-watering, sensor malfunction)
+ * - Creates observable alerts based on actual sensor data
  *
  * ============================================================================
  * COMPONENT LIFECYCLE
@@ -224,16 +225,16 @@ class Controller : public Component {
   /**
    * Event counter within current state.
    *
-   * WHY NEEDED (stochastic transition pattern):
+   * WHY NEEDED (threshold checking pattern):
    * loop() runs ~1000 times per second. For events that should happen once
-   * per second (like the 5% error chance), we use state_counter_ to track
+   * per second (like sensor threshold checks), we use state_counter_ to track
    * which second we're in. Only increment and check when the second changes.
    *
    * USAGE PATTERN (in state_ready):
    *   uint32_t current_seconds = elapsed / 1000;
    *   if (current_seconds > this->state_counter_) {
    *     this->state_counter_ = current_seconds;
-   *     // Now check for stochastic transition (only once this second)
+   *     // Now check sensor threshold (only once this second)
    *   }
    *
    * Reset to 0 on every state transition.
@@ -268,19 +269,19 @@ class Controller : public Component {
    * READY state: Normal operation with breathing green animation.
    *
    * PURPOSE: Indicates system is operating normally and monitoring sensors.
-   * DURATION: Indefinite (until random error)
+   * DURATION: Indefinite (until sensor threshold exceeded)
    * VISUAL: Breathing green (sine wave brightness modulation)
-   * STOCHASTIC TRANSITION: 5% chance per second to ERROR state
-   * NEXT STATE: ERROR (probabilistic) or stay in READY
+   * THRESHOLD MONITORING: Triggers ERROR if sensor value >90
+   * NEXT STATE: ERROR (when threshold exceeded) or stay in READY
    */
   StateFunc state_ready();
 
   /**
    * ERROR state: Fast red flashing for 5 seconds, then restart.
    *
-   * PURPOSE: Visual alert for fault conditions (simulated via random chance).
-   *          In production, this would be triggered by actual sensor errors,
-   *          connectivity issues, or threshold violations.
+   * PURPOSE: Visual alert for fault conditions triggered by sensor threshold
+   *          violation (value >90). Could also be extended for connectivity
+   *          issues or other system faults.
    * DURATION: 5 seconds
    * VISUAL: Red flashing at 5 Hz (100ms on, 100ms off) - very attention-grabbing
    * NEXT STATE: INIT (performs full restart sequence)

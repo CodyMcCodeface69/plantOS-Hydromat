@@ -24,7 +24,7 @@ logger:
   # DEBUG level enables detailed component logging for development
   # This helps diagnose FSM state transitions and sensor callbacks
   # In production, consider INFO or WARN to reduce log noise
-  level: DEBUG
+  level: INFO
 
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security

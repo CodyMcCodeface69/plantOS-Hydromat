@@ -60,6 +60,14 @@ void Controller::setup() {
   }
 }
 
+const char* Controller::get_state_name(StateHandler state) {
+  if (state == &Controller::state_init) return "INIT";
+  if (state == &Controller::state_calibration) return "CALIBRATION";
+  if (state == &Controller::state_ready) return "READY";
+  if (state == &Controller::state_error) return "ERROR";
+  return "UNKNOWN";
+}
+
 void Controller::loop() {
   /**
    * FSM Driver - Core execution loop
@@ -99,7 +107,7 @@ void Controller::loop() {
      * incorrect and states would transition immediately.
      */
     if (next_state.func != this->current_state_) {
-        ESP_LOGD(TAG, "State transition.");
+        ESP_LOGI(TAG, "State transition to: %s", get_state_name(next_state.func));
         this->state_start_time_ = millis();
         this->state_counter_ = 0; // Reset counter for the new state
         this->current_state_ = next_state.func;

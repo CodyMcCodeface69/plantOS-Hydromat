@@ -290,6 +290,16 @@ class Controller : public Component {
   // ===== Helper Functions =====
 
   /**
+   * get_state_name() - Convert state handler function pointer to readable name
+   *
+   * @param state State handler function pointer
+   * @return String name of the state (e.g., "INIT", "READY")
+   *
+   * Used for logging state transitions with human-readable names.
+   */
+  const char* get_state_name(StateHandler state);
+
+  /**
    * apply_light() - Set LED color and brightness
    *
    * @param r Red component (0.0 to 1.0)

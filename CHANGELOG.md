@@ -11,7 +11,7 @@ Feature update with time synchronization, enhanced sensor filtering, and improve
 - **NTP Time Synchronization**: Implemented network time protocol synchronization for accurate timestamping using `time(NULL)`.
 - **Robust Average Filter**: Implemented robust moving average filtering for sensor data to improve stability and reduce noise.
 - **Extended Task Runner**: Added new Task Runner commands for debugging and maintenance:
-  - `logs`: Stream device logs for debugging
+  - `snoop`: Stream device logs for debugging
   - `status`: Check device and connection status
   - `reboot`: Reboot the device
   - `config_validate`: Task to check the plantOS.yaml configuration file for syntax and structural errors before attempting a full build or flash

@@ -66,7 +66,20 @@ Controller::StateFunc Controller::state_ready() {
     // Check high threshold: trigger error if value exceeds 90
     if (this->current_sensor_value_ > 90.0f) {
        ESP_LOGW(TAG, "High threshold exceeded! Sensor value: %.1f", this->current_sensor_value_);
+
+       // Trigger critical alert in status logger
+       char alert_msg[128];
+       snprintf(alert_msg, sizeof(alert_msg),
+                "Sensor value %.1f exceeds critical threshold (90.0)",
+                this->current_sensor_value_);
+       this->status_logger_.updateAlertStatus("SENSOR_CRITICAL", std::string(alert_msg));
+
        return &Controller::state_error;
+    }
+
+    // Clear sensor alert if we're in normal range
+    if (this->current_sensor_value_ <= 90.0f) {
+      this->status_logger_.clearAlert("SENSOR_CRITICAL");
     }
   }
 

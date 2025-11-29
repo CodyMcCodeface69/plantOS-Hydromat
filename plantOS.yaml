@@ -1,0 +1,303 @@
+################################################################################
+# PlantOS Hardware Configuration
+#
+# This file defines the complete hardware setup and component interconnections
+# for the ESP32-C6 based plant monitoring system.
+################################################################################
+
+esphome:
+  name: plantos-testlab
+
+esp32:
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
+  framework:
+    # ESP-IDF is chosen over Arduino for:
+    # - Better RISC-V support on ESP32-C6 (newer chip architecture)
+    # - More direct hardware access and lower-level control
+    # - Better performance for real-time LED control (RMT peripheral)
+    # - Official Espressif support and documentation
+    type: esp-idf
+    version: recommended
+
+logger:
+  # DEBUG level enables detailed component logging for development
+  # This helps diagnose FSM state transitions and sensor callbacks
+  # In production, consider INFO or WARN to reduce log noise
+  level: INFO
+  # ESP32-C6 uses built-in USB Serial/JTAG controller for logging
+  # This must be explicitly configured or boot will hang
+  hardware_uart: USB_SERIAL_JTAG
+
+wifi:
+  # Credentials stored in secrets.yaml (gitignored) for security
+  # This allows OTA updates and web interface access
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Static IP configuration for consistent web UI access
+  manual_ip:
+    static_ip: 192.168.0.201
+    gateway: 192.168.0.1
+    subnet: 255.255.255.0
+    dns1: 192.168.0.1
+
+  # ==============================================================
+  # FALLBACK ACCESS POINT (AP) FÜR DEBUG-ZWECKE
+  # WICHTIG: Wenn der Chip das Haupt-WLAN (Datenautobahn) NICHT findet,
+  # erstellt er dieses temporäre WLAN. Verbinden Sie sich damit, um
+  # die Live-Logs im Browser unter http://192.168.4.1 zu sehen.
+  # ==============================================================
+  ap:
+    ssid: "PlantOS-Fallback"
+    password: "debug123"
+ota:
+  # ESPHome OTA allows firmware updates over WiFi without USB cable
+  # Critical for deployed devices in hard-to-reach locations (e.g., greenhouse)
+  - platform: esphome
+
+web_server:
+  # Provides real-time sensor data and component control via browser
+  # Accessible at device IP on port 80 (standard HTTP)
+  # Useful for debugging and monitoring without serial connection
+  #version: 3
+  port: 80
+
+################################################################################
+# Time Synchronization: NTP
+#
+# Synchronizes the ESP32's system time with Network Time Protocol (NTP) servers.
+# This enables accurate timestamping for logs, sensor data, and scheduled actions.
+################################################################################
+time:
+  - platform: sntp
+    id: sntp_time
+    # NTP servers for time synchronization (pool.ntp.org provides load-balanced servers)
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+      - 2.pool.ntp.org
+
+    # Central European Time (CET/CEST)
+    # CET: UTC+1 (winter) - standard offset: 3600 seconds
+    # CEST: UTC+2 (summer) - daylight saving adds 3600 seconds
+    # ESPHome format: "TZ_database_name" or "STD offset DST,rule"
+    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
+    # Format explanation: CET-1CEST,M3.5.0,M10.5.0/3
+    # - CET-1: Standard time zone (CET), offset is UTC+1 (specified as -1)
+    # - CEST: Daylight saving time zone name
+    # - M3.5.0: DST starts last (5th) Sunday (0) of March (M3) at 02:00
+    # - M10.5.0/3: DST ends last (5th) Sunday (0) of October (M10) at 03:00
+
+    # Update interval: how often to sync with NTP servers
+    # Default 15min is reasonable; too frequent can overload servers
+    update_interval: 15min
+
+    # Callback when time is synchronized
+    on_time_sync:
+      then:
+        - logger.log: "System time synchronized with NTP server"
+
+external_components:
+  # Points to local custom components directory
+  # ESPHome will compile and link C++ code from here alongside generated code
+  - source: components
+
+################################################################################
+# Visual Feedback: WS2812 RGB LED
+#
+# The built-in LED serves as the primary user interface, displaying system
+# state via color and animation patterns controlled by the FSM.
+################################################################################
+light:
+  - platform: esp32_rmt_led_strip
+    # ESP32-C6-DevKitC-1 has a WS2812 RGB LED hard-wired to GPIO 8
+    pin: 8
+    num_leds: 1
+    rgb_order: RGB
+    name: "Built-in LED"
+    id: system_led
+    chipset: WS2812
+
+    # default_transition_length: 0s disables automatic color smoothing
+    # WHY: The FSM controller implements its own timing and animations
+    # (breathing effect, blinking). ESPHome's built-in transitions would
+    # interfere with precise FSM-driven visual feedback, creating lag or
+    # blending between states. Instant transitions give the controller
+    # full control over every frame.
+    default_transition_length: 0s
+
+################################################################################
+# Sensor Input: Dummy Sensor
+#
+# Development/testing sensor that generates predictable cycling values.
+# In production, replace with actual plant sensors (moisture, light, etc.)
+################################################################################
+sensor:
+  - id: sensor_dummy_id
+    platform: sensor_dummy
+    name: "Dummy Sensor"
+
+    # 1 second polling interval provides frequent updates for responsive
+    # controller behavior without overwhelming the ESP32 event loop.
+    # Real sensors might use different intervals based on measurement
+    # characteristics (e.g., soil moisture changes slowly, could poll every 60s)
+    update_interval: 1s
+
+  # Sensor Filter: Robust Averaging with Outlier Rejection
+  #
+  # Filters the raw sensor data using robust averaging to reject outliers.
+  # This improves data quality by removing sensor spikes, noise, and glitches.
+  - id: sensor_filtered_id
+    platform: sensor_filter
+    name: "Filtered Sensor"
+
+    # sensor_source: The raw sensor to filter
+    sensor_source: sensor_dummy_id
+
+    # window_size: Number of readings to collect before calculating average
+    # 20 readings = good balance between responsiveness and filtering
+    window_size: 20
+
+    # reject_percentage: Percentage to reject from each end (0.0 to 0.5)
+    # 0.10 = reject 10% lowest + 10% highest = 20% total outlier rejection
+    # With 20 readings: rejects 2 lowest + 2 highest = averages middle 16 values
+    reject_percentage: 0.10
+
+################################################################################
+# Text Sensor: Controller State
+#
+# Publishes the current FSM state to the web UI for monitoring and debugging.
+# Shows state names: INIT, CALIBRATION, READY, ERROR
+################################################################################
+text_sensor:
+  - platform: template
+    name: "Controller State"
+    id: controller_state_text
+    # Text sensors don't have numerical state, just publish strings
+    # The controller will call publish_state() to update this
+
+################################################################################
+# Button: Reset Controller
+#
+# Provides a manual reset button in the web UI to force the controller back
+# to INIT state. Useful for testing, debugging, and manual recalibration.
+################################################################################
+button:
+  - platform: template
+    name: "Reset Controller"
+    on_press:
+      # Lambda action calls the controller's reset_to_init() method
+      # This triggers an immediate transition to INIT state
+      then:
+        - lambda: |-
+            id(my_controller)->reset_to_init();
+
+################################################################################
+# System Controller: Finite State Machine
+#
+# The controller is the "brain" of plantOS, implementing a finite state machine
+# that processes sensor data and drives LED visual feedback. This architecture
+# cleanly separates:
+# - Input (sensor_source): What data to monitor
+# - Logic (controller FSM): How to interpret data and manage states
+# - Output (light_target): How to display system status
+#
+# Component linking by ID enables:
+# 1. Loose coupling: Swap sensors/LEDs without changing controller code
+# 2. Type safety: ESPHome validates IDs at compile time
+# 3. Testability: Different configurations can reuse the same controller logic
+################################################################################
+controller:
+  id: my_controller
+
+  # sensor_source: ID reference to any ESPHome sensor component
+  # The controller subscribes to this sensor's state changes via callback
+  # UPDATED: Now using filtered sensor for robust, outlier-free data
+  sensor_source: sensor_filtered_id
+
+  # light_target: ID reference to any ESPHome light component
+  # The controller calls the light's API to set colors/brightness
+  light_target: system_led
+
+  # state_text: ID reference to a text sensor for FSM state publishing
+  # The controller will publish state changes (INIT, CALIBRATION, READY, ERROR)
+  # to this text sensor for display in the web UI
+  state_text: controller_state_text
+
+################################################################################
+# Time Logger: Periodic Time Logging
+#
+# Demonstrates non-blocking periodic execution by logging the current date and
+# time to the serial monitor. Uses NTP-synchronized time from the time component
+# and formats output as: dd.mm.yyyy HH:MM:SS
+#
+# This component showcases:
+# - Non-blocking delays using millis() instead of delay()
+# - Integration with ESPHome's time component
+# - Formatted time output for monitoring and debugging
+################################################################################
+time_logger:
+  id: my_time_logger
+
+  # time_source: ID reference to the time component (NTP-synchronized)
+  # The logger queries this component for current date/time
+  time_source: sntp_time
+
+  # log_interval: How often to log the time (default: 5 seconds)
+  # Accepts time strings: "1s", "5s", "10s", "1min", etc.
+  log_interval: 1min
+
+################################################################################
+# IP Logger: Periodic IP Address Logging
+#
+# Logs the ESP32's current local IP address to the serial monitor every 30
+# seconds. Only logs when WiFi is connected to avoid displaying invalid IPs.
+#
+# This component showcases:
+# - Non-blocking delays using millis() instead of delay()
+# - Integration with ESPHome's WiFi component
+# - WiFi connection status checking
+# - Network information retrieval
+#
+# Output format: "Current IP: 192.168.1.100"
+################################################################################
+ip_logger:
+  id: my_ip_logger
+
+  # log_interval: How often to log the IP address (default: 30 seconds)
+  # Accepts time strings: "10s", "30s", "1min", etc.
+  log_interval: 30s
+
+################################################################################
+# Network Status Update Automation
+#
+# Periodically updates the central status logger with network information:
+# - Current IP address from WiFi component
+# - Web server online status
+#
+# Runs every 5 seconds to keep network status current in the logger.
+################################################################################
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          // Update IP address in status logger
+          #ifdef USE_WIFI
+          if (wifi::global_wifi_component->is_connected()) {
+            auto addresses = wifi::global_wifi_component->get_ip_addresses();
+            if (!addresses.empty()) {
+              id(my_controller)->get_logger()->updateIP(addresses[0].str().c_str());
+            }
+          } else {
+            id(my_controller)->get_logger()->updateIP("Not Connected");
+          }
+          #endif
+
+          // Update web server status
+          // ESPHome web server is always running once configured
+          #ifdef USE_WEBSERVER
+          id(my_controller)->get_logger()->updateWebServerStatus(true, false);
+          #endif
+
+

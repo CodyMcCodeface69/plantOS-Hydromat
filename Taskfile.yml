@@ -4,6 +4,13 @@ vars:
   ENTRY_POINT: plantOS.yaml
 
 tasks:
+  info:
+    desc: Display all available tasks and Taskfile location.
+    cmds:
+      - echo "Taskfile location{{":"}} $(pwd)/Taskfile.yml"
+      - echo ""
+      - task --list
+
   build:
     desc: Build plantOS.
     cmds:
@@ -23,3 +30,26 @@ tasks:
     desc: Clean cached files
     cmds:
       - esphome clean {{.ENTRY_POINT}}
+
+  snoop:
+    desc: Attach to device logs via serial port (USB).
+    cmds:
+      - bash -c 'devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)); if [ ${#devices[@]} -eq 0 ]; then echo "No serial devices found. Please connect the device and try again."; exit 1; elif [ ${#devices[@]} -eq 1 ]; then device=${devices[0]}; echo "Using device{{":"}} $device"; else echo "Multiple serial devices found. Please select one{{":"}}"; select device in "${devices[@]}"; do if [ -n "$device" ]; then echo "Selected{{":"}} $device"; break; else echo "Invalid selection. Please try again."; fi; done; fi; esphome logs {{.ENTRY_POINT}} --device "$device"'
+
+  # status:
+  #   desc: Display device's current operational status and key metrics.
+  #   cmds:
+  #     - echo "Querying device status..."
+  #     - echo "Note: Detailed implementation depends on device API"
+  #     - esphome config {{.ENTRY_POINT}} --show-secrets | grep -E "(name:|platform:|board:|framework:)" || true
+
+  reboot:
+    desc: Reboot the ESP32 device via ESPHome API (requires confirmation).
+    prompt: This will reboot the device. Continue?
+    cmds:
+      - esphome run {{.ENTRY_POINT}} --device {{.DEVICE_IP | default "plantOS.local"}} --no-logs || echo "Reboot triggered. If this failed, try specifying DEVICE_IP=<ip_address> task reboot"
+
+  config_validate:
+    desc: Validate plantOS.yaml configuration for syntax and structural errors.
+    cmds:
+      - esphome config {{.ENTRY_POINT}}

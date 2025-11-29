@@ -50,6 +50,10 @@ Controller::StateFunc Controller::state_error() {
   // After 5 seconds in ERROR state, perform full restart
   if (elapsed > 5000) {
     ESP_LOGI(TAG, "Error cleared. Re-initializing...");
+
+    // Clear all alerts before leaving error state
+    this->status_logger_.clearAllAlerts();
+
     return &Controller::state_init; // Full restart from INIT
   }
 

@@ -19,6 +19,20 @@ void Controller::setup() {
   this->state_counter_ = 0;
 
   /**
+   * Initialize Central Status Logger
+   *
+   * Sets up the unified logging system for monitoring all critical
+   * system variables (network, sensors, FSM state, alerts).
+   */
+  this->status_logger_.begin();
+  this->last_status_log_time_ = millis();
+
+  // Set initial logger state
+  this->status_logger_.updateStatus(0.0, "INIT");
+  this->status_logger_.updateIP("0.0.0.0");  // Will be updated when WiFi connects
+  this->status_logger_.updateWebServerStatus(false, false);
+
+  /**
    * Register callback to receive sensor updates.
    *
    * WHY CALLBACK PATTERN (vs polling sensor->state in loop()):
@@ -40,11 +54,17 @@ void Controller::setup() {
   if (this->sensor_source_ != nullptr) {
     this->sensor_source_->add_on_state_callback([this](float x) {
       this->current_sensor_value_ = x;
+      // Update status logger with new sensor value
+      this->status_logger_.updateStatus(x, get_state_name(this->current_state_));
     });
   }
 
   // Publish initial state to text sensor (if configured)
   publish_state();
+
+  // Log initial status immediately
+  ESP_LOGI(TAG, "Controller initialized. Printing initial status:");
+  this->status_logger_.logStatus();
 }
 
 const char* Controller::get_state_name(StateHandler state) {
@@ -88,6 +108,7 @@ void Controller::loop() {
      * 3. Reset state_counter_ for stochastic transitions in new state
      * 4. Update current_state_ to the new state handler
      * 5. Publish new state to text sensor (if configured)
+     * 6. Update status logger with new state
      *
      * WHY RESET TIMING:
      * Each state's timing is relative to when it was entered. Without
@@ -95,12 +116,38 @@ void Controller::loop() {
      * incorrect and states would transition immediately.
      */
     if (next_state.func != this->current_state_) {
-        ESP_LOGI(TAG, "State transition to: %s", get_state_name(next_state.func));
+        const char* new_state_name = get_state_name(next_state.func);
+        ESP_LOGI(TAG, "State transition to: %s", new_state_name);
         this->state_start_time_ = millis();
         this->state_counter_ = 0; // Reset counter for the new state
         this->current_state_ = next_state.func;
+
+        // Update status logger with new state
+        this->status_logger_.updateStatus(this->current_sensor_value_, new_state_name);
+
         publish_state(); // Publish new state to text sensor
     }
+  }
+
+  /**
+   * Periodic Status Logging (every 30 seconds)
+   *
+   * Non-blocking periodic logging using millis() comparison.
+   * Prints comprehensive system status including:
+   * - Current time (NTP-synchronized)
+   * - Network status (IP, web server)
+   * - Sensor readings
+   * - FSM state
+   * - Active alerts (if any)
+   *
+   * WHY 30 SECONDS:
+   * - Frequent enough for monitoring without spamming logs
+   * - Provides regular heartbeat confirmation
+   * - Catches intermittent issues within reasonable timeframe
+   */
+  if (millis() - this->last_status_log_time_ >= 30000) {
+    this->status_logger_.logStatus();
+    this->last_status_log_time_ = millis();
   }
 }
 

@@ -3,6 +3,7 @@
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include "CentralStatusLogger.h"
 
 namespace esphome {
 namespace controller {
@@ -148,6 +149,17 @@ class Controller : public Component {
    */
   void reset_to_init();
 
+  /**
+   * get_logger() - Access the central status logger
+   *
+   * PUBLIC API to access the status logger for external components.
+   * Allows other components to update logger state (IP, web server status, etc.)
+   * or trigger custom alerts.
+   *
+   * @return Pointer to the CentralStatusLogger instance
+   */
+  CentralStatusLogger* get_logger() { return &status_logger_; }
+
  private:
   // ===== Component Dependencies (injected via setters) =====
 
@@ -264,6 +276,29 @@ class Controller : public Component {
    * Reset to 0 on every state transition.
    */
   uint32_t state_counter_{0};
+
+  // ===== Status Logger =====
+
+  /**
+   * Central status logger for unified system monitoring.
+   *
+   * Provides comprehensive logging of all critical system variables:
+   * - Network status (IP address, web server state)
+   * - Sensor readings (pH, temperature, etc.)
+   * - FSM state (current active routine)
+   * - Critical alerts (spill, sensor out of range, etc.)
+   *
+   * Logs complete status report every 30 seconds to serial monitor.
+   */
+  CentralStatusLogger status_logger_;
+
+  /**
+   * Timestamp for 30-second periodic status logging.
+   *
+   * Tracks when the last status report was printed. Used with millis()
+   * for non-blocking periodic logging (every 30000ms).
+   */
+  uint32_t last_status_log_time_{0};
 
   // ===== State Handler Functions =====
 

@@ -13,8 +13,8 @@ Feature update with time synchronization, enhanced sensor filtering, and improve
 - **Extended Task Runner**: Added new Task Runner commands for debugging and maintenance:
   - `logs`: Stream device logs for debugging
   - `status`: Check device and connection status
-  - `ota`: Trigger over-the-air updates
-  - `nvs_clear`: Clear non-volatile storage for maintenance
+  - `reboot`: Reboot the device
+  - `config_validate`: Task to check the plantOS.yaml configuration file for syntax and structural errors before attempting a full build or flash
 - **Central Status Logger**: Implemented centralized status logging system with IP address logging and web server status functionality for better system monitoring.
 
 ### Known Bugs

@@ -2,6 +2,47 @@
 
 All notable changes to the PlantOS project will be documented in this file.
 
+## [v0.3.0] - 2025-11-29
+
+### Description
+Major feature release adding centralized actuator safety control system for critical hardware protection, implemented as a native ESPHome component with automated testing.
+
+### Added
+- **ActuatorSafetyGate Component**: Full ESPHome component implementation for controlling all system actuators with comprehensive safety features:
+  - **Debouncing Protection**: Prevents redundant commands by tracking last requested state per actuator
+  - **Maximum Duration Enforcement**: Enforces configurable runtime limits for critical actuators (pumps, valves) to prevent overruns and hardware damage
+  - **Runtime Tracking**: Real-time monitoring of actuator runtime with violation detection
+  - **Safety Violation Logging**: Comprehensive logging of all command rejections with clear reason messages
+  - **Emergency Override**: Force reset capability for emergency shutoff scenarios
+  - **Statistics API**: Query actuator state, runtime, and configuration
+  - **ESPHome Integration**: Native component with Python integration (`__init__.py`) for YAML configuration
+
+- **DummyActuatorTrigger Component**: Automated test component for validating safety gate functionality:
+  - **Test Sequence 1 - Debouncing**: Validates duplicate command rejection
+  - **Test Sequence 2 - Duration Limits**: Validates max duration enforcement (5s limit tested with 3s and 10s requests)
+  - **Test Sequence 3 - Normal Operation**: Validates standard ON/OFF cycles
+  - **Visual Feedback**: Controls LED on GPIO 4 to show safety gate approvals/rejections
+  - **Automated Testing**: Runs test sequences every 15 seconds (configurable)
+
+- **Hardware Configuration**: Test LED on GPIO 4 with wiring diagram and setup instructions
+
+- **Documentation**:
+  - ActuatorSafetyGate: README.md with complete API reference and usage examples
+  - ActuatorSafetyGate: INTEGRATION_GUIDE.md with three integration methods (Lambda-based, Custom Component, Direct C++)
+  - ActuatorSafetyGate: example_usage.cpp with 10+ practical examples including pH control and watering systems
+  - DummyActuatorTrigger: README.md with test sequence documentation and troubleshooting guide
+
+### Technical Details
+- Core method: `bool executeCommand(const char* actuatorID, bool targetState, int maxDurationSeconds = 0)`
+- Proper ESPHome namespacing: `esphome::actuator_safety_gate`
+- Inherits from `Component` with `setup()` and `loop()` lifecycle methods
+- Supports per-actuator configuration with `setMaxDuration()`
+- Non-blocking periodic monitoring via `loop()` method
+- Full ESPHome YAML configuration support
+- Configured in `plantOS.yaml` lines 311-339
+
+---
+
 ## [v0.2.1] - 2025-11-29
 
 ### Description

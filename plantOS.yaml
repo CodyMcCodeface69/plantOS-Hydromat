@@ -272,10 +272,10 @@ time_logger:
 # - Current IP address from WiFi component
 # - Web server online status
 #
-# Runs every 5 seconds to keep network status current in the logger.
+# Runs every 30 seconds to keep network status current in the logger.
 ################################################################################
 interval:
-  - interval: 5s
+  - interval: 30s
     then:
       - lambda: |-
           // Update IP address in status logger
@@ -296,4 +296,45 @@ interval:
           id(my_controller)->get_logger()->updateWebServerStatus(true, false);
           #endif
 
+################################################################################
+# Actuator Safety Gate - Centralized Actuator Control Safety Layer
+#
+# Provides comprehensive safety features for all system actuators:
+# - Debouncing: Prevents redundant commands
+# - Duration Limits: Enforces maximum runtime for critical actuators
+# - Runtime Tracking: Monitors actuator runtime and detects violations
+# - Safety Logging: Logs all rejections with clear reasons
+#
+# This is a critical safety component that should be used for all actuators
+# that could cause damage if left running too long (pumps, valves, heaters, etc.)
+################################################################################
+actuator_safety_gate:
+  id: actuator_safety
+
+################################################################################
+# Dummy Actuator Trigger - Test Component for Safety Gate
+#
+# Automated test component that validates the ActuatorSafetyGate functionality
+# by running periodic test sequences:
+#
+# Test 1 - Debouncing Protection:
+#   - Attempts to turn ON actuator multiple times rapidly
+#   - Expected: 1st command approved, 2nd command rejected (debouncing)
+#
+# Test 2 - Maximum Duration Enforcement:
+#   - Requests 3-second duration (within 5s limit): approved
+#   - Requests 10-second duration (exceeds 5s limit): rejected
+#
+# Test 3 - Normal Operation:
+#   - Standard ON/OFF cycles with valid durations
+#   - All commands should be approved
+#
+# Visual Feedback: LED on GPIO 4 controlled by safety gate approvals
+# Test Interval: Runs test sequences every 15 seconds
+################################################################################
+dummy_actuator_trigger:
+  id: test_trigger
+  safety_gate: actuator_safety
+  led_pin: GPIO4  # Test LED (GPIO 4 is free, GPIO 8 is built-in LED)
+  test_interval: 15s  # Run test sequences every 15 seconds
 

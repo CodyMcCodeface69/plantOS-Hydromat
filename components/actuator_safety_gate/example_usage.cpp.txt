@@ -1,0 +1,376 @@
+/**
+ * ActuatorSafetyGate - Example Usage
+ *
+ * This file demonstrates various usage patterns for the ActuatorSafetyGate
+ * class in a PlantOS context.
+ */
+
+#include "ActuatorSafetyGate.h"
+#include "esphome/core/log.h"
+
+static const char *TAG = "example";
+
+// Global safety gate instance
+ActuatorSafetyGate safetyGate;
+
+// ============================================================================
+// EXAMPLE 1: Basic Setup and Configuration
+// ============================================================================
+
+void setup_example() {
+    // Initialize the safety gate
+    safetyGate.begin();
+
+    // Configure maximum durations for critical actuators
+    safetyGate.setMaxDuration("AcidPump", 30);      // 30 seconds max
+    safetyGate.setMaxDuration("WaterValve", 120);   // 2 minutes max
+    safetyGate.setMaxDuration("NutrientPump", 15);  // 15 seconds max
+    safetyGate.setMaxDuration("AirPump", 0);        // No limit (can run continuously)
+
+    ESP_LOGI(TAG, "Safety gate configured for all actuators");
+}
+
+// ============================================================================
+// EXAMPLE 2: Simple Pump Control
+// ============================================================================
+
+void simple_pump_control() {
+    // Turn on acid pump for 5 seconds
+    if (safetyGate.executeCommand("AcidPump", true, 5)) {
+        ESP_LOGI(TAG, "Acid pump activated - turning on GPIO");
+        // digitalWrite(ACID_PUMP_PIN, HIGH);
+    } else {
+        ESP_LOGE(TAG, "Failed to activate acid pump");
+    }
+
+    // Later... turn off the pump
+    if (safetyGate.executeCommand("AcidPump", false)) {
+        ESP_LOGI(TAG, "Acid pump deactivated - turning off GPIO");
+        // digitalWrite(ACID_PUMP_PIN, LOW);
+    }
+}
+
+// ============================================================================
+// EXAMPLE 3: Debouncing Protection
+// ============================================================================
+
+void debouncing_demonstration() {
+    ESP_LOGI(TAG, "=== Debouncing Demonstration ===");
+
+    // First command - approved
+    bool result1 = safetyGate.executeCommand("WaterValve", true, 30);
+    ESP_LOGI(TAG, "First ON command: %s", result1 ? "APPROVED" : "REJECTED");
+    // Expected: APPROVED
+
+    // Second command - same state, rejected
+    bool result2 = safetyGate.executeCommand("WaterValve", true, 30);
+    ESP_LOGI(TAG, "Second ON command: %s", result2 ? "APPROVED" : "REJECTED");
+    // Expected: REJECTED (debouncing)
+
+    // Third command - different state, approved
+    bool result3 = safetyGate.executeCommand("WaterValve", false);
+    ESP_LOGI(TAG, "OFF command: %s", result3 ? "APPROVED" : "REJECTED");
+    // Expected: APPROVED
+}
+
+// ============================================================================
+// EXAMPLE 4: Duration Limit Enforcement
+// ============================================================================
+
+void duration_limit_demonstration() {
+    ESP_LOGI(TAG, "=== Duration Limit Demonstration ===");
+
+    // Set max duration
+    safetyGate.setMaxDuration("TestPump", 20);  // 20 seconds max
+
+    // Request within limit - approved
+    bool result1 = safetyGate.executeCommand("TestPump", true, 10);
+    ESP_LOGI(TAG, "10-second request (limit: 20s): %s", result1 ? "APPROVED" : "REJECTED");
+    // Expected: APPROVED
+
+    // Turn off first
+    safetyGate.executeCommand("TestPump", false);
+
+    // Request exceeding limit - rejected
+    bool result2 = safetyGate.executeCommand("TestPump", true, 30);
+    ESP_LOGI(TAG, "30-second request (limit: 20s): %s", result2 ? "APPROVED" : "REJECTED");
+    // Expected: REJECTED (exceeds max duration)
+}
+
+// ============================================================================
+// EXAMPLE 5: Runtime Tracking
+// ============================================================================
+
+void runtime_tracking_demonstration() {
+    ESP_LOGI(TAG, "=== Runtime Tracking Demonstration ===");
+
+    // Turn on pump
+    safetyGate.executeCommand("NutrientPump", true, 10);
+
+    // Simulate waiting 3 seconds
+    delay(3000);
+
+    // Check runtime
+    uint32_t runtime = safetyGate.getRuntime("NutrientPump");
+    ESP_LOGI(TAG, "Pump has been running for %u seconds", runtime);
+    // Expected: ~3 seconds
+
+    // Check state
+    bool state = safetyGate.getState("NutrientPump");
+    ESP_LOGI(TAG, "Pump state: %s", state ? "ON" : "OFF");
+    // Expected: ON
+
+    // Turn off
+    safetyGate.executeCommand("NutrientPump", false);
+
+    // Check runtime after turning off
+    runtime = safetyGate.getRuntime("NutrientPump");
+    ESP_LOGI(TAG, "Pump runtime after shutoff: %u seconds", runtime);
+    // Expected: 0
+}
+
+// ============================================================================
+// EXAMPLE 6: Duration Violation Detection
+// ============================================================================
+
+void violation_detection_demonstration() {
+    ESP_LOGI(TAG, "=== Duration Violation Detection ===");
+
+    // Set short max duration for testing
+    safetyGate.setMaxDuration("TestValve", 5);  // 5 seconds max
+
+    // Turn on valve
+    safetyGate.executeCommand("TestValve", true, 5);
+
+    // Simulate waiting beyond limit
+    delay(6000);  // 6 seconds
+
+    // Check for violation
+    if (safetyGate.isViolatingDuration("TestValve")) {
+        ESP_LOGW(TAG, "VIOLATION DETECTED - Valve exceeded max duration!");
+        ESP_LOGW(TAG, "Triggering emergency shutoff...");
+
+        // Emergency shutoff
+        // digitalWrite(VALVE_PIN, LOW);
+        safetyGate.forceReset("TestValve", false);
+    }
+
+    // Call loop() to trigger violation logging
+    safetyGate.loop();
+}
+
+// ============================================================================
+// EXAMPLE 7: Comprehensive Statistics
+// ============================================================================
+
+void stats_demonstration() {
+    ESP_LOGI(TAG, "=== Statistics Demonstration ===");
+
+    // Turn on pump
+    safetyGate.executeCommand("AcidPump", true, 15);
+
+    // Wait a bit
+    delay(2000);
+
+    // Get comprehensive stats
+    bool state;
+    uint32_t runtime;
+    uint32_t maxDuration;
+
+    if (safetyGate.getStats("AcidPump", state, runtime, maxDuration)) {
+        ESP_LOGI(TAG, "Acid Pump Statistics:");
+        ESP_LOGI(TAG, "  State: %s", state ? "ON" : "OFF");
+        ESP_LOGI(TAG, "  Runtime: %u seconds", runtime);
+        ESP_LOGI(TAG, "  Max Duration: %u seconds", maxDuration);
+        ESP_LOGI(TAG, "  Remaining Time: %u seconds", maxDuration - runtime);
+    }
+}
+
+// ============================================================================
+// EXAMPLE 8: Emergency Shutdown
+// ============================================================================
+
+void emergency_shutdown() {
+    ESP_LOGW(TAG, "=== EMERGENCY SHUTDOWN ACTIVATED ===");
+
+    // Force reset all actuators to OFF state
+    safetyGate.forceReset("AcidPump", false);
+    safetyGate.forceReset("WaterValve", false);
+    safetyGate.forceReset("NutrientPump", false);
+    safetyGate.forceReset("AirPump", false);
+
+    // Turn off all physical hardware
+    // digitalWrite(ACID_PUMP_PIN, LOW);
+    // digitalWrite(WATER_VALVE_PIN, LOW);
+    // digitalWrite(NUTRIENT_PUMP_PIN, LOW);
+    // digitalWrite(AIR_PUMP_PIN, LOW);
+
+    ESP_LOGI(TAG, "All actuators forced to OFF state");
+}
+
+// ============================================================================
+// EXAMPLE 9: pH Control System Integration
+// ============================================================================
+
+class pHControlSystem {
+private:
+    float currentPH_;
+    float targetPH_;
+    ActuatorSafetyGate& safetyGate_;
+
+public:
+    pHControlSystem(ActuatorSafetyGate& gate) : safetyGate_(gate) {
+        currentPH_ = 7.0;
+        targetPH_ = 6.5;
+    }
+
+    void setup() {
+        // Configure safety limits for pH adjustment pumps
+        safetyGate_.setMaxDuration("AcidPump", 10);   // Max 10 seconds per dose
+        safetyGate_.setMaxDuration("BasePump", 10);
+    }
+
+    void loop() {
+        // Monitor for safety violations
+        safetyGate_.loop();
+
+        // Check if pH adjustment needed
+        if (currentPH_ > targetPH_ + 0.2) {
+            // pH too high - need to lower it
+            doseAcid(2);  // 2-second acid dose
+        } else if (currentPH_ < targetPH_ - 0.2) {
+            // pH too low - need to raise it
+            doseBase(2);  // 2-second base dose
+        }
+    }
+
+    void doseAcid(int seconds) {
+        if (safetyGate_.executeCommand("AcidPump", true, seconds)) {
+            ESP_LOGI(TAG, "Dosing acid for %d seconds", seconds);
+            // digitalWrite(ACID_PUMP_PIN, HIGH);
+
+            // Schedule auto-shutoff (using ESPHome's set_timeout)
+            // set_timeout("acid_shutoff", seconds * 1000, [this]() {
+            //     stopAcidPump();
+            // });
+        } else {
+            ESP_LOGE(TAG, "Acid dosing rejected by safety gate");
+        }
+    }
+
+    void stopAcidPump() {
+        if (safetyGate_.executeCommand("AcidPump", false)) {
+            ESP_LOGI(TAG, "Acid pump stopped");
+            // digitalWrite(ACID_PUMP_PIN, LOW);
+        }
+    }
+
+    void doseBase(int seconds) {
+        if (safetyGate_.executeCommand("BasePump", true, seconds)) {
+            ESP_LOGI(TAG, "Dosing base for %d seconds", seconds);
+            // digitalWrite(BASE_PUMP_PIN, HIGH);
+        } else {
+            ESP_LOGE(TAG, "Base dosing rejected by safety gate");
+        }
+    }
+
+    void updatePH(float newPH) {
+        currentPH_ = newPH;
+        ESP_LOGD(TAG, "Current pH: %.2f (target: %.2f)", currentPH_, targetPH_);
+    }
+};
+
+// ============================================================================
+// EXAMPLE 10: Watering System with Multiple Zones
+// ============================================================================
+
+class WateringSystem {
+private:
+    ActuatorSafetyGate& safetyGate_;
+
+public:
+    WateringSystem(ActuatorSafetyGate& gate) : safetyGate_(gate) {}
+
+    void setup() {
+        // Configure different zones with different max durations
+        safetyGate_.setMaxDuration("Zone1Valve", 300);  // 5 minutes
+        safetyGate_.setMaxDuration("Zone2Valve", 180);  // 3 minutes
+        safetyGate_.setMaxDuration("Zone3Valve", 240);  // 4 minutes
+    }
+
+    void waterZone(int zoneNumber, int durationSeconds) {
+        char actuatorID[20];
+        snprintf(actuatorID, sizeof(actuatorID), "Zone%dValve", zoneNumber);
+
+        if (safetyGate_.executeCommand(actuatorID, true, durationSeconds)) {
+            ESP_LOGI(TAG, "Watering zone %d for %d seconds", zoneNumber, durationSeconds);
+            // Open the valve for this zone
+        } else {
+            ESP_LOGE(TAG, "Failed to water zone %d - safety gate rejected", zoneNumber);
+        }
+    }
+
+    void stopZone(int zoneNumber) {
+        char actuatorID[20];
+        snprintf(actuatorID, sizeof(actuatorID), "Zone%dValve", zoneNumber);
+
+        if (safetyGate_.executeCommand(actuatorID, false)) {
+            ESP_LOGI(TAG, "Stopped watering zone %d", zoneNumber);
+        }
+    }
+
+    void waterAllZones() {
+        ESP_LOGI(TAG, "Starting sequential watering of all zones");
+
+        // Water zone 1 for 3 minutes
+        waterZone(1, 180);
+        // In practice, you'd schedule the next zone after this one finishes
+
+        // Water zone 2 for 2 minutes
+        // waterZone(2, 120);
+
+        // Water zone 3 for 3 minutes
+        // waterZone(3, 180);
+    }
+};
+
+// ============================================================================
+// MAIN USAGE EXAMPLES
+// ============================================================================
+
+void run_all_examples() {
+    ESP_LOGI(TAG, "Starting ActuatorSafetyGate examples...\n");
+
+    // Example 1: Setup
+    setup_example();
+    delay(1000);
+
+    // Example 2: Simple control
+    simple_pump_control();
+    delay(1000);
+
+    // Example 3: Debouncing
+    debouncing_demonstration();
+    delay(1000);
+
+    // Example 4: Duration limits
+    duration_limit_demonstration();
+    delay(1000);
+
+    // Example 5: Runtime tracking
+    runtime_tracking_demonstration();
+    delay(1000);
+
+    // Example 6: Violation detection
+    violation_detection_demonstration();
+    delay(1000);
+
+    // Example 7: Statistics
+    stats_demonstration();
+    delay(1000);
+
+    // Example 8: Emergency shutdown
+    emergency_shutdown();
+
+    ESP_LOGI(TAG, "\nAll examples completed!");
+}

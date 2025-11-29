@@ -1,6 +1,7 @@
 # plantOS
 
 ESPHome-based firmware for ESP32-C6 microcontrollers, implementing a plant monitoring and control system with custom sensor integration and LED visual feedback.
+Hydro branch is the specific firmware for Hydromat Mk. 1 Digital Autonomous Nutrient Keeper.
 
 ## Features
 

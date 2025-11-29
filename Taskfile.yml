@@ -36,6 +36,11 @@ tasks:
     cmds:
       - bash -c 'devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)); if [ ${#devices[@]} -eq 0 ]; then echo "No serial devices found. Please connect the device and try again."; exit 1; elif [ ${#devices[@]} -eq 1 ]; then device=${devices[0]}; echo "Using device{{":"}} $device"; else echo "Multiple serial devices found. Please select one{{":"}}"; select device in "${devices[@]}"; do if [ -n "$device" ]; then echo "Selected{{":"}} $device"; break; else echo "Invalid selection. Please try again."; fi; done; fi; esphome logs {{.ENTRY_POINT}} --device "$device"'
 
+  push:
+    desc: Push updated configuration to github.
+    cmds:
+      - git push -u origin main
+  
   # status:
   #   desc: Display device's current operational status and key metrics.
   #   cmds:

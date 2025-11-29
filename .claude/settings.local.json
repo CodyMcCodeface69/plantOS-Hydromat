@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(task build:*)",
+      "Bash(timeout 15 esphome logs:*)",
+      "Bash(timeout 20 esphome logs:*)",
+      "Bash(timeout 10 esphome logs:*)",
+      "Bash(tee:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

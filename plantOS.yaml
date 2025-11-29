@@ -251,23 +251,19 @@ time_logger:
 ################################################################################
 # IP Logger: Periodic IP Address Logging
 #
-# Logs the ESP32's current local IP address to the serial monitor every 30
-# seconds. Only logs when WiFi is connected to avoid displaying invalid IPs.
+# DISABLED: IP logging is now handled by the central status logger, which
+# provides comprehensive system status including IP address, web server status,
+# sensor readings, FSM state, and alerts in a unified format.
 #
-# This component showcases:
-# - Non-blocking delays using millis() instead of delay()
-# - Integration with ESPHome's WiFi component
-# - WiFi connection status checking
-# - Network information retrieval
-#
-# Output format: "Current IP: 192.168.1.100"
+# The central status logger logs every 30 seconds and provides much more
+# context than the standalone IP logger.
 ################################################################################
-ip_logger:
-  id: my_ip_logger
-
-  # log_interval: How often to log the IP address (default: 30 seconds)
-  # Accepts time strings: "10s", "30s", "1min", etc.
-  log_interval: 30s
+# ip_logger:
+#   id: my_ip_logger
+#
+#   # log_interval: How often to log the IP address (default: 30 seconds)
+#   # Accepts time strings: "10s", "30s", "1min", etc.
+#   log_interval: 30s
 
 ################################################################################
 # Network Status Update Automation

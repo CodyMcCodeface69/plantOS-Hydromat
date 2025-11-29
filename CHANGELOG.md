@@ -2,6 +2,19 @@
 
 All notable changes to the PlantOS project will be documented in this file.
 
+## [v0.2.1] - 2025-11-29
+
+### Description
+Cleanup release removing redundant logging components after central status logger integration.
+
+### Changed
+- **IP Logger Disabled**: Disabled the `ip_logger` component as its functionality is now fully integrated into the central status logger, which provides comprehensive system status including IP address, web server status, sensor readings, FSM state, and alerts in a unified format every 30 seconds.
+
+### Fixed
+- **Verified Central Status Logger**: Confirmed that the central status logger is correctly implemented using ESPHome's logging API and properly integrated with the controller FSM.
+
+---
+
 ## [v0.2] - 2025-11-29
 
 ### Description

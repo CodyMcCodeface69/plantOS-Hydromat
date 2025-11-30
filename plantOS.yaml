@@ -42,6 +42,12 @@ wifi:
     subnet: 255.255.255.0
     dns1: 192.168.0.1
 
+  # Reboot on connection failure after timeout
+  # Helps recover from transient WiFi issues without manual intervention
+  reboot_timeout: 2min 
+  
+  
+
   # ==============================================================
   # FALLBACK ACCESS POINT (AP) FÜR DEBUG-ZWECKE
   # WICHTIG: Wenn der Chip das Haupt-WLAN (Datenautobahn) NICHT findet,
@@ -308,8 +314,9 @@ interval:
 # This is a critical safety component that should be used for all actuators
 # that could cause damage if left running too long (pumps, valves, heaters, etc.)
 ################################################################################
-actuator_safety_gate:
-  id: actuator_safety
+# DEACTIVATED: Actuator Safety Gate test
+# actuator_safety_gate:
+#   id: actuator_safety
 
 ################################################################################
 # Dummy Actuator Trigger - Test Component for Safety Gate
@@ -332,11 +339,12 @@ actuator_safety_gate:
 # Visual Feedback: LED on GPIO 4 controlled by safety gate approvals
 # Test Interval: Runs test sequences every 15 seconds
 ################################################################################
-dummy_actuator_trigger:
-  id: test_trigger
-  safety_gate: actuator_safety
-  led_pin: GPIO4  # Test LED (GPIO 4 is free, GPIO 8 is built-in LED)
-  test_interval: 15s  # Run test sequences every 15 seconds
+# DEACTIVATED: Dummy Actuator Trigger test
+# dummy_actuator_trigger:
+#   id: test_trigger
+#   safety_gate: actuator_safety
+#   led_pin: GPIO4  # Test LED (GPIO 4 is free, GPIO 8 is built-in LED)
+#   test_interval: 15s  # Run test sequences every 15 seconds
 
 ################################################################################
 # Persistent State Manager - NVS-Based Critical Event Logging
@@ -398,9 +406,45 @@ persistent_state_manager:
 #
 # Test Interval: 0s (run once on boot, don't repeat)
 ################################################################################
-psm_checker:
-  id: psm_test
-  psm: psm
-  controller: my_controller
-  test_interval: 0s  # Run once on boot only
+# DEACTIVATED: PSM Checker test
+# psm_checker:
+#   id: psm_test
+#   psm: psm
+#   controller: my_controller
+#   test_interval: 0s  # Run once on boot only
+
+################################################################################
+# WDT Manager - Hardware Watchdog Timer Management
+#
+# Manages the ESP32 hardware watchdog timer (WDT) to detect and recover from
+# system hangs or crashes. The WDT must be regularly "fed" to indicate the
+# system is healthy. If feeding stops, the WDT automatically resets the device.
+#
+# Features:
+# - Hardware WDT initialization with 10-second timeout
+# - Regular WDT feeding every 500ms during normal operation
+# - Test mode: Simulates crash after 20 seconds to verify automatic reset
+# - Non-blocking operation using millis() timing
+#
+# Configuration:
+# - timeout: WDT timeout period (10 seconds)
+# - feed_interval: How often to feed WDT (500ms)
+# - test_mode: Enable crash simulation (true for testing)
+# - crash_delay: Time before simulated crash (20 seconds)
+#
+# Expected Behavior (Test Mode):
+# 1. Boot: "WDT initialized successfully"
+# 2. 0-20s: Regular "WDT fed" messages every 500ms
+# 3. 20s: "SIMULATED CRASH - Stopping WDT feeding"
+# 4. ~30s: WDT timeout triggers automatic reboot
+# 5. Device reboots and cycle repeats
+#
+# For Production: Set test_mode: false to disable crash simulation
+################################################################################
+wdt_manager:
+  id: my_wdt
+  timeout: 10s           # WDT timeout: 10 seconds
+  feed_interval: 500ms   # Feed WDT every 500 milliseconds
+  test_mode: true        # Enable crash simulation for testing
+  crash_delay: 20s       # Simulate crash after 20 seconds
 

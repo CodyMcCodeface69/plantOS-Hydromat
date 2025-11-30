@@ -2,6 +2,75 @@
 
 All notable changes to the PlantOS project will be documented in this file.
 
+## [v0.3.2] - 2025-11-30
+
+### Description
+Feature release adding Hardware Watchdog Timer (WDT) management for system crash detection and automatic recovery. Test components deactivated to reduce system load.
+
+### Added
+- **WDTManager Component**: Full hardware watchdog timer implementation for crash detection and automatic recovery:
+  - **Hardware WDT Initialization**: Configures ESP-IDF Task Watchdog Timer (TWDT) with 10-second timeout
+  - **User-Based Subscription**: Uses `esp_task_wdt_add_user()` instead of task-based subscription to prevent idle task interference
+  - **Panic Mode**: `trigger_panic = true` ensures WDT timeout triggers hardware reset (not just warning)
+  - **Regular Feeding**: Non-blocking watchdog feed every 500ms using millis() timing
+  - **Test Mode**: Simulates system crash after 20 seconds by stopping WDT feeds
+  - **Automatic Reset**: Device automatically reboots ~10 seconds after feeding stops
+  - **ESP-IDF Integration**: Properly handles auto-initialized TWDT via reconfiguration
+  - **Configuration Options**:
+    - `timeout`: WDT timeout period (default: 10s)
+    - `feed_interval`: How often to feed WDT (default: 500ms)
+    - `test_mode`: Enable crash simulation (default: false)
+    - `crash_delay`: Time before simulated crash (default: 20s)
+
+### Changed
+- **PSM Checker Deactivated**: Disabled PSMChecker test component (plantOS.yaml:409-414)
+- **Actuator Safety Gate Deactivated**: Disabled ActuatorSafetyGate test component (plantOS.yaml:317-319)
+- **Dummy Actuator Trigger Deactivated**: Disabled DummyActuatorTrigger test component (plantOS.yaml:342-347)
+
+### Technical Details
+- **Key Challenge**: Task-based WDT subscription allowed idle tasks to feed WDT, preventing timeout
+- **Solution**: User-based subscription (`esp_task_wdt_add_user()`) provides exclusive control
+- **User Handle**: `esp_task_wdt_user_handle_t wdt_user_handle_` stores user subscription
+- **Feed Method**: `esp_task_wdt_reset_user(handle)` feeds only our user, not the entire task
+- **TWDT Reconfiguration**: Uses `esp_task_wdt_reconfigure()` to update existing TWDT configuration
+- **Panic Enforcement**: Configuration includes `trigger_panic = true` and `idle_core_mask = 0`
+- **Log Messages**:
+  - Setup: "WDT reconfigured (timeout: 10000 ms, panic mode: enabled)"
+  - Operation: "WDT fed (time to crash: X s)" every 500ms
+  - Crash: "===== SIMULATED CRASH ===== / Stopping WDT feeding to test automatic reset"
+- **Component Files**:
+  - `components/wdt_manager/__init__.py`: ESPHome configuration schema
+  - `components/wdt_manager/wdt_manager.h`: C++ class declaration with user handle
+  - `components/wdt_manager/wdt_manager.cpp`: Implementation with user-based subscription
+- **Configuration**: Added to `plantOS.yaml` lines 444-449 with test mode enabled
+
+### Testing Instructions
+1. **Flash Firmware**: Upload firmware with `test_mode: true`
+2. **Monitor Logs**: Watch serial output for WDT initialization and feeding
+3. **Observe Feeding**: "WDT fed (time to crash: X s)" messages every 500ms
+4. **Wait for Crash**: After 20 seconds, see "SIMULATED CRASH" message
+5. **Verify Reset**: Device should automatically reboot ~10 seconds after crash message
+6. **Production Use**: Set `test_mode: false` to disable crash simulation
+
+### Use Cases
+- Detect and recover from infinite loops
+- Monitor system responsiveness
+- Prevent hung tasks from freezing the system
+- Automatic recovery from software crashes
+- Critical safety shutdown for unresponsive systems
+
+### Production Deployment
+For production use, disable test mode in `plantOS.yaml`:
+```yaml
+wdt_manager:
+  id: my_wdt
+  timeout: 10s
+  feed_interval: 500ms
+  test_mode: false  # Disable crash simulation
+```
+
+---
+
 ## [v0.3.1] - 2025-11-29
 
 ### Description

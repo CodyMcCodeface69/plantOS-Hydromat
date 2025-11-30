@@ -2,6 +2,87 @@
 
 All notable changes to the PlantOS project will be documented in this file.
 
+## [v0.3.1] - 2025-11-29
+
+### Description
+Major feature release adding persistent state management with NVS (Non-Volatile Storage) for critical event recovery after power loss or unexpected reboots.
+
+### Added
+- **PersistentStateManager Component**: Full NVS-based persistence system for critical event logging:
+  - **Event Structure**: `CriticalEventLog` with event ID (32 chars), Unix timestamp, and status code
+  - **NVS Persistence**: Uses ESP32 Non-Volatile Storage via ESPHome Preferences API
+  - **Recovery Detection**: `wasInterrupted(maxAgeSeconds)` method detects interrupted operations on boot
+  - **Time-Based Validation**: Event age checking with NTP synchronization
+  - **API Methods**:
+    - `logEvent(id, status)`: Log critical event before operation
+    - `clearEvent()`: Clear event after successful completion
+    - `wasInterrupted(seconds)`: Check for interrupted operation
+    - `getLastEvent()`: Retrieve event details for recovery
+    - `getEventAge()`: Get event age in seconds
+  - **Atomic Operations**: All NVS writes are atomic (complete or not written)
+  - **Status Codes**: 0=STARTED, 1=COMPLETED, 2=ERROR, 3=PAUSED, 4=CANCELLED
+
+- **PSMChecker Test Component**: Automated validation of persistent state recovery:
+  - **10-Second Boot Delay**: All PSM messages appear 10 seconds after boot for clean startup logs
+  - **Status Report Integration**: Messages display in PLANTOS SYSTEM STATUS REPORT as alerts
+  - **Boot 1 Sequence** (10 seconds after boot):
+    - Logs "PSM_TEST" event to NVS with current timestamp
+    - Triggers controller ERROR_TEST state (blue/purple pulsing LED)
+    - Adds alert: "⚡ PLEASE UNPLUG DEVICE NOW!" to status report
+  - **Boot 2 Sequence (after replug)** (10 seconds after boot):
+    - Detects "PSM_TEST" event recovered from NVS
+    - Verifies event timestamp and age
+    - Adds alert: "✓ PSM TEST SUCCESSFUL! Event recovered from NVS after reboot"
+    - Clears test event from NVS
+  - **Integration**: Links to PSM and Controller components, uses CentralStatusLogger for alerts
+
+- **ERROR_TEST State**: New FSM state for PSM testing:
+  - **Visual**: Pulsing blue/purple LED (2-second breathing cycle)
+  - **Behavior**: Stays active indefinitely (no auto-transition)
+  - **Purpose**: Provides visual confirmation before unplugging device
+  - **Distinction**: Blue/purple color distinguishes from red ERROR state
+  - **Trigger**: `controller.trigger_error_test()` public API method
+  - **Implementation**: `state_error_test.cpp` with breathing effect
+
+- **Controller Enhancements**:
+  - Added `trigger_error_test()` public API method
+  - Updated `get_state_name()` to include "ERROR_TEST"
+  - New state handler in `state_error_test.cpp`
+
+### Configuration
+- Added to `plantOS.yaml` lines 371-405:
+  - `persistent_state_manager` (id: psm)
+  - `psm_checker` (id: psm_test)
+  - Comprehensive documentation in YAML comments
+
+### Use Cases
+- Chemical dosing operations (acid/base pumps)
+- Watering valve control (prevent overflow)
+- Long-running calibration sequences
+- Any critical operation that could cause damage if interrupted
+
+### Testing Instructions
+1. **First Boot**: Wait 10 seconds, then check PLANTOS SYSTEM STATUS REPORT for alert:
+   - Alert: "⚡ PLEASE UNPLUG DEVICE NOW!"
+   - Blue/purple pulsing LED indicates ERROR_TEST state
+2. **Unplug**: Remove power while LED is pulsing blue/purple
+3. **Replug**: Wait 10 seconds after boot, then check PLANTOS SYSTEM STATUS REPORT for alert:
+   - Alert: "✓ PSM TEST SUCCESSFUL! Event recovered from NVS after reboot"
+   - Includes event age in seconds
+4. **Verify**: Event was successfully logged, survived power cycle, and was cleared
+
+### Technical Details
+- Uses ESPHome `global_preferences->make_preference<T>()` API
+- NVS key hash: `fnv1_hash("critical_event")`
+- Event structure size: 44 bytes (32 + 8 + 4)
+- Requires NTP sync for accurate event age calculation
+- Falls back to millis() if NTP not synchronized
+- PSMChecker 10-second delay implemented via boot_time_ tracking in loop()
+- PSM alerts integrated with CentralStatusLogger for unified status reporting
+- Status report interval: 30 seconds (alerts visible in periodic status logs)
+
+---
+
 ## [v0.3.0] - 2025-11-29
 
 ### Description

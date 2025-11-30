@@ -160,6 +160,17 @@ class Controller : public Component {
    */
   CentralStatusLogger* get_logger() { return &status_logger_; }
 
+  /**
+   * trigger_error_test() - Manually trigger ERROR_TEST state
+   *
+   * PUBLIC API for testing components (like PSMChecker) to trigger
+   * the ERROR_TEST state. This is a special test state that:
+   * - Shows blue/purple LED pattern
+   * - Stays in ERROR_TEST until manually reset
+   * - Used for testing persistent state recovery
+   */
+  void trigger_error_test();
+
  private:
   // ===== Component Dependencies (injected via setters) =====
 
@@ -346,6 +357,17 @@ class Controller : public Component {
    * NEXT STATE: INIT (performs full restart sequence)
    */
   StateFunc state_error();
+
+  /**
+   * ERROR_TEST state: Blue/purple LED pattern for PSM testing.
+   *
+   * PURPOSE: Special test state for validating persistent state recovery.
+   *          Triggered by PSMChecker to test NVS persistence.
+   * DURATION: Indefinite (stays in this state until reset)
+   * VISUAL: Pulsing blue/purple to distinguish from normal ERROR state
+   * NEXT STATE: Stays in ERROR_TEST (requires manual reset or power cycle)
+   */
+  StateFunc state_error_test();
 
   // ===== Helper Functions =====
 

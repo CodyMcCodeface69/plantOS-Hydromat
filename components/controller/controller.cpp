@@ -72,6 +72,7 @@ const char* Controller::get_state_name(StateHandler state) {
   if (state == &Controller::state_calibration) return "CALIBRATION";
   if (state == &Controller::state_ready) return "READY";
   if (state == &Controller::state_error) return "ERROR";
+  if (state == &Controller::state_error_test) return "ERROR_TEST";
   return "UNKNOWN";
 }
 
@@ -295,6 +296,44 @@ void Controller::reset_to_init() {
 
   // Publish the new state
   publish_state();
+}
+
+// ============================================================================
+// PUBLIC API: trigger_error_test
+// ============================================================================
+/**
+ * Manually trigger ERROR_TEST state.
+ *
+ * WHY THIS METHOD:
+ * - Allows PSMChecker and other test components to trigger ERROR_TEST state
+ * - Used for testing persistent state recovery after power loss
+ * - Visual indication (blue/purple LED) distinguishes from normal ERROR
+ *
+ * IMPLEMENTATION:
+ * - Transitions to ERROR_TEST state immediately
+ * - Resets timing counters
+ * - Publishes state change to text sensor
+ * - Logs the transition
+ *
+ * USAGE:
+ * - Called by PSMChecker before prompting user to unplug device
+ * - Ensures system is in known test state before power cycle
+ */
+void Controller::trigger_error_test() {
+  ESP_LOGI(TAG, "Triggering ERROR_TEST state for PSM testing");
+
+  // Transition to ERROR_TEST state
+  this->current_state_ = &Controller::state_error_test;
+
+  // Reset timing counters
+  this->state_start_time_ = millis();
+  this->state_counter_ = 0;
+
+  // Publish the new state
+  publish_state();
+
+  // Update status logger
+  this->status_logger_.updateStatus(this->current_sensor_value_, "ERROR_TEST");
 }
 
 } // namespace controller

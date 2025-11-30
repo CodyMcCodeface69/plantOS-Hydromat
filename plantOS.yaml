@@ -338,3 +338,69 @@ dummy_actuator_trigger:
   led_pin: GPIO4  # Test LED (GPIO 4 is free, GPIO 8 is built-in LED)
   test_interval: 15s  # Run test sequences every 15 seconds
 
+################################################################################
+# Persistent State Manager - NVS-Based Critical Event Logging
+#
+# Manages critical event persistence across power cycles and crashes.
+# Essential for operations that could cause damage if interrupted:
+# - Chemical dosing (acid/base pumps)
+# - Watering/valve operations
+# - Calibration sequences
+# - Any long-running critical process
+#
+# Features:
+# - NVS (Non-Volatile Storage) persistence survives power loss
+# - Time-based event age validation (requires NTP sync)
+# - Recovery detection on boot
+# - Atomic save/load operations
+#
+# Usage Example:
+#   // Before starting critical operation
+#   id(psm).logEvent("DOSING_ACID", 0);  // Status 0 = STARTED
+#   turnOnAcidPump();
+#
+#   // After completing operation
+#   turnOffAcidPump();
+#   id(psm).clearEvent();  // Clear - operation completed
+#
+#   // On boot - check for recovery
+#   if (id(psm).wasInterrupted(60)) {  // Within last 60 seconds
+#       // Take recovery action (turn off pumps, etc.)
+#   }
+################################################################################
+persistent_state_manager:
+  id: psm
+
+################################################################################
+# PSM Checker - Persistent State Manager Test Component
+#
+# Automated test component that validates PSM recovery functionality.
+#
+# Test Procedure:
+# 1. On first boot:
+#    - Logs "PSM_TEST" event to NVS
+#    - Triggers controller ERROR_TEST state (pulsing blue/purple LED)
+#    - Prompts user to UNPLUG device
+#
+# 2. After unplugging and replugging:
+#    - Detects "PSM_TEST" event recovered from NVS
+#    - Verifies event timestamp and details
+#    - Logs "PSM TEST SUCCESSFUL" message
+#    - Clears test event from NVS
+#
+# Visual Indicators:
+# - Blue/purple pulsing LED = ERROR_TEST state active (ready to unplug)
+# - Normal boot sequence after replug = recovery successful
+#
+# Log Messages to Watch For:
+# - Boot 1: "PLEASE UNPLUG THE DEVICE NOW!"
+# - Boot 2: "✓ PSM TEST SUCCESSFUL!" and "Event recovered from NVS"
+#
+# Test Interval: 0s (run once on boot, don't repeat)
+################################################################################
+psm_checker:
+  id: psm_test
+  psm: psm
+  controller: my_controller
+  test_interval: 0s  # Run once on boot only
+

@@ -206,9 +206,9 @@ void WDTManager::loop() {
     if (this->test_mode_) {
       uint32_t time_to_crash = this->crash_delay_ - elapsed_since_start;
       ESP_LOGI(TAG, "WDT fed (time to crash: %u s)", time_to_crash / 1000);
-    } else {
-      ESP_LOGI(TAG, "WDT fed");
-    }
+    } //else {
+    //ESP_LOGI(TAG, "WDT fed");
+    //}
   }
 }
 

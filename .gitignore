@@ -4,3 +4,6 @@
 /.esphome/
 /secrets.yaml
 **/__pycache__/**
+/esptool_venv/
+/.direnv/
+/.claude/

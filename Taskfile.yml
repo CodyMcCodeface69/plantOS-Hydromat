@@ -22,9 +22,9 @@ tasks:
       - esphome upload {{.ENTRY_POINT}}
 
   run:
-    desc: Builds, flashes and attaches to MCU log stream.
+    desc: Builds, flashes and attaches to MCU log stream. Use 'task run OTA=true' to flash via OTA instead of serial.
     cmds:
-      - esphome run {{.ENTRY_POINT}}
+      - '{{if eq .OTA "true"}}esphome run {{.ENTRY_POINT}} --device {{.DEVICE_IP | default "plantOS.local"}}{{else}}bash -c ''echo "Flashing via serial/USB..."; devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)); if [ ${#devices[@]} -eq 0 ]; then echo "No serial devices found. Please connect the device and try again."; exit 1; elif [ ${#devices[@]} -eq 1 ]; then device=${devices[0]}; echo "Using device{{":"}} $device"; else echo "Multiple serial devices found. Please select one{{":"}}"; select device in "${devices[@]}"; do if [ -n "$device" ]; then echo "Selected{{":"}} $device"; break; else echo "Invalid selection. Please try again."; fi; done; fi; esphome run {{.ENTRY_POINT}} --device "$device"''{{end}}'
 
   clean:
     desc: Clean cached files

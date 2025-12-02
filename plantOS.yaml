@@ -37,14 +37,23 @@ wifi:
 
   # Static IP configuration for consistent web UI access
   # Uncomment if you want a fixed IP address
-  manual_ip:
-    static_ip: 192.168.0.201
-    gateway: 192.168.0.1
-    subnet: 255.255.255.0
-    dns1: 192.168.0.1
-  
-  power_save_mode: none
-  fast_connect: true
+  # manual_ip:
+  #   static_ip: 192.168.0.201
+  #   gateway: 192.168.0.1
+  #   subnet: 255.255.255.0
+  #   dns1: 192.168.0.1
+
+  # WiFi optimization for mesh networks (TP-Link Deco, etc.)
+  # These settings improve compatibility with WiFi mesh systems
+  # Mesh settings: Deactivate Fast Roaming and Beamforming, Deactiate Mesh for plantOS client, Deactivate 5 GHz band 
+  power_save_mode: none    # Disable power saving for better connectivity
+  fast_connect: true       # Skip channel scanning for faster connection
+
+  # Force WiFi B/G mode by disabling 802.11n/ac features
+  # This helps with mesh network compatibility and web server access
+  output_power: 8.5dB      # Lower output power for better mesh compatibility
+  enable_btm: false        # Disable 802.11v BSS Transition Management
+  enable_rrm: false        # Disable 802.11k Radio Resource Management
 
   # Reboot on connection failure after timeout
   # Helps recover from transient WiFi issues without manual intervention
@@ -201,6 +210,27 @@ button:
       then:
         - lambda: |-
             id(my_controller)->reset_to_init();
+
+  - platform: template
+    name: "Clear PSM Alerts"
+    on_press:
+      # Lambda action calls the PSM's clearEvent() method
+      # This clears any critical events logged to NVS
+      then:
+        - lambda: |-
+            id(psm)->clearEvent();
+
+  - platform: template
+    name: "Reconnect WiFi"
+    on_press:
+      # Force WiFi to disconnect and reconnect
+      # Useful for troubleshooting mesh network connectivity issues
+      then:
+        - logger.log: "Forcing WiFi reconnection..."
+        - wifi.disable:
+        - delay: 2s
+        - wifi.enable:
+        - logger.log: "WiFi reconnection initiated"
 
 ################################################################################
 # System Controller: Finite State Machine

@@ -61,6 +61,7 @@ CONF_LIGHT_TARGET = 'light_target'
 CONF_STATE_TEXT = 'state_text'
 CONF_VERBOSE = 'verbose'
 CONF_STATUS_LOG_INTERVAL = 'status_log_interval'
+CONF_420_MODE = '420_mode'
 
 # Define the YAML configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -92,6 +93,9 @@ CONFIG_SCHEMA = cv.Schema({
     # status_log_interval: How often to log the central status report (default: 30s)
     # Accepts time strings like "10s", "30s", "1min", etc.
     cv.Optional(CONF_STATUS_LOG_INTERVAL, default='30s'): cv.positive_time_period_milliseconds,
+
+    # 420_mode: Optional easter egg mode for special logging at 4:20 AM/PM
+    cv.Optional(CONF_420_MODE, default=False): cv.boolean,
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -135,3 +139,7 @@ async def to_code(config):
     # Set status log interval
     # This generates C++ code like: controller->set_status_log_interval(30000);
     cg.add(var.set_status_log_interval(config[CONF_STATUS_LOG_INTERVAL]))
+
+    # Set 420 mode flag
+    # This generates C++ code like: controller->set_420_mode(true);
+    cg.add(var.set_420_mode(config[CONF_420_MODE]))

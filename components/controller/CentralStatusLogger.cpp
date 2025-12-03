@@ -9,7 +9,8 @@ CentralStatusLogger::CentralStatusLogger()
       activeRoutine("INIT"),
       webServerOnline(false),
       webServerClientConnected(false),
-      i2cScanPerformed(false) {
+      i2cScanPerformed(false),
+      mode420_(false) {
 }
 
 void CentralStatusLogger::begin() {
@@ -104,6 +105,21 @@ void CentralStatusLogger::logStatus() {
 
     // System Time
     ESP_LOGI(TAG, "System Time: %s", getFormattedTime().c_str());
+
+    // 420 easter egg: Print ASCII art at 4:20 AM and PM
+    if (mode420_) {
+        time_t now = time(NULL);
+        struct tm* timeinfo = localtime(&now);
+
+        // Check if time is 4:20 (04:20 or 16:20) and NTP is synchronized
+        if (timeinfo->tm_year >= (2020 - 1900) &&
+            (timeinfo->tm_hour == 4 || timeinfo->tm_hour == 16) &&
+            timeinfo->tm_min == 20) {
+            ESP_LOGI(TAG, "");
+            print420Art();
+            ESP_LOGI(TAG, "");
+        }
+    }
 
     // CRITICAL: Print alerts immediately after time if any are active
     if (hasActiveAlerts()) {
@@ -250,4 +266,19 @@ void CentralStatusLogger::printSeparator(char c, int length) {
     }
     buffer[length < 80 ? length : 80] = '\0';
     ESP_LOGI(TAG, "%s", buffer);
+}
+
+void CentralStatusLogger::set420Mode(bool enabled) {
+    mode420_ = enabled;
+}
+
+void CentralStatusLogger::print420Art() {
+    ESP_LOGI(TAG, "                                    =%%         ");
+    ESP_LOGI(TAG, "============================  @@   @=%%@   @@   ");
+    ESP_LOGI(TAG, " ##   ##  #######    #####     +@@ @+%%@ @=%%    ");
+    ESP_LOGI(TAG, "##   ##  ##    ##  ##   ##     @=#%%.=%% =+@    ");
+    ESP_LOGI(TAG, "#######      ###   ##   ##       =%#=@==%%      ");
+    ESP_LOGI(TAG, "     ##    ###     ##   ##    @+++%%=%%#%=%%@   ");
+    ESP_LOGI(TAG, "     ##  ########   #####        @#%=@%%@      ");
+    ESP_LOGI(TAG, "============================        +          ");
 }

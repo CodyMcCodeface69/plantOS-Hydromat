@@ -98,6 +98,12 @@ public:
     void updateI2CHardwareStatus(const std::vector<I2CDeviceInfo>& devices);
 
     /**
+     * Set 420 mode for easter egg logging
+     * @param enabled Whether 420 mode is enabled
+     */
+    void set420Mode(bool enabled);
+
+    /**
      * Print complete structured status summary to Serial
      * This is the primary logging method that outputs all system state
      */
@@ -114,6 +120,12 @@ public:
      * @return Number of active alerts
      */
     int getAlertCount() const;
+
+    /**
+     * Print 420 ASCII art
+     * Public method to allow controller to trigger easter egg on demand
+     */
+    void print420Art();
 
 private:
     // Core system variables
@@ -132,6 +144,9 @@ private:
     // I²C Hardware status
     std::vector<I2CDeviceInfo> i2cDevices;
     bool i2cScanPerformed;
+
+    // Easter egg mode
+    bool mode420_;
 
     // Helper methods
     std::string getFormattedTime();

@@ -138,6 +138,7 @@ class Controller : public Component {
   void set_state_text(text_sensor::TextSensor *t) { state_text_ = t; }
   void set_verbose(bool v) { verbose_ = v; }
   void set_status_log_interval(uint32_t interval) { status_log_interval_ = interval; }
+  void set_420_mode(bool mode) { mode_420_ = mode; }
 
   /**
    * reset_to_init() - Manually trigger a reset to INIT state
@@ -191,6 +192,14 @@ class Controller : public Component {
    * @return true if verbose mode is enabled, false otherwise
    */
   bool get_verbose() const { return verbose_; }
+
+  /**
+   * blaze_it() - Manually trigger 420 ASCII art display
+   *
+   * PUBLIC API for web UI button to display 420 easter egg on demand.
+   * Calls the status logger's print420Art() method immediately.
+   */
+  void blaze_it();
 
  private:
   // ===== Component Dependencies (injected via setters) =====
@@ -353,6 +362,13 @@ class Controller : public Component {
    * Useful for debugging FSM behavior and performance profiling.
    */
   bool verbose_{false};
+
+  /**
+   * 420 mode easter egg flag (configured via YAML).
+   *
+   * When true, enables special ASCII art logging at 4:20 AM and PM.
+   */
+  bool mode_420_{false};
 
   /**
    * Timestamp for measuring action duration in verbose mode.

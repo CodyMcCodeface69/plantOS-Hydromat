@@ -32,6 +32,9 @@ void Controller::setup() {
   this->status_logger_.updateIP("0.0.0.0");  // Will be updated when WiFi connects
   this->status_logger_.updateWebServerStatus(false, false);
 
+  // Configure 420 mode if enabled
+  this->status_logger_.set420Mode(this->mode_420_);
+
   /**
    * Register callback to receive sensor updates.
    *
@@ -424,6 +427,31 @@ void Controller::toggle_verbose() {
   } else {
     ESP_LOGI(TAG, "Verbose mode DISABLED - Minimal logging active");
   }
+}
+
+// ============================================================================
+// PUBLIC API: blaze_it
+// ============================================================================
+/**
+ * Manually trigger 420 ASCII art display.
+ *
+ * WHY THIS METHOD:
+ * - Allows web UI button to display easter egg on demand
+ * - Fun user interaction without waiting for 4:20 AM/PM
+ * - Direct access to status logger's ASCII art method
+ *
+ * IMPLEMENTATION:
+ * - Calls status_logger_.print420Art() immediately
+ * - No time checking - displays art whenever called
+ * - Safe to call at any time from any state
+ *
+ * USAGE:
+ * - Triggered by "Blaze It" button in web UI
+ * - Can also be called from automations or services
+ */
+void Controller::blaze_it() {
+  ESP_LOGI(TAG, "Blaze It button pressed!");
+  this->status_logger_.print420Art();
 }
 
 // ============================================================================

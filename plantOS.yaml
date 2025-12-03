@@ -342,6 +342,15 @@ button:
         - lambda: |-
             id(my_controller)->toggle_verbose();
 
+  - platform: template
+    name: "Blaze It"
+    on_press:
+      # Trigger 420 ASCII art display on demand
+      # Displays the easter egg immediately without waiting for 4:20 AM/PM
+      then:
+        - lambda: |-
+            id(my_controller)->blaze_it();
+
 ################################################################################
 # System Controller: Finite State Machine
 #
@@ -388,6 +397,10 @@ controller:
   # Default: 30s (prints status every 30 seconds)
   # Common values: 10s, 30s, 1min, 5min
   status_log_interval: 30s
+
+  # 420_mode: Easter egg mode for special ASCII art logging
+  # When enabled, displays special ASCII art at 4:20 AM and 4:20 PM
+  420_mode: true
 
 ################################################################################
 # Time Logger: Periodic Time Logging

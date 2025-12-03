@@ -39,6 +39,9 @@ Controller::StateFunc Controller::state_error_test() {
         ESP_LOGI(TAG, "Entered ERROR_TEST state");
         ESP_LOGI(TAG, "Showing pulsing blue/purple LED pattern");
         ESP_LOGI(TAG, "This state will persist until reset or power cycle");
+        if (this->verbose_) {
+            ESP_LOGD(TAG, "[VERBOSE] ERROR_TEST: State entered, breathing pattern active");
+        }
         this->state_counter_ = 1;  // Mark as logged
     }
 
@@ -60,9 +63,20 @@ Controller::StateFunc Controller::state_error_test() {
     float sin_value = std::sin(sin_input);
     float brightness = 0.5f + 0.5f * sin_value;  // Range: 0.0 to 1.0
 
+    // Log breathing animation once per second in verbose mode
+    static uint32_t last_breathing_log_second = 0;
+    uint32_t current_second = elapsed / 1000;
+    if (this->verbose_ && current_second > last_breathing_log_second) {
+        ESP_LOGD(TAG, "[VERBOSE] ERROR_TEST: Breathing animation (brightness: %.2f, elapsed: %lus)",
+                 brightness, current_second);
+        last_breathing_log_second = current_second;
+    }
+
     // Apply blue/purple LED with breathing brightness
     // Blue (0, 0, 1) with slight purple tint (0.2, 0, 1)
+    log_action_start("Update ERROR_TEST breathing LED");
     apply_light(0.2f, 0.0f, 1.0f, brightness);
+    log_action_end("Update ERROR_TEST breathing LED");
 
     /**
      * State Persistence

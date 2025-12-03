@@ -4,6 +4,8 @@
 namespace esphome {
 namespace controller {
 
+static const char *TAG = "controller.fsm";
+
 // ============================================================================
 // STATE: INIT - Boot Sequence
 // ============================================================================
@@ -34,16 +36,42 @@ namespace controller {
 Controller::StateFunc Controller::state_init() {
   uint32_t elapsed = millis() - this->state_start_time_;
 
+  // Track which second we're in for verbose logging (only log once per phase)
+  static uint32_t last_logged_phase = 0;
+  uint32_t current_phase = elapsed / 1000; // 0, 1, 2, or 3+
+
   // Time-based color selection using simple cascading if-else
   // WHY NOT switch/case: elapsed is continuous, not discrete values
   if (elapsed < 1000) {
+    if (this->verbose_ && current_phase != last_logged_phase) {
+      ESP_LOGD(TAG, "[VERBOSE] INIT: Phase 1/3 - RED (0-1s)");
+      last_logged_phase = current_phase;
+    }
+    log_action_start("Set LED to RED");
     apply_light(1.0, 0.0, 0.0); // Red (full intensity)
+    log_action_end("Set LED to RED");
   } else if (elapsed < 2000) {
+    if (this->verbose_ && current_phase != last_logged_phase) {
+      ESP_LOGD(TAG, "[VERBOSE] INIT: Phase 2/3 - YELLOW (1-2s)");
+      last_logged_phase = current_phase;
+    }
+    log_action_start("Set LED to YELLOW");
     apply_light(1.0, 1.0, 0.0); // Yellow (red + green = yellow)
+    log_action_end("Set LED to YELLOW");
   } else if (elapsed < 3000) {
+    if (this->verbose_ && current_phase != last_logged_phase) {
+      ESP_LOGD(TAG, "[VERBOSE] INIT: Phase 3/3 - GREEN (2-3s)");
+      last_logged_phase = current_phase;
+    }
+    log_action_start("Set LED to GREEN");
     apply_light(0.0, 1.0, 0.0); // Green (full intensity)
+    log_action_end("Set LED to GREEN");
   } else {
     // After 3 seconds, proceed to calibration
+    if (this->verbose_) {
+      ESP_LOGD(TAG, "[VERBOSE] INIT: Boot sequence complete, transitioning to CALIBRATION");
+    }
+    last_logged_phase = 0; // Reset for next time we enter INIT
     return &Controller::state_calibration;
   }
 

@@ -63,9 +63,20 @@ Controller::StateFunc Controller::state_ready() {
   if (current_seconds > this->state_counter_) {
     this->state_counter_ = current_seconds;
 
+    if (this->verbose_) {
+      ESP_LOGD(TAG, "[VERBOSE] READY: Checking sensor threshold (value: %.1f, threshold: 90.0)",
+               this->current_sensor_value_);
+    }
+
+    log_action_start("Check sensor threshold");
+
     // Check high threshold: trigger error if value exceeds 90
     if (this->current_sensor_value_ > 90.0f) {
        ESP_LOGW(TAG, "High threshold exceeded! Sensor value: %.1f", this->current_sensor_value_);
+
+       if (this->verbose_) {
+         ESP_LOGD(TAG, "[VERBOSE] READY: Threshold exceeded, triggering ERROR state");
+       }
 
        // Trigger critical alert in status logger
        char alert_msg[128];
@@ -74,6 +85,7 @@ Controller::StateFunc Controller::state_ready() {
                 this->current_sensor_value_);
        this->status_logger_.updateAlertStatus("SENSOR_CRITICAL", std::string(alert_msg));
 
+       log_action_end("Check sensor threshold");
        return &Controller::state_error;
     }
 
@@ -81,6 +93,8 @@ Controller::StateFunc Controller::state_ready() {
     if (this->current_sensor_value_ <= 90.0f) {
       this->status_logger_.clearAlert("SENSOR_CRITICAL");
     }
+
+    log_action_end("Check sensor threshold");
   }
 
   // =========================================================================
@@ -121,7 +135,16 @@ Controller::StateFunc Controller::state_ready() {
   float brightness = (std::sin(t * 3.14159f) + 1.0f) / 2.0f; // 0.0 to 1.0
   brightness = 0.1f + (brightness * 0.9f); // Remap to 10% to 100%
 
+  // Only log breathing animation once per second in verbose mode
+  static uint32_t last_breathing_log_second = 0;
+  if (this->verbose_ && current_seconds > last_breathing_log_second) {
+    ESP_LOGD(TAG, "[VERBOSE] READY: Breathing animation (brightness: %.2f)", brightness);
+    last_breathing_log_second = current_seconds;
+  }
+
+  log_action_start("Update breathing LED");
   apply_light(0.0, 1.0, 0.0, brightness);
+  log_action_end("Update breathing LED");
 
   // Stay in READY state (unless random error triggered above)
   return &Controller::state_ready;

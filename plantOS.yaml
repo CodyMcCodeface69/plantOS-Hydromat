@@ -195,6 +195,16 @@ text_sensor:
     # Text sensors don't have numerical state, just publish strings
     # The controller will call publish_state() to update this
 
+  - platform: template
+    name: "Verbose Mode Status"
+    id: verbose_mode_status
+    # Shows current verbose logging status: ON or OFF
+    # Updated when verbose mode is toggled
+    lambda: |-
+      return id(my_controller)->get_verbose() ? std::string("ON") : std::string("OFF");
+    # Update every 5 seconds to show current status
+    update_interval: 5s
+
 ################################################################################
 # Button: Reset Controller
 #
@@ -232,6 +242,16 @@ button:
         - wifi.enable:
         - logger.log: "WiFi reconnection initiated"
 
+  - platform: template
+    name: "Toggle Verbose Logging"
+    on_press:
+      # Toggle verbose mode on/off at runtime
+      # Enables/disables detailed logging of all controller actions and state transitions
+      # Useful for debugging without reflashing firmware
+      then:
+        - lambda: |-
+            id(my_controller)->toggle_verbose();
+
 ################################################################################
 # System Controller: Finite State Machine
 #
@@ -263,6 +283,15 @@ controller:
   # The controller will publish state changes (INIT, CALIBRATION, READY, ERROR)
   # to this text sensor for display in the web UI
   state_text: controller_state_text
+
+  # verbose: Enable detailed logging of all controller actions and state transitions
+  # When enabled, logs:
+  # - State transitions with time spent in each state
+  # - Every action taken (LED updates, sensor checks, etc.)
+  # - Timing information for each action (how long it took)
+  # Useful for debugging FSM behavior and performance profiling
+  # Default: false (minimal logging)
+  verbose: true
 
 ################################################################################
 # Time Logger: Periodic Time Logging

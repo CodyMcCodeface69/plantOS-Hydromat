@@ -59,6 +59,7 @@ Controller = controller_ns.class_('Controller', cg.Component)
 CONF_SENSOR_SOURCE = 'sensor_source'
 CONF_LIGHT_TARGET = 'light_target'
 CONF_STATE_TEXT = 'state_text'
+CONF_VERBOSE = 'verbose'
 
 # Define the YAML configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -81,6 +82,11 @@ CONFIG_SCHEMA = cv.Schema({
     # Allows exposing the current state (INIT, CALIBRATION, READY, ERROR)
     # in the web UI and for monitoring/debugging purposes
     cv.Optional(CONF_STATE_TEXT): cv.use_id(text_sensor.TextSensor),
+
+    # verbose: Optional flag to enable detailed logging of all actions and timing
+    # When enabled, logs every state transition with duration, every action taken,
+    # and how long each action blocked the execution
+    cv.Optional(CONF_VERBOSE, default=False): cv.boolean,
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -116,3 +122,7 @@ async def to_code(config):
     if CONF_STATE_TEXT in config:
         state_text = await cg.get_variable(config[CONF_STATE_TEXT])
         cg.add(var.set_state_text(state_text))
+
+    # Set verbose mode flag
+    # This generates C++ code like: controller->set_verbose(true);
+    cg.add(var.set_verbose(config[CONF_VERBOSE]))

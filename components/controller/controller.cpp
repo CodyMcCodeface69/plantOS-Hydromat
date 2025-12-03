@@ -65,6 +65,13 @@ void Controller::setup() {
   // Log initial status immediately
   ESP_LOGI(TAG, "Controller initialized. Printing initial status:");
   this->status_logger_.logStatus();
+
+  // Log verbose mode status
+  if (this->verbose_) {
+    ESP_LOGI(TAG, "Verbose mode: ENABLED - All actions and state transitions will be logged with timing");
+  } else {
+    ESP_LOGI(TAG, "Verbose mode: DISABLED");
+  }
 }
 
 const char* Controller::get_state_name(StateHandler state) {
@@ -91,9 +98,27 @@ void Controller::loop() {
    *
    * Returns StateFunc wrapper containing next state to execute.
    */
+  // Track overall loop timing in verbose mode
+  uint32_t loop_start_time = millis();
+
   if (this->current_state_ != nullptr) {
+    // Time the state execution in verbose mode
+    uint32_t state_exec_start = millis();
+
     // Execute current state handler, get next state
     StateFunc next_state = (this->*current_state_)();
+
+    // Log state execution time if verbose and slow
+    if (this->verbose_) {
+      uint32_t state_exec_duration = millis() - state_exec_start;
+      if (state_exec_duration >= 30) {
+        ESP_LOGW(TAG, "[VERBOSE] SLOW state execution: %s (took %lums - EXCEEDS 30ms!)",
+                 get_state_name(this->current_state_), state_exec_duration);
+      } else if (state_exec_duration >= 10) {
+        ESP_LOGI(TAG, "[VERBOSE] State execution: %s (took %lums)",
+                 get_state_name(this->current_state_), state_exec_duration);
+      }
+    }
 
     /**
      * State Transition Logic
@@ -117,8 +142,18 @@ void Controller::loop() {
      * incorrect and states would transition immediately.
      */
     if (next_state.func != this->current_state_) {
+        const char* old_state_name = get_state_name(this->current_state_);
         const char* new_state_name = get_state_name(next_state.func);
-        ESP_LOGI(TAG, "State transition to: %s", new_state_name);
+        uint32_t time_in_state = millis() - this->state_start_time_;
+
+        // Log state transition (with timing in verbose mode)
+        if (this->verbose_) {
+          ESP_LOGI(TAG, "[VERBOSE] State transition: %s -> %s (spent %lums in %s)",
+                   old_state_name, new_state_name, time_in_state, old_state_name);
+        } else {
+          ESP_LOGI(TAG, "State transition to: %s", new_state_name);
+        }
+
         this->state_start_time_ = millis();
         this->state_counter_ = 0; // Reset counter for the new state
         this->current_state_ = next_state.func;
@@ -147,8 +182,31 @@ void Controller::loop() {
    * - Catches intermittent issues within reasonable timeframe
    */
   if (millis() - this->last_status_log_time_ >= 30000) {
+    uint32_t status_log_start = millis();
     this->status_logger_.logStatus();
     this->last_status_log_time_ = millis();
+
+    // Log status logging time if verbose and slow
+    if (this->verbose_) {
+      uint32_t status_log_duration = millis() - status_log_start;
+      if (status_log_duration >= 30) {
+        ESP_LOGW(TAG, "[VERBOSE] SLOW status logging (took %lums - EXCEEDS 30ms!)",
+                 status_log_duration);
+      } else if (status_log_duration >= 10) {
+        ESP_LOGI(TAG, "[VERBOSE] Status logging (took %lums)", status_log_duration);
+      }
+    }
+  }
+
+  // Log overall loop time if verbose and slow
+  if (this->verbose_) {
+    uint32_t loop_duration = millis() - loop_start_time;
+    if (loop_duration >= 30) {
+      ESP_LOGW(TAG, "[VERBOSE] SLOW loop() execution (took %lums total - EXCEEDS 30ms!)",
+               loop_duration);
+    } else if (loop_duration >= 10) {
+      ESP_LOGI(TAG, "[VERBOSE] loop() execution (took %lums total)", loop_duration);
+    }
   }
 }
 
@@ -334,6 +392,87 @@ void Controller::trigger_error_test() {
 
   // Update status logger
   this->status_logger_.updateStatus(this->current_sensor_value_, "ERROR_TEST");
+}
+
+// ============================================================================
+// PUBLIC API: toggle_verbose
+// ============================================================================
+/**
+ * Toggle verbose logging mode on/off at runtime.
+ *
+ * WHY THIS METHOD:
+ * - Allows runtime control of logging verbosity without reflashing
+ * - Useful for debugging: Enable verbose mode when investigating issues
+ * - Reduces log spam in production: Keep verbose mode off normally
+ * - Can be triggered via web UI button, API call, or automation
+ *
+ * IMPLEMENTATION:
+ * - Flips the verbose_ flag
+ * - Logs the mode change at INFO level (always visible)
+ * - Immediate effect on all subsequent state transitions and actions
+ *
+ * SAFETY:
+ * - Can be called at any time from any state
+ * - No side effects beyond logging behavior change
+ * - Thread-safe (called from ESPHome main loop)
+ */
+void Controller::toggle_verbose() {
+  this->verbose_ = !this->verbose_;
+
+  if (this->verbose_) {
+    ESP_LOGI(TAG, "Verbose mode ENABLED - Detailed logging active");
+  } else {
+    ESP_LOGI(TAG, "Verbose mode DISABLED - Minimal logging active");
+  }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS: Verbose Mode Logging
+// ============================================================================
+
+/**
+ * Begin timing an action for verbose logging.
+ *
+ * @param action_name Description of the action being performed
+ *
+ * Records the start time and logs the action name if verbose mode is enabled.
+ * Should be paired with log_action_end() to measure duration.
+ */
+void Controller::log_action_start(const char* action_name) {
+  if (!this->verbose_) return;
+
+  this->action_start_time_ = millis();
+  // Use DEBUG level for action start (less important than duration)
+  ESP_LOGD(TAG, "[VERBOSE] Action started: %s", action_name);
+}
+
+/**
+ * Log completion of an action with duration.
+ *
+ * @param action_name Description of the action (should match log_action_start)
+ *
+ * Calculates the time elapsed since log_action_start() was called and logs
+ * the action completion with duration if verbose mode is enabled.
+ *
+ * LOG LEVELS:
+ * - >= 30ms: WARN (ESPHome recommends max 30ms per loop iteration)
+ * - >= 10ms: INFO (noticeable delay)
+ * - < 10ms: DEBUG (normal operation)
+ */
+void Controller::log_action_end(const char* action_name) {
+  if (!this->verbose_) return;
+
+  uint32_t duration = millis() - this->action_start_time_;
+
+  // Use different log levels based on duration
+  if (duration >= 30) {
+    ESP_LOGW(TAG, "[VERBOSE] SLOW Action: %s (took %lums - EXCEEDS 30ms recommendation!)",
+             action_name, duration);
+  } else if (duration >= 10) {
+    ESP_LOGI(TAG, "[VERBOSE] Action: %s (took %lums)", action_name, duration);
+  } else {
+    ESP_LOGD(TAG, "[VERBOSE] Action: %s (took %lums)", action_name, duration);
+  }
 }
 
 } // namespace controller

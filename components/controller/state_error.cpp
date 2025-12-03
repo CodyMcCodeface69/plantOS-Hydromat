@@ -51,8 +51,14 @@ Controller::StateFunc Controller::state_error() {
   if (elapsed > 5000) {
     ESP_LOGI(TAG, "Error cleared. Re-initializing...");
 
+    if (this->verbose_) {
+      ESP_LOGD(TAG, "[VERBOSE] ERROR: Timeout reached (5s), transitioning to INIT");
+    }
+
     // Clear all alerts before leaving error state
+    log_action_start("Clear all alerts");
     this->status_logger_.clearAllAlerts();
+    log_action_end("Clear all alerts");
 
     return &Controller::state_init; // Full restart from INIT
   }
@@ -66,9 +72,21 @@ Controller::StateFunc Controller::state_error() {
    * - even = ON, odd = OFF
    * - Results in 5 Hz flashing (10 state changes per second)
    */
+  // Track blink state for verbose logging (only log on state changes)
+  static bool last_error_blink = false;
+
   bool on = (elapsed / 100) % 2 == 0;
+
+  if (this->verbose_ && on != last_error_blink) {
+    ESP_LOGD(TAG, "[VERBOSE] ERROR: Fast flash %s (elapsed: %lums)",
+             on ? "ON" : "OFF", elapsed);
+    last_error_blink = on;
+  }
+
+  log_action_start(on ? "Set LED to RED" : "Turn LED OFF");
   if (on) apply_light(1.0, 0.0, 0.0, 1.0);  // Red at full brightness
   else    apply_light(0.0, 0.0, 0.0, 0.0);  // Off
+  log_action_end(on ? "Set LED to RED" : "Turn LED OFF");
 
   // Stay in ERROR state until timeout
   return &Controller::state_error;

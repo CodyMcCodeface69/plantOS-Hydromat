@@ -136,6 +136,7 @@ class Controller : public Component {
   void set_sensor_source(sensor::Sensor *s) { sensor_source_ = s; }
   void set_light_target(light::LightState *l) { light_target_ = l; }
   void set_state_text(text_sensor::TextSensor *t) { state_text_ = t; }
+  void set_verbose(bool v) { verbose_ = v; }
 
   /**
    * reset_to_init() - Manually trigger a reset to INIT state
@@ -170,6 +171,25 @@ class Controller : public Component {
    * - Used for testing persistent state recovery
    */
   void trigger_error_test();
+
+  /**
+   * toggle_verbose() - Toggle verbose logging mode on/off
+   *
+   * PUBLIC API for runtime control of verbose mode via buttons/services.
+   * Allows users to enable/disable detailed logging without reflashing.
+   * Logs the mode change when toggled.
+   */
+  void toggle_verbose();
+
+  /**
+   * get_verbose() - Get current verbose mode state
+   *
+   * PUBLIC API to query whether verbose mode is currently enabled.
+   * Useful for displaying status in web UI or for conditional logic.
+   *
+   * @return true if verbose mode is enabled, false otherwise
+   */
+  bool get_verbose() const { return verbose_; }
 
  private:
   // ===== Component Dependencies (injected via setters) =====
@@ -311,6 +331,28 @@ class Controller : public Component {
    */
   uint32_t last_status_log_time_{0};
 
+  // ===== Verbose Mode Configuration =====
+
+  /**
+   * Verbose logging flag (configured via YAML).
+   *
+   * When true, enables detailed logging of:
+   * - Every state transition with time spent in previous state
+   * - Every action taken within states
+   * - Timing information for each action (how long it blocked)
+   *
+   * Useful for debugging FSM behavior and performance profiling.
+   */
+  bool verbose_{false};
+
+  /**
+   * Timestamp for measuring action duration in verbose mode.
+   *
+   * Used to track how long individual actions take within states.
+   * Set before an action, compared after to log duration.
+   */
+  uint32_t action_start_time_{0};
+
   // ===== State Handler Functions =====
 
   /**
@@ -413,6 +455,25 @@ class Controller : public Component {
    * - Allows state to be monitored via MQTT/Home Assistant
    */
   void publish_state();
+
+  /**
+   * log_action() - Log an action in verbose mode with timing
+   *
+   * @param action_name Description of the action being performed
+   *
+   * Logs the action name and how long it took to execute (if verbose enabled).
+   * Call at the start of an action to begin timing.
+   */
+  void log_action_start(const char* action_name);
+
+  /**
+   * log_action_end() - Log completion of an action with duration
+   *
+   * @param action_name Description of the action (should match log_action_start)
+   *
+   * Logs the completion and duration of an action (if verbose enabled).
+   */
+  void log_action_end(const char* action_name);
 };
 
 } // namespace controller

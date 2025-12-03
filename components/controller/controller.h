@@ -137,6 +137,7 @@ class Controller : public Component {
   void set_light_target(light::LightState *l) { light_target_ = l; }
   void set_state_text(text_sensor::TextSensor *t) { state_text_ = t; }
   void set_verbose(bool v) { verbose_ = v; }
+  void set_status_log_interval(uint32_t interval) { status_log_interval_ = interval; }
 
   /**
    * reset_to_init() - Manually trigger a reset to INIT state
@@ -324,12 +325,20 @@ class Controller : public Component {
   CentralStatusLogger status_logger_;
 
   /**
-   * Timestamp for 30-second periodic status logging.
+   * Timestamp for periodic status logging.
    *
    * Tracks when the last status report was printed. Used with millis()
-   * for non-blocking periodic logging (every 30000ms).
+   * for non-blocking periodic logging.
    */
   uint32_t last_status_log_time_{0};
+
+  /**
+   * Status log interval in milliseconds (configured via YAML).
+   *
+   * Controls how often the central status logger reports system status.
+   * Default: 30000ms (30 seconds)
+   */
+  uint32_t status_log_interval_{30000};
 
   // ===== Verbose Mode Configuration =====
 

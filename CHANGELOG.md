@@ -2,7 +2,155 @@
 
 All notable changes to the PlantOS project will be documented in this file.
 
-## [v0.3.2] - 2025-11-30
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.4.1] - 2025-12-03
+
+### Added
+- **I²C Bus Scanner Component**: Comprehensive I²C device detection and validation system
+  - Scans all valid 7-bit I²C addresses (0x01 to 0x77) for connected devices
+  - Configurable critical device list with automatic validation
+  - Boot-time and periodic scanning modes (configurable interval)
+  - Verbose mode control:
+    - `verbose: true` (default): Detailed scan logs to serial every scan interval
+    - `verbose: false`: Silent mode - results only in Central Status Logger
+  - Integration with Central Status Logger for unified hardware reporting
+  - Non-destructive ACK/NAK device detection method
+  - Component files:
+    - `components/i2c_scanner/__init__.py`: ESPHome configuration schema
+    - `components/i2c_scanner/i2c_scanner.h`: C++ class declaration
+    - `components/i2c_scanner/i2c_scanner.cpp`: Implementation with scan logic
+  - Configuration options:
+    - `scan_on_boot`: Enable boot-time hardware validation (default: true)
+    - `scan_interval`: Periodic scan frequency (default: 0s = boot only)
+    - `verbose`: Enable detailed logging (default: true)
+    - `critical_devices`: List of required I²C devices with address and name
+    - `status_logger`: Reference to controller for status reporting
+
+- **I²C Bus Configuration**: ESP32-C6 I²C bus setup
+  - Default pins: SDA=GPIO6, SCL=GPIO7
+  - Standard mode: 100kHz (configurable to 400kHz for fast mode)
+  - Comprehensive documentation on pull-up resistor requirements (4.7kΩ to 3.3V)
+
+- **Hardware Status Section in Central Status Logger**: New dedicated section for I²C hardware monitoring
+  - Found devices displayed in green text with checkmarks (✓)
+  - Missing critical devices displayed in red text with X marks (✗)
+  - Device count summary
+  - Auto-updates from I²C scanner every scan interval
+  - ANSI color codes for terminal visibility:
+    - Green: `\033[32m` for found devices
+    - Red: `\033[31m` for missing critical devices
+  - Shows "I²C scan not yet performed" before first scan
+  - Empty device list shows warning with pull-up resistor reminder
+
+- **Configurable Status Log Interval**: Controller-level configuration for status report frequency
+  - New `status_log_interval` configuration option (default: 30s)
+  - Accepts time strings: "10s", "30s", "1min", "5min", etc.
+  - Allows tuning of log verbosity based on deployment needs:
+    - Development: 10s for frequent updates
+    - Production: 1min or 5min for reduced log noise
+    - Debugging: 30s for balanced visibility
+  - Applied to controller component in plantOS.yaml
+
+### Changed
+- **Central Status Logger Report Structure**: Hardware Status section now appears immediately after Network Status
+  - Ordering: Time → Alerts → Network → **Hardware** → Sensors → System State → Alert Summary
+  - Provides early visibility into hardware connectivity issues
+  - Hardware problems shown before sensor data for better diagnostics
+
+- **I²C Scanner Configuration**: Set to silent mode by default in plantOS.yaml
+  - `verbose: false` reduces log noise during normal operation
+  - Scan results still visible in Central Status Logger every 30s
+  - Periodic scanning every 5s for hot-plug detection
+  - Can enable verbose mode for detailed debugging when needed
+
+### Technical Details
+- **I²C Scanner Architecture**:
+  - Inherits from `Component` and `i2c::I2CDevice` for ESPHome integration
+  - Non-blocking periodic scanning using millis() timing
+  - Dummy address 0x00 for I2CDevice inheritance (scanner probes all addresses)
+  - Reports to CentralStatusLogger via `I2CDeviceInfo` structure
+  - Structure fields: address, name, found, critical
+  - Avoids naming conflict with ESPHome's `I2CDevice` class using `I2CDeviceInfo`
+
+- **Status Logger Integration**:
+  - New method: `updateI2CHardwareStatus(const std::vector<I2CDeviceInfo>& devices)`
+  - Stores device list in `std::vector<I2CDeviceInfo> i2cDevices_`
+  - Flag `i2cScanPerformed_` tracks if scan has completed
+  - Scanner reports after every scan completion
+  - Both found and missing devices tracked for comprehensive status
+
+- **Controller Configuration**:
+  - New member: `uint32_t status_log_interval_{30000}` (milliseconds)
+  - New setter: `set_status_log_interval(uint32_t interval)`
+  - Python config key: `CONF_STATUS_LOG_INTERVAL`
+  - Validation: `cv.positive_time_period_milliseconds`
+  - Changed hardcoded 30000ms to `this->status_log_interval_` in loop()
+
+### Configuration
+All changes configured in `plantOS.yaml`:
+- I²C bus setup: lines 144-149
+- I²C scanner component: lines 177-207
+- Controller status_log_interval: line 385
+- Scanner verbose mode: line 195
+- Scanner links to controller via status_logger: line 183
+
+### Use Cases
+- **I²C Hardware Validation**: Detect missing sensors before operation
+- **Development Aid**: Identify I²C address conflicts and wiring issues
+- **Production Monitoring**: Track hardware connectivity in deployed systems
+- **Hot-Plug Detection**: Periodic scanning detects device connection/disconnection
+- **Silent Operation**: Verbose mode off for clean production logs
+- **Flexible Logging**: Adjust status report frequency based on monitoring needs
+
+---
+
+## [0.4.0] - 2025-12-02
+
+### Added
+- Controller verbose mode for detailed logging and debugging
+  - New `verbose` configuration option in plantOS.yaml (default: false)
+  - Logs all state transitions with time spent in each state
+  - Logs every action taken (LED updates, sensor checks, etc.)
+  - Logs timing information for each action (execution duration)
+  - Helps with debugging FSM behavior and performance profiling
+  - All verbose logs use DEBUG level with [VERBOSE] prefix
+- Runtime control of verbose mode via web UI
+  - New "Toggle Verbose Logging" button in web UI
+  - New "Verbose Mode Status" text sensor showing ON/OFF state
+  - `toggle_verbose()` and `get_verbose()` public API methods
+  - Can enable/disable verbose logging without reflashing firmware
+  - Immediate effect on all subsequent logging
+
+### Changed
+- Enhanced controller logging infrastructure with timing helpers
+  - Added `log_action_start()` and `log_action_end()` helper methods
+  - State transition logging now includes duration when verbose mode enabled
+  - All state implementations (INIT, CALIBRATION, READY, ERROR, ERROR_TEST) support verbose logging
+  - Smart log level selection based on duration:
+    - Actions >= 30ms: WARN level (exceeds ESPHome recommendation)
+    - Actions >= 10ms: INFO level (noticeable delay)
+    - Actions < 10ms: DEBUG level (normal, not logged with INFO level)
+  - Added comprehensive timing for:
+    - Individual state execution
+    - Status logger calls (every 30s)
+    - Overall loop() execution time
+  - Helps identify performance bottlenecks causing "Component took too long" warnings
+
+---
+
+## [0.3.3] - 2025-12-02
+
+### Changed
+- Modified `task run` to default to serial/USB flashing without user prompt
+- Added OTA flashing option via `task run OTA=true` command
+- Serial device auto-detection now matches behavior from `snoop` task
+- Eliminated interactive flash method selection prompt
+
+---
+
+## [0.3.2] - 2025-11-30
 
 ### Description
 Feature release adding Hardware Watchdog Timer (WDT) management for system crash detection and automatic recovery. Test components deactivated to reduce system load.
@@ -71,7 +219,7 @@ wdt_manager:
 
 ---
 
-## [v0.3.1] - 2025-11-29
+## [0.3.1] - 2025-11-29
 
 ### Description
 Major feature release adding persistent state management with NVS (Non-Volatile Storage) for critical event recovery after power loss or unexpected reboots.
@@ -152,7 +300,7 @@ Major feature release adding persistent state management with NVS (Non-Volatile 
 
 ---
 
-## [v0.3.0] - 2025-11-29
+## [0.3.0] - 2025-11-29
 
 ### Description
 Major feature release adding centralized actuator safety control system for critical hardware protection, implemented as a native ESPHome component with automated testing.
@@ -193,7 +341,7 @@ Major feature release adding centralized actuator safety control system for crit
 
 ---
 
-## [v0.2.1] - 2025-11-29
+## [0.2.1] - 2025-11-29
 
 ### Description
 Cleanup release removing redundant logging components after central status logger integration.
@@ -206,7 +354,7 @@ Cleanup release removing redundant logging components after central status logge
 
 ---
 
-## [v0.2] - 2025-11-29
+## [0.2] - 2025-11-29
 
 ### Description
 Feature update with time synchronization, enhanced sensor filtering, and improved monitoring capabilities.
@@ -226,7 +374,7 @@ Feature update with time synchronization, enhanced sensor filtering, and improve
 
 ---
 
-## [v0.1] - 2025-11-22
+## [0.1] - 2025-11-22
 
 ### Description
 Initial release of PlantOS firmware project. This version represents the foundational project structure.

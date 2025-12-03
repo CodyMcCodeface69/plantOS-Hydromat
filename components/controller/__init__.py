@@ -60,6 +60,7 @@ CONF_SENSOR_SOURCE = 'sensor_source'
 CONF_LIGHT_TARGET = 'light_target'
 CONF_STATE_TEXT = 'state_text'
 CONF_VERBOSE = 'verbose'
+CONF_STATUS_LOG_INTERVAL = 'status_log_interval'
 
 # Define the YAML configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -87,6 +88,10 @@ CONFIG_SCHEMA = cv.Schema({
     # When enabled, logs every state transition with duration, every action taken,
     # and how long each action blocked the execution
     cv.Optional(CONF_VERBOSE, default=False): cv.boolean,
+
+    # status_log_interval: How often to log the central status report (default: 30s)
+    # Accepts time strings like "10s", "30s", "1min", etc.
+    cv.Optional(CONF_STATUS_LOG_INTERVAL, default='30s'): cv.positive_time_period_milliseconds,
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -126,3 +131,7 @@ async def to_code(config):
     # Set verbose mode flag
     # This generates C++ code like: controller->set_verbose(true);
     cg.add(var.set_verbose(config[CONF_VERBOSE]))
+
+    # Set status log interval
+    # This generates C++ code like: controller->set_status_log_interval(30000);
+    cg.add(var.set_status_log_interval(config[CONF_STATUS_LOG_INTERVAL]))

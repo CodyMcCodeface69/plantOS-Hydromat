@@ -122,6 +122,91 @@ external_components:
   - source: components
 
 ################################################################################
+# I²C Bus Configuration
+#
+# Configures the I²C bus for communication with external sensors and peripherals.
+# I²C (Inter-Integrated Circuit) is a multi-master, multi-slave serial communication
+# protocol commonly used for sensor integration.
+#
+# ESP32-C6 I²C Pins:
+# - SDA (Serial Data): GPIO6 (default) - bidirectional data line
+# - SCL (Serial Clock): GPIO7 (default) - clock signal line
+#
+# IMPORTANT: I²C requires external pull-up resistors on SDA and SCL lines
+# - Typical values: 4.7kΩ to 10kΩ (4.7kΩ recommended for most applications)
+# - Pull-ups connect SDA/SCL to 3.3V
+# - Without pull-ups, I²C communication will fail
+#
+# Bus Speed:
+# - 100kHz: Standard mode (default, most compatible)
+# - 400kHz: Fast mode (higher speed, may require lower pull-up resistance)
+################################################################################
+i2c:
+  id: i2c_bus
+  sda: GPIO6  # Serial Data Line (change if using different pins)
+  scl: GPIO7  # Serial Clock Line (change if using different pins)
+  scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
+  frequency: 100kHz  # Standard mode - change to 400kHz for fast mode if needed
+
+################################################################################
+# I²C Bus Scanner
+#
+# Scans the I²C bus for connected devices and validates critical device presence.
+# This component provides comprehensive diagnostic information during boot and
+# optionally during runtime.
+#
+# FEATURES:
+# - Scans all valid 7-bit I²C addresses (0x01 to 0x77)
+# - Identifies connected devices by address
+# - Validates critical device presence for PlantOS operation
+# - Detailed logging with warnings for missing critical devices
+#
+# SCAN MODES:
+# - Boot-time scan: Runs once during setup (scan_on_boot: true)
+# - Periodic scan: Runs at interval (scan_interval: >0)
+# - Disabled: Set scan_on_boot: false and scan_interval: 0s
+#
+# CRITICAL DEVICES:
+# Define the I²C devices required for your PlantOS configuration.
+# Common PlantOS devices:
+# - 0x48: ADS1115 (16-bit ADC for analog sensors)
+# - 0x20: MCP23017 (16-bit GPIO expander)
+# - 0x76: BME280 (temperature/humidity/pressure sensor)
+# - 0x68: DS3231 (RTC for timekeeping)
+################################################################################
+i2c_scanner:
+  id: my_i2c_scanner
+  i2c_id: i2c_bus
+
+  # Link to controller for status reporting
+  # This enables I²C scan results to appear in the central status logger
+  status_logger: my_controller
+
+  # Scan once at boot to validate hardware setup
+  scan_on_boot: true
+
+  # Periodic scanning (0s = disabled, only boot-time scan)
+  # Set to 30s, 60s, etc. to detect hot-plug events or hardware failures
+  scan_interval: 5s
+
+  # Verbose mode: Enable detailed I²C scan logging to serial
+  # true (default): Log detailed scan results every scan_interval
+  # false: Silent mode - only report to central status logger
+  verbose: false
+
+  # Define critical devices for your PlantOS system
+  # Uncomment and modify based on your hardware configuration
+  critical_devices: []
+    # - address: 0x48
+    #   name: "ADS1115 ADC"
+    # - address: 0x20
+    #   name: "MCP23017 GPIO Expander"
+    # - address: 0x76
+    #   name: "BME280 Sensor"
+    # - address: 0x68
+    #   name: "DS3231 RTC"
+
+################################################################################
 # Visual Feedback: WS2812 RGB LED
 #
 # The built-in LED serves as the primary user interface, displaying system
@@ -292,6 +377,12 @@ controller:
   # Useful for debugging FSM behavior and performance profiling
   # Default: false (minimal logging)
   verbose: true
+
+  # status_log_interval: How often to print central status logger reports
+  # Controls the frequency of comprehensive system status reports
+  # Default: 30s (prints status every 30 seconds)
+  # Common values: 10s, 30s, 1min, 5min
+  status_log_interval: 30s
 
 ################################################################################
 # Time Logger: Periodic Time Logging

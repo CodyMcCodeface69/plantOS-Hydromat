@@ -8,7 +8,8 @@ CentralStatusLogger::CentralStatusLogger()
       filteredPH(7.0),
       activeRoutine("INIT"),
       webServerOnline(false),
-      webServerClientConnected(false) {
+      webServerClientConnected(false),
+      i2cScanPerformed(false) {
 }
 
 void CentralStatusLogger::begin() {
@@ -91,6 +92,11 @@ void CentralStatusLogger::updateWebServerStatus(bool online, bool clientConnecte
     webServerClientConnected = clientConnected;
 }
 
+void CentralStatusLogger::updateI2CHardwareStatus(const std::vector<I2CDeviceInfo>& devices) {
+    i2cDevices = devices;
+    i2cScanPerformed = true;
+}
+
 void CentralStatusLogger::logStatus() {
     printSeparator('=');
     ESP_LOGI(TAG, "  PLANTOS SYSTEM STATUS REPORT");
@@ -118,6 +124,48 @@ void CentralStatusLogger::logStatus() {
         }
     } else {
         ESP_LOGI(TAG, "  Web Server: OFFLINE");
+    }
+
+    ESP_LOGI(TAG, "");
+
+    // Hardware Status (I²C Devices)
+    ESP_LOGI(TAG, "--- HARDWARE STATUS ---");
+    if (i2cScanPerformed) {
+        if (i2cDevices.empty()) {
+            ESP_LOGW(TAG, "  No I²C devices found");
+        } else {
+            // Separate devices into found and missing critical
+            std::vector<I2CDeviceInfo> foundDevices;
+            std::vector<I2CDeviceInfo> missingCritical;
+
+            for (const auto& device : i2cDevices) {
+                if (device.found) {
+                    foundDevices.push_back(device);
+                } else if (device.critical) {
+                    missingCritical.push_back(device);
+                }
+            }
+
+            // Display found devices in green
+            if (!foundDevices.empty()) {
+                for (const auto& device : foundDevices) {
+                    // ANSI Green: \033[32m, Reset: \033[0m
+                    ESP_LOGI(TAG, "  \033[32m✓ 0x%02X: %s\033[0m", device.address, device.name.c_str());
+                }
+            }
+
+            // Display missing critical devices in red
+            if (!missingCritical.empty()) {
+                for (const auto& device : missingCritical) {
+                    // ANSI Red: \033[31m, Reset: \033[0m
+                    ESP_LOGE(TAG, "  \033[31m✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
+                }
+            }
+
+            ESP_LOGI(TAG, "  Total devices: %d found", foundDevices.size());
+        }
+    } else {
+        ESP_LOGI(TAG, "  I²C scan not yet performed");
     }
 
     ESP_LOGI(TAG, "");

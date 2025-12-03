@@ -181,7 +181,7 @@ void Controller::loop() {
    * - Provides regular heartbeat confirmation
    * - Catches intermittent issues within reasonable timeframe
    */
-  if (millis() - this->last_status_log_time_ >= 30000) {
+  if (millis() - this->last_status_log_time_ >= this->status_log_interval_) {
     uint32_t status_log_start = millis();
     this->status_logger_.logStatus();
     this->last_status_log_time_ = millis();

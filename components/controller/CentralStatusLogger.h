@@ -22,6 +22,19 @@ struct Alert {
 };
 
 /**
+ * I²C Device Info structure for hardware status tracking
+ */
+struct I2CDeviceInfo {
+    uint8_t address;         // I²C address (7-bit)
+    std::string name;        // Device name
+    bool found;              // Whether device was found during scan
+    bool critical;           // Whether device is critical for operation
+
+    I2CDeviceInfo(uint8_t addr, const std::string& n, bool f, bool c)
+        : address(addr), name(n), found(f), critical(c) {}
+};
+
+/**
  * CentralStatusLogger - Unified logging and status display system
  *
  * This class manages all critical system variables and provides
@@ -79,6 +92,12 @@ public:
     void updateWebServerStatus(bool online, bool clientConnected);
 
     /**
+     * Update I²C hardware status from scanner
+     * @param devices Vector of I2CDeviceInfo structures with scan results
+     */
+    void updateI2CHardwareStatus(const std::vector<I2CDeviceInfo>& devices);
+
+    /**
      * Print complete structured status summary to Serial
      * This is the primary logging method that outputs all system state
      */
@@ -109,6 +128,10 @@ private:
 
     // Alert management - supports multiple simultaneous alerts
     std::vector<Alert> activeAlerts;
+
+    // I²C Hardware status
+    std::vector<I2CDeviceInfo> i2cDevices;
+    bool i2cScanPerformed;
 
     // Helper methods
     std::string getFormattedTime();

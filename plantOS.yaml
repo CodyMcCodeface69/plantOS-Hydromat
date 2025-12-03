@@ -619,3 +619,46 @@ wdt_manager:
   test_mode: false        # Enable crash simulation for testing
   crash_delay: 20s       # Simulate crash after 20 seconds
 
+################################################################################
+# I²C Mutex Protection - FreeRTOS Mutex for Thread-Safe I²C Bus Access
+#
+# PRODUCTION-READY: This component creates a global FreeRTOS Mutex that protects
+# the shared I²C bus from concurrent access by multiple tasks.
+#
+# IMPORTANT: The mutex is ALWAYS created and available, regardless of test_mode.
+# Other components can use I2CMutexDemo::i2c_mutex_ to protect their I²C operations.
+#
+# Modes of Operation:
+# - test_mode: false (PRODUCTION, default)
+#   * Mutex is created and available globally
+#   * No test tasks are created (clean logs, no extra overhead)
+#   * Use mutex in your I²C components for thread safety
+#   * Component can even be commented out if not needed
+#
+# - test_mode: true (DEMONSTRATION)
+#   * Mutex is created and available globally
+#   * Two test tasks (Task_A, Task_B) demonstrate mutex usage
+#   * Detailed serial logging shows mutex acquisition/release
+#   * Educational - shows how mutex prevents concurrent I²C access
+#
+# Usage in Other Components:
+# To protect I²C operations in your custom components, use:
+#   xSemaphoreTake(I2CMutexDemo::i2c_mutex_, portMAX_DELAY);
+#   // Your I²C operation here
+#   xSemaphoreGive(I2CMutexDemo::i2c_mutex_);
+#
+# Expected Serial Monitor Output (test_mode: true):
+# - [Task_A] Attempting to acquire I²C Mutex...
+# - [Task_A] ✓ Mutex ACQUIRED - entering critical section
+# - [Task_A] Performing I²C transaction (50ms delay)...
+# - [Task_B] Attempting to acquire I²C Mutex... (BLOCKED, waiting)
+# - [Task_A] ✓ Mutex RELEASED - exiting critical section
+# - [Task_B] ✓ Mutex ACQUIRED - entering critical section (now can proceed)
+#
+# This proves mutual exclusion: only ONE task accesses I²C bus at a time.
+################################################################################
+i2c_mutex_demo:
+  id: my_i2c_mutex_demo
+  test_mode: false  # PRODUCTION: false = mutex only, no test tasks
+                    # DEMO: true = mutex + test tasks with logging
+

@@ -5,6 +5,125 @@ All notable changes to the PlantOS project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2025-12-03
+
+### Added
+- **I²C Mutex Protection Component**: PRODUCTION-READY FreeRTOS Mutex for thread-safe I²C bus access
+  - Global FreeRTOS Mutex always available for I²C bus protection
+  - Protects shared I²C bus from concurrent access by multiple tasks
+  - **Production Mode** (test_mode: false, default):
+    - Mutex created and available globally via `I2CMutexDemo::i2c_mutex_`
+    - No test tasks created (clean logs, minimal overhead)
+    - Ready for use in production I²C components
+    - Component can be commented out if mutex not needed
+  - **Demonstration Mode** (test_mode: true):
+    - Mutex created plus two test tasks (Task_A, Task_B)
+    - Test tasks demonstrate proper mutex usage patterns
+    - Detailed serial logging shows mutex acquisition/release/blocking
+    - Educational - proves mutual exclusion works correctly
+  - Component files:
+    - `components/i2c_mutex_demo/__init__.py`: ESPHome configuration schema with test_mode option
+    - `components/i2c_mutex_demo/i2c_mutex_demo.h`: C++ class declaration
+    - `components/i2c_mutex_demo/i2c_mutex_demo.cpp`: Implementation with conditional test tasks
+  - Key Features:
+    - **Always-On Mutex**: Created in `setup()` regardless of test_mode
+    - **Global Access**: Static member accessible from any component
+    - **Conditional Testing**: Test tasks only created when test_mode: true
+    - **Production Ready**: Safe for deployment with test_mode: false
+    - **Mutex Guards**: `xSemaphoreTake()` and `xSemaphoreGive()` API
+  - Configuration in `plantOS.yaml` lines 622-663 with comprehensive documentation
+
+### Technical Details
+- **Mutex Lifecycle**:
+  - Created in `setup()` using `xSemaphoreCreateMutex()`
+  - Available as static member: `I2CMutexDemo::i2c_mutex_`
+  - Accessible from any component in the system
+  - Persists throughout device lifetime
+  - No automatic cleanup needed (handled by FreeRTOS)
+- **Test Mode Implementation** (when test_mode: true):
+  - Task_A: Starts immediately, attempts I²C transaction every 1 second
+  - Task_B: Starts after 300ms offset, attempts I²C transaction every 1 second
+  - Both tasks use `portMAX_DELAY` for indefinite mutex wait
+  - Static instance pointer enables static task functions to access class methods
+  - Each task allocated 4096 bytes stack, priority level 1, pinned to Core 0
+- **Thread Safety Demonstration** (test_mode: true logging):
+  - Tasks log when attempting to acquire mutex
+  - Tasks log when mutex acquired (entering critical section)
+  - Tasks log during I²C transaction (50ms delay using `vTaskDelay()`)
+  - Tasks log when mutex released (exiting critical section)
+  - Blocked task waits silently until mutex available
+- **ESP-IDF Integration**:
+  - Uses FreeRTOS API directly (not Arduino delay())
+  - `vTaskDelay(pdMS_TO_TICKS(50))` for time-based delays
+  - Proper FreeRTOS header includes: `freertos/FreeRTOS.h`, `freertos/task.h`, `freertos/semphr.h`
+- **Configuration Schema**:
+  - `test_mode` (optional, default: false): Enable/disable demonstration tasks
+  - Python validation: `cv.boolean`
+  - C++ setter: `set_test_mode(bool test_mode)`
+
+### Expected Behavior
+**Production Mode** (test_mode: false):
+```
+[i2c_mutex_demo] Setting up I²C Mutex Protection (test_mode: DISABLED)...
+[i2c_mutex_demo] I²C Mutex created successfully (available globally for I²C protection)
+[i2c_mutex_demo] Test mode DISABLED - mutex available but no test tasks created
+[i2c_mutex_demo] Production mode: Use I2CMutexDemo::i2c_mutex_ in your I²C components
+```
+
+**Demonstration Mode** (test_mode: true) - shows mutual exclusion in action:
+```
+[i2c_mutex_demo] Setting up I²C Mutex Protection (test_mode: ENABLED)...
+[i2c_mutex_demo] I²C Mutex created successfully (available globally for I²C protection)
+[i2c_mutex_demo] Test mode ENABLED - creating demonstration tasks...
+[i2c_mutex_demo] [Task_A] Attempting to acquire I²C Mutex...
+[i2c_mutex_demo] [Task_A] ✓ Mutex ACQUIRED - entering critical section
+[i2c_mutex_demo] [Task_A] Performing I²C transaction (50ms delay)...
+[i2c_mutex_demo] [Task_B] Attempting to acquire I²C Mutex... (BLOCKED)
+[i2c_mutex_demo] [Task_A] I²C transaction completed
+[i2c_mutex_demo] [Task_A] ✓ Mutex RELEASED - exiting critical section
+[i2c_mutex_demo] [Task_B] ✓ Mutex ACQUIRED - entering critical section
+[i2c_mutex_demo] [Task_B] Performing I²C transaction (50ms delay)...
+[i2c_mutex_demo] [Task_B] I²C transaction completed
+[i2c_mutex_demo] [Task_B] ✓ Mutex RELEASED - exiting critical section
+```
+
+### Use Cases
+- **Production I²C Protection**: Protect shared I²C bus in multi-task systems
+- **Thread-Safe Hardware Access**: Ensure only one task accesses I²C bus at a time
+- **Multi-Task Coordination**: Synchronize multiple components using same I²C bus
+- **Educational Tool**: Learn and verify FreeRTOS Mutex behavior with test_mode
+- **Development/Testing**: Enable test_mode during development, disable for production
+- **Template for Other Buses**: Pattern applicable to SPI, UART, or any shared resource
+
+### Configuration
+**Production deployment** (recommended):
+```yaml
+i2c_mutex_demo:
+  id: my_i2c_mutex_demo
+  test_mode: false  # Default - mutex only, no test tasks
+```
+
+**Development/demonstration**:
+```yaml
+i2c_mutex_demo:
+  id: my_i2c_mutex_demo
+  test_mode: true  # Enable test tasks to see mutex in action
+```
+
+**Using the mutex in custom components**:
+```cpp
+#include "components/i2c_mutex_demo/i2c_mutex_demo.h"
+
+// In your I²C operation:
+if (xSemaphoreTake(esphome::i2c_mutex_demo::I2CMutexDemo::i2c_mutex_, portMAX_DELAY) == pdTRUE) {
+  // Protected I²C operation
+  i2c->read_byte(...);
+  xSemaphoreGive(esphome::i2c_mutex_demo::I2CMutexDemo::i2c_mutex_);
+}
+```
+
+---
+
 ## [0.4.3] - 2025-12-03
 
 ### Added

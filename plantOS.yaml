@@ -78,8 +78,13 @@ web_server:
   # Accessible at device IP on port 80 (standard HTTP)
   # Useful for debugging and monitoring without serial connection
   version: 2
-  #local: true  # Embed all JS/CSS locally for offline operation
   port: 80
+  # Using local CSS/JS files from www/ directory
+  # These files are served directly from the ESP32 filesystem
+  css_url: "/local/www/webserver-v2.min.css"
+  js_url: "/local/www/webserver-v2.min.js"
+  local: true  # Embed all JS/CSS locally for offline operation
+
 
 ################################################################################
 # Time Synchronization: NTP

@@ -5,6 +5,45 @@ All notable changes to the PlantOS project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2025-12-03
+
+### Added
+- **Static Web Server Implementation**: Local CSS and JavaScript files for enhanced web UI
+  - Created `www/` directory for web assets
+  - `www/webserver-v2.min.css`: Custom CSS with responsive design, centered layouts, and improved log styling
+  - `www/webserver-v2.min.js`: Enhanced JavaScript for real-time event handling and component control
+  - Files sourced from https://github.com/emilioaray-dev/esphome_static_webserver
+
+### Changed
+- **Web Server Configuration**: Updated to use local embedded files instead of remote GitHub URLs
+  - Enabled `version: 2` for web server
+  - Set `local: true` to embed assets into firmware for offline operation
+  - Changed from `https://raw.githubusercontent.com/...` to `/local/www/` paths
+  - Configuration in `plantOS.yaml` lines 76-86
+
+### Features
+- **Responsive Design**: Mobile-optimized viewport with adaptive layouts
+  - Portrait mode: 90vh log height
+  - Landscape mode: 82vh log height
+- **Enhanced Log Display**: Color-coded logs with proper text wrapping
+  - Errors: red, bold
+  - Warnings: yellow
+  - Info: green
+  - Debug: cyan
+  - Dark background (#1c1c1c) for better readability
+- **Improved UI Elements**: Centered titles and tables with GitHub markdown styling
+- **Real-time Updates**: Event-driven state updates for sensors and controls
+
+### Technical Details
+- CSS file size: ~6.5KB (minified)
+- JS file size: ~1.8KB (minified)
+- Total flash impact: ~8.3KB
+- Web assets embedded in firmware during build
+- No external dependencies required for web UI
+- Works offline after initial firmware flash
+
+---
+
 ## [0.4.1] - 2025-12-03
 
 ### Added

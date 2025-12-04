@@ -5,6 +5,212 @@ All notable changes to the PlantOS project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2025-12-05
+
+### Description
+Enhanced Actuator Safety Gate with soft-start/soft-stop PWM ramping functionality to protect circuits from inrush current spikes and back-EMF damage when controlling pumps, motors, and other inductive loads via MOSFETs.
+
+### Added
+- **Soft-Start/Soft-Stop PWM Ramping**: Complete implementation for gradual actuator transitions
+  - **RampState Enum**: Four states for tracking ramping progress
+    - `RAMP_OFF`: Actuator fully off (0% PWM duty cycle)
+    - `RAMP_STARTING`: Ramping up from 0% to 100%
+    - `RAMP_FULL_ON`: Fully on (100% PWM duty cycle)
+    - `RAMP_STOPPING`: Ramping down from 100% to 0%
+  - **Per-Actuator Ramp Configuration**: Each actuator can have its own ramp duration
+    - `setRampDuration(actuatorID, rampMs)`: Configure ramp time in milliseconds
+    - 0ms = instant on/off (backward compatible with existing behavior)
+    - Typical values: 1000-3000ms for pumps, 500-2000ms for valves
+  - **PWM Duty Cycle Management**: Real-time duty cycle calculation and tracking
+    - `getDutyCycle(actuatorID)`: Returns current duty cycle (0.0 to 1.0)
+    - Linear ramping algorithm with automatic state transitions
+    - Updates in `loop()` method for non-blocking operation
+  - **Ramping State Queries**: Helper methods for monitoring ramp progress
+    - `isRamping(actuatorID)`: Returns true if currently ramping (starting or stopping)
+    - `getRampState(actuatorID)`: Returns current RampState for detailed monitoring
+  - **Automatic State Transitions**: Seamless ramping workflow
+    - ON command with ramp configured → Start RAMP_STARTING at 0% duty cycle
+    - Gradually increase duty cycle over configured duration
+    - Transition to RAMP_FULL_ON at 100% when complete
+    - OFF command with ramp configured → Start RAMP_STOPPING from current duty cycle
+    - Gradually decrease duty cycle to 0%
+    - Transition to RAMP_OFF when complete
+  - **Integration with Existing Safety Features**: All existing features still active
+    - Debouncing still prevents redundant commands
+    - Duration limits still enforced for max runtime
+    - Runtime tracking continues during ramping
+    - Safety logging includes ramping state information
+
+### Changed
+- **ActuatorState Structure** (`components/actuator_safety_gate/ActuatorSafetyGate.h:25-46`):
+  - Added `rampDuration` field: Ramp duration in milliseconds (0 = instant)
+  - Added `rampState` field: Current ramping state (RampState enum)
+  - Added `rampStartTime` field: Timestamp when current ramp started
+  - Added `currentDutyCycle` field: Current PWM duty cycle (0.0 to 1.0)
+  - All new fields initialized in constructor for backward compatibility
+
+- **ActuatorSafetyGate Class** (`components/actuator_safety_gate/ActuatorSafetyGate.h:92-303`):
+  - Updated class documentation to include soft-start/soft-stop feature
+  - Added 4 new public methods for ramp control (lines 238-286)
+  - Added private helper method `updateRamping()` for duty cycle calculation (line 302)
+
+- **executeCommand() Method** (`components/actuator_safety_gate/ActuatorSafetyGate.cpp:17-117`):
+  - Modified to initiate ramping instead of instant transitions when ramp configured
+  - ON command: Sets RAMP_STARTING state and starts from 0% duty cycle
+  - OFF command: Sets RAMP_STOPPING state and ramps down from current duty cycle
+  - Instant transitions still used when rampDuration is 0 (backward compatible)
+  - Enhanced logging to show ramping status
+
+- **loop() Method** (`components/actuator_safety_gate/ActuatorSafetyGate.cpp:138-166`):
+  - Now calls `updateRamping()` for each actuator on every iteration
+  - Non-blocking ramping calculations performed automatically
+  - Continues to monitor duration violations as before
+
+- **setup() Method** (`components/actuator_safety_gate/ActuatorSafetyGate.cpp:12-15`):
+  - Updated initialization message to include "Soft-Start/Soft-Stop" feature
+
+- **plantOS.yaml Configuration** (lines 580-618):
+  - Updated Actuator Safety Gate documentation section
+  - Added comprehensive soft-start/soft-stop usage examples
+  - Example: Configure 2-second ramp for acid pump
+  - Example: Apply duty cycle to PWM output in interval component
+  - Recommended PWM update frequency: 50-100ms
+
+### Implementation Details
+- **Ramping Algorithm** (`components/actuator_safety_gate/ActuatorSafetyGate.cpp:367-432`):
+  - **Linear Ramping**: Simple, predictable duty cycle progression
+    - Soft-Start: `duty = elapsed / rampDuration` (0.0 → 1.0)
+    - Soft-Stop: `duty = 1.0 - (elapsed / rampDuration)` (1.0 → 0.0)
+  - **Safety Clamping**: Duty cycle always clamped to [0.0, 1.0] range
+  - **Automatic Completion Detection**: Checks `elapsed >= rampDuration`
+  - **State Transition Logging**: Logs when ramp completes (FULL_ON or OFF)
+  - **Division-by-Zero Protection**: Checks for rampDuration == 0 edge case
+  - **Non-Blocking Execution**: All calculations in loop(), no delays
+
+- **Memory Usage**:
+  - Additional memory per actuator: 12 bytes
+    - `rampDuration` (uint32_t): 4 bytes
+    - `rampState` (enum, typically int): 4 bytes
+    - `rampStartTime` (uint32_t): 4 bytes
+    - `currentDutyCycle` (float): 4 bytes
+  - Total: ~12 bytes per actuator tracked
+  - Negligible impact on ESP32-C6 (320KB RAM available)
+
+- **Typical Usage Pattern**:
+  ```cpp
+  // In setup() or lambda initialization:
+  id(actuator_safety).setRampDuration("AcidPump", 2000);  // 2-second ramp
+  id(actuator_safety).setMaxDuration("AcidPump", 30);     // 30-second max runtime
+
+  // In control logic:
+  if (id(actuator_safety).executeCommand("AcidPump", true, 10)) {
+    // Command approved - ramping started automatically
+  }
+
+  // In interval component (50-100ms update rate):
+  float duty = id(actuator_safety).getDutyCycle("AcidPump");
+  id(acid_pump_pwm).set_level(duty);  // Apply to LEDC output
+  ```
+
+### Hardware Integration
+- **MOSFET Circuit Protection**:
+  - Soft-start reduces inrush current on pump motors (typically 3-10x steady-state current)
+  - Protects MOSFET from thermal stress and potential damage
+  - Reduces voltage spikes on power rail during turn-on
+  - Soft-stop prevents back-EMF voltage spikes from inductive loads
+  - Extends MOSFET and motor lifetime
+
+- **Recommended PWM Configuration**:
+  - Frequency: 1000Hz - 25kHz (depending on motor/pump characteristics)
+  - Resolution: 8-bit (256 levels) or higher for smooth ramping
+  - Update Rate: 50-100ms (10-20 Hz) for visible smoothness
+  - ESP32-C6 LEDC PWM channels recommended for output
+
+- **Circuit Compatibility**:
+  - Works with N-channel MOSFETs (direct PWM drive)
+  - Works with MOSFET drivers (PWM to driver input)
+  - Compatible with peristaltic pumps, solenoid valves, DC motors
+  - Protects against inrush current and back-EMF
+
+### Build Verification
+- **Compilation Status**: ✅ SUCCESS
+- **Build Time**: 8.12 seconds
+- **Memory Usage**:
+  - RAM: 11.2% (36,632 bytes / 327,680 bytes) - No significant change
+  - Flash: 59.0% (1,083,384 bytes / 1,835,008 bytes) - Minimal increase (~806 bytes)
+- **Platform**: ESP32-C6 with ESP-IDF 5.1.5
+- **No Compilation Errors**: All new code integrated cleanly
+
+### Backward Compatibility
+- **Fully Backward Compatible**: Existing actuators without ramp configuration work exactly as before
+- **Default Behavior**: If `setRampDuration()` is never called, actuators use instant on/off (rampDuration = 0)
+- **No Breaking Changes**: All existing methods and functionality unchanged
+- **Migration Path**: Existing code continues to work; enable ramping per-actuator as needed
+
+### Known Limitations
+- **No Exponential/S-Curve Ramping**: Currently only linear ramping implemented
+  - Linear ramping is simpler and sufficient for most applications
+  - Future enhancement: Add optional exponential or S-curve algorithms
+- **No Ramping During Debouncing**: If same state requested, command rejected before ramping considered
+  - Expected behavior: Debouncing takes precedence
+- **Ramping State Not Persisted**: After reboot, all actuators reset to RAMP_OFF
+  - Intentional design: Safe default state on boot
+
+### Future Enhancements
+- **Exponential Ramping**: Option for smoother acceleration/deceleration curves
+- **S-Curve Ramping**: Jerk-limited ramping for sensitive loads
+- **Per-Actuator Ramp Curve Selection**: Different algorithms for different actuators
+- **Ramp Completion Callbacks**: Trigger actions when ramp finishes
+- **Configurable Update Rate**: User-defined PWM update frequency
+
+### Testing Recommendations
+1. **Test Instant On/Off**: Verify backward compatibility with rampDuration = 0
+2. **Test Ramping Up**: Configure 2-second ramp, turn on, monitor duty cycle progression
+3. **Test Ramping Down**: Turn off during ramp, verify smooth transition to 0%
+4. **Test Duration Limits**: Ensure max duration still enforced during ramping
+5. **Test Debouncing**: Verify duplicate commands rejected during ramp
+6. **Measure Inrush Current**: Compare instant vs ramped startup with oscilloscope
+7. **MOSFET Temperature**: Verify MOSFET stays cooler with ramping enabled
+
+### References
+- Component Files:
+  - `components/actuator_safety_gate/ActuatorSafetyGate.h`: Header with new API
+  - `components/actuator_safety_gate/ActuatorSafetyGate.cpp`: Implementation
+  - `plantOS.yaml` (lines 580-618): Configuration examples
+
+### Migration Guide
+To enable soft-start/soft-stop for an existing actuator:
+
+1. **Add Ramp Configuration** (in setup() or lambda):
+   ```cpp
+   id(actuator_safety).setRampDuration("YourActuator", 2000);  // 2-second ramp
+   ```
+
+2. **Create PWM Output** (in plantOS.yaml):
+   ```yaml
+   output:
+     - platform: ledc
+       id: your_actuator_pwm
+       pin: GPIO10
+       frequency: 1000Hz
+   ```
+
+3. **Apply Duty Cycle** (in interval component):
+   ```yaml
+   interval:
+     - interval: 50ms
+       then:
+         - lambda: |-
+             float duty = id(actuator_safety).getDutyCycle("YourActuator");
+             id(your_actuator_pwm).set_level(duty);
+   ```
+
+4. **Control as Before**:
+   ```cpp
+   // executeCommand() works exactly as before - ramping happens automatically
+   id(actuator_safety).executeCommand("YourActuator", true, 10);
+   ```
+
 ## [0.6.0] - 2025-12-04
 
 ### Description

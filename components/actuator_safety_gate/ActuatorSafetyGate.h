@@ -10,6 +10,16 @@ namespace esphome {
 namespace actuator_safety_gate {
 
 /**
+ * RampState - Tracks the current ramping state of an actuator
+ */
+enum RampState {
+    RAMP_OFF,         // Actuator fully off (0% PWM duty cycle)
+    RAMP_STARTING,    // Ramping up from 0% to 100%
+    RAMP_FULL_ON,     // Fully on (100% PWM duty cycle)
+    RAMP_STOPPING     // Ramping down from 100% to 0%
+};
+
+/**
  * ActuatorState - Tracks the state and timing information for a single actuator
  */
 struct ActuatorState {
@@ -18,11 +28,21 @@ struct ActuatorState {
     uint32_t turnOnTime;          // Timestamp when actuator was turned ON (0 if OFF)
     uint32_t maxDuration;         // Maximum allowed duration in milliseconds (0 = no limit)
 
+    // Soft-start/soft-stop fields
+    uint32_t rampDuration;        // Ramp duration in milliseconds (0 = instant, no ramping)
+    RampState rampState;          // Current ramping state
+    uint32_t rampStartTime;       // Timestamp when current ramp started (millis())
+    float currentDutyCycle;       // Current PWM duty cycle (0.0 = off, 1.0 = full on)
+
     ActuatorState()
         : lastRequestedState(false),
           lastCommandTime(0),
           turnOnTime(0),
-          maxDuration(0) {}
+          maxDuration(0),
+          rampDuration(0),
+          rampState(RAMP_OFF),
+          rampStartTime(0),
+          currentDutyCycle(0.0f) {}
 };
 
 /**
@@ -48,13 +68,18 @@ struct ActuatorState {
  *    enforces maximum runtime limits to prevent overruns, spills, and
  *    hardware damage.
  *
- * 3. SAFETY VIOLATION LOGGING: Every rejection is logged with clear messages
+ * 3. SOFT-START/SOFT-STOP: Gradually ramps PWM duty cycle from 0% to 100%
+ *    (soft-start) or 100% to 0% (soft-stop) over a configurable duration.
+ *    Protects circuits from inrush current and back-EMF spikes when controlling
+ *    pumps, motors, and other inductive loads via MOSFETs.
+ *
+ * 4. SAFETY VIOLATION LOGGING: Every rejection is logged with clear messages
  *    indicating the reason (debouncing, duration limit, etc.).
  *
- * 4. RUNTIME TRACKING: Monitors how long actuators have been running and
+ * 5. RUNTIME TRACKING: Monitors how long actuators have been running and
  *    can detect if they exceed their configured limits.
  *
- * 5. CENTRALIZED CONTROL: Single point of control for all actuators,
+ * 6. CENTRALIZED CONTROL: Single point of control for all actuators,
  *    making it easy to add global safety rules or emergency shutoff.
  *
  * ============================================================================
@@ -206,6 +231,60 @@ public:
                   uint32_t& outRuntimeSeconds,
                   uint32_t& outMaxDurationSeconds) const;
 
+    // ========================================================================
+    // SOFT-START / SOFT-STOP METHODS
+    // ========================================================================
+
+    /**
+     * Set ramp duration for soft-start/soft-stop of an actuator
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @param rampMs Ramp duration in milliseconds (0 = instant on/off, no ramping)
+     *
+     * When ramping is enabled, the actuator will gradually transition between
+     * off (0% PWM duty cycle) and on (100% PWM duty cycle) over the specified
+     * duration. This protects circuits from inrush current and back-EMF spikes.
+     *
+     * EXAMPLE:
+     * setRampDuration("AcidPump", 2000);  // 2-second soft-start/soft-stop
+     */
+    void setRampDuration(const char* actuatorID, uint32_t rampMs);
+
+    /**
+     * Get current PWM duty cycle for an actuator
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @return Current duty cycle (0.0 = off, 1.0 = full on)
+     *
+     * During ramping, this value will gradually change from 0.0 to 1.0
+     * (soft-start) or from 1.0 to 0.0 (soft-stop). Apply this value to
+     * your PWM output to control MOSFET gate voltage.
+     *
+     * EXAMPLE:
+     * float duty = safetyGate.getDutyCycle("AcidPump");
+     * ledcWrite(PWM_CHANNEL, duty * 255);  // Apply to ESP32 LEDC PWM
+     */
+    float getDutyCycle(const char* actuatorID) const;
+
+    /**
+     * Check if an actuator is currently ramping (soft-start or soft-stop)
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @return true if actuator is currently ramping, false otherwise
+     *
+     * Returns true if the actuator is in RAMP_STARTING or RAMP_STOPPING state.
+     * Useful for determining when ramping is complete.
+     */
+    bool isRamping(const char* actuatorID) const;
+
+    /**
+     * Get the current ramp state of an actuator
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @return Current RampState (RAMP_OFF, RAMP_STARTING, RAMP_FULL_ON, RAMP_STOPPING)
+     */
+    RampState getRampState(const char* actuatorID) const;
+
 private:
     // Map of actuator ID to state tracking info
     std::map<std::string, ActuatorState> actuators_;
@@ -218,6 +297,9 @@ private:
 
     // Helper to log command approval
     void logApproval(const char* actuatorID, bool targetState, int maxDurationSeconds);
+
+    // Helper to update ramping state and duty cycle
+    void updateRamping(const std::string& actuatorID, ActuatorState& state, uint32_t currentTime);
 };
 
 } // namespace actuator_safety_gate

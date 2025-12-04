@@ -366,7 +366,7 @@ api:
 - [ ] Verify readings are reasonable (not NaN, within 0-14 range) (awaiting hardware)
 
 #### 5.3 Calibration Testing
-- [ ] Prepare pH buffer solutions (pH 4.00, 7.00, 10.00)
+- [x] Prepare pH buffer solutions (pH 4.00, 7.00, 10.00)
 - [ ] **IMPORTANT**: Ensure probe has been soaked in storage solution 24h before first use
 - [ ] Rinse probe with distilled water between buffers
 - [ ] Test mid-point calibration:

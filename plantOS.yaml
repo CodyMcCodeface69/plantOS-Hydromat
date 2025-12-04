@@ -585,9 +585,34 @@ interval:
 # - Duration Limits: Enforces maximum runtime for critical actuators
 # - Runtime Tracking: Monitors actuator runtime and detects violations
 # - Safety Logging: Logs all rejections with clear reasons
+# - Soft-Start/Soft-Stop: PWM ramping to protect circuits from inrush current
 #
 # This is a critical safety component that should be used for all actuators
 # that could cause damage if left running too long (pumps, valves, heaters, etc.)
+#
+# Soft-Start/Soft-Stop Feature:
+# When controlling pumps, motors, or other inductive loads via MOSFETs, use
+# the soft-start/soft-stop feature to gradually ramp PWM duty cycle from 0% to
+# 100% (or vice versa) over a configurable duration. This protects circuits from
+# inrush current spikes and back-EMF damage.
+#
+# Usage Example (in lambda or script):
+#   // Configure 2-second ramp duration for acid pump
+#   id(actuator_safety).setRampDuration("AcidPump", 2000);
+#
+#   // Set maximum duration limit (safety feature)
+#   id(actuator_safety).setMaxDuration("AcidPump", 30);
+#
+#   // Request pump ON - will start ramping up from 0% to 100%
+#   if (id(actuator_safety).executeCommand("AcidPump", true, 10)) {
+#     // Command approved - ramping started
+#   }
+#
+#   // In an interval component (50-100ms recommended), apply duty cycle to PWM:
+#   float duty = id(actuator_safety).getDutyCycle("AcidPump");
+#   id(acid_pump_pwm).set_level(duty);  // Apply to LEDC output (0.0 to 1.0)
+#
+# See components/actuator_safety_gate/README.md for complete documentation.
 ################################################################################
 actuator_safety_gate:
   id: actuator_safety

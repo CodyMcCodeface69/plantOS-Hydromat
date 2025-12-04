@@ -93,6 +93,15 @@ web_server:
   js_url: "/local/www/webserver-v2.min.js"
   local: true  # Embed all JS/CSS locally for offline operation
 
+################################################################################
+# API Services
+#
+# ESPHome API allows external systems (Home Assistant, custom scripts, etc.)
+# to call services on the device. Temporarily disabled calibration services
+# due to ESPHome variable parsing issue - will enable in a future update.
+# For now, calibration can be done via direct I2C commands or custom code.
+################################################################################
+api:
 
 ################################################################################
 # Time Synchronization: NTP
@@ -133,6 +142,9 @@ external_components:
   # Points to local custom components directory
   # ESPHome will compile and link C++ code from here alongside generated code
   - source: components
+    components: [controller, sensor_dummy, sensor_filter, ezo_ph, plantos_logic,
+                 actuator_safety_gate, calendar_manager, persistent_state_manager,
+                 i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo]
 
 ################################################################################
 # I²C Bus Configuration
@@ -279,6 +291,7 @@ sensor:
     # 0.10 = reject 10% lowest + 10% highest = 20% total outlier rejection
     # With 20 readings: rejects 2 lowest + 2 highest = averages middle 16 values
     reject_percentage: 0.10
+
 
 ################################################################################
 # Text Sensor: Controller State
@@ -580,6 +593,61 @@ actuator_safety_gate:
   id: actuator_safety
 
 ################################################################################
+# EZO pH Sensor Component (Atlas Scientific)
+#
+# Production pH sensor using I2C communication with Atlas Scientific EZO circuit.
+# Replaces dummy sensor for accurate pH monitoring in nutrient solutions.
+#
+# Hardware Requirements:
+# - Atlas Scientific EZO pH Circuit
+# - pH probe (included with EZO kit)
+# - I2C connection to ESP32-C6 (SDA=GPIO6, SCL=GPIO7)
+# - 3.3V power supply
+#
+# Calibration:
+# - Use ESPHome API services to calibrate (see api section)
+# - Mid-point: pH 7.00 buffer solution (required first)
+# - Low-point: pH 4.00 buffer solution (optional)
+# - High-point: pH 10.00 buffer solution (optional)
+#
+# Temperature Compensation:
+# - Configure temperature_compensation parameter below
+# - Links to a temperature sensor for improved accuracy
+# - Improves accuracy from ±0.1 pH to ±0.02 pH
+#
+# IMPORTANT: New EZO sensors ship in UART mode!
+# - Must send "I2C,97" command via UART first to switch to I2C mode at address 0x61
+# - Or use hardware jumper if available on carrier board
+################################################################################
+ezo_ph:
+  id: ezo_ph_component
+  i2c_id: i2c_bus
+  address: 0x61  # Default I2C address for EZO pH circuit (97 decimal)
+  update_interval: 60s  # Read pH every 60 seconds (recommended for production)
+
+  # pH sensor configuration
+  ph:
+    name: "Nutrient Solution pH"
+    id: ph_sensor_real
+    accuracy_decimals: 2
+    filters:
+      # Sliding window moving average smooths out minor fluctuations
+      - sliding_window_moving_average:
+          window_size: 5     # Average last 5 readings
+          send_every: 1      # Publish every reading (after averaging)
+      # Lambda filter for range validation and outlier rejection
+      - lambda: |-
+          if (x < 0.0 || x > 14.0) {
+            ESP_LOGW("ezo_ph", "pH value out of typical range: %.2f", x);
+            return {};  // Reject outliers
+          }
+          return x;
+
+  # Optional: Temperature compensation for improved accuracy
+  # Uncomment and link to your temperature sensor when available
+  # temperature_compensation: water_temp_sensor
+
+################################################################################
 # Dummy Actuator Trigger - Test Component for Safety Gate
 #
 # Automated test component that validates the ActuatorSafetyGate functionality
@@ -795,7 +863,9 @@ plantos_logic:
   calendar: plant_calendar
 
   # Optional dependencies
-  ph_sensor: sensor_dummy_id  # Replace with actual pH sensor when available
+  # Production pH sensor: Atlas Scientific EZO pH circuit via I2C
+  # For development/testing, can switch back to: sensor_dummy_id
+  ph_sensor: ph_sensor_real
   state_text: logic_state_text
 
 

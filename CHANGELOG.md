@@ -5,6 +5,189 @@ All notable changes to the PlantOS project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-12-04
+
+### Description
+Major release implementing the core application logic for PlantOS. Adds production-ready routine orchestration FSM for pH correction, nutrient feeding, and water management. All actuator operations are safety-gated and critical sequences are logged for power-loss recovery.
+
+### Added
+- **CalendarManager Component**: Daily schedule management for 120-day grow cycle
+  - **JSON Schedule Parsing**: Loads entire 120-day schedule from JSON array using ArduinoJson library
+  - **NVS Persistence**: Current day number saved to NVS, survives power cycles
+  - **Daily Schedule Structure**: Stores pH targets (min/max) and nutrient dosing durations (A/B/C) for each day
+  - **Safe Mode Support**: Disables automated time-based routines when enabled (manual control still works)
+  - **Verbose Logging**: Optional detailed logging of all operations
+  - **Status Reporting**: Periodic reporting of current day and schedule parameters
+  - **Public API**:
+    - `get_today_schedule()`: Get current day's pH targets and dosing durations
+    - `get_schedule(day)`: Get any day's schedule
+    - `advance_day()`: Move to next day (with wraparound after day 120)
+    - `set_current_day(day)`: Jump to specific day
+    - `reset_to_day_1()`: Reset cycle to day 1
+    - `toggle_safe_mode()`: Toggle automated routines on/off
+    - `set_safe_mode_enabled(bool)`: Explicitly enable/disable safe mode
+    - `is_safe_mode()`: Check if safe mode is currently enabled
+  - **Component Files**:
+    - `components/calendar_manager/CalendarManager.h`: Header with full API
+    - `components/calendar_manager/CalendarManager.cpp`: Implementation with JSON parsing
+    - `components/calendar_manager/__init__.py`: ESPHome Python configuration
+  - **Configuration in plantOS.yaml** (lines 665-689):
+    - `schedule_json`: JSON array with 120 daily schedules (sample shows days 1-3)
+    - `safe_mode`: Disable automated routines (default: false)
+    - `verbose`: Enable detailed logging (default: false)
+    - `status_log_interval`: Status report frequency (default: 30s)
+
+- **PlantOSLogic Component**: Main application logic FSM for routine orchestration
+  - **FSM States** (12 total):
+    - `IDLE`: System stable, waiting for trigger
+    - `PH_CORRECTION_DUE`: pH sequence triggered
+    - `PH_MEASURING`: All pumps OFF, 5-minute stabilization, robust averaging
+    - `PH_CALCULATING`: Determine if injection needed based on target range
+    - `PH_INJECTING`: Acid pump ON with calculated duration
+    - `PH_MIXING`: Air pump ON for 2-minute mixing
+    - `PH_CALIBRATING`: pH sensor calibration (stops all other routines)
+    - `FEEDING_DUE`: Nutrient dosing triggered
+    - `FEEDING_INJECTING`: Sequential nutrient pump activation (A→B→C)
+    - `WATER_MANAGEMENT_DUE`: Water change/top-off needed
+    - `WATER_FILLING`: Freshwater valve ON
+    - `WATER_EMPTYING`: Wastewater pump ON
+  - **pH Correction Sequence** (per specification):
+    - **5-Minute Stabilization**: All pumps OFF, readings every 60 seconds
+    - **Robust Averaging**: 5 readings with outlier rejection (10% from each end)
+    - **Min Dosing Threshold**: Skip injection if calculated dose < 1000ms
+    - **Target Range Check**: Skip if pH within min/max range from calendar
+    - **Max Retry Attempts**: Stop after 5 correction attempts
+    - **Critical pH Alerting**: Alerts if pH < 5.0 or > 7.5
+    - **Mixing Cycles**: 2-minute air pump activation between doses
+    - **Automatic Retry**: Re-measures pH after mixing, up to 5 total attempts
+  - **Safety Integration**:
+    - All actuator commands via `ActuatorSafetyGate.executeCommand()`
+    - Duration limits enforced per actuator
+    - Debouncing prevents redundant commands
+    - Command rejections logged automatically
+  - **Persistent State Integration**:
+    - Critical sequences logged to PSM before start
+    - Events cleared after successful completion
+    - Recovery possible after power loss or crash
+    - Event IDs: "PH_CORRECTION", "FEEDING", "WATER_FILL", "WATER_EMPTY"
+  - **Status Logger Integration**:
+    - All state changes reported to CentralStatusLogger
+    - Current pH and routine state visible in status reports
+    - Alerts for critical pH conditions
+    - Alert for max pH correction attempts reached
+  - **Actuator Mapping**:
+    - `"AcidPump"`: pH down dosing
+    - `"NutrientPumpA"`, `"NutrientPumpB"`, `"NutrientPumpC"`: Nutrient feeding
+    - `"WaterValve"`: Freshwater inlet
+    - `"WastewaterPump"`: Wastewater outlet
+    - `"AirPump"`: Mixing
+  - **Public API (Manual Control)**:
+    - `start_ph_correction()`: Start full pH correction sequence
+    - `start_ph_measurement_only()`: Measure pH without correction
+    - `start_feeding()`: Start nutrient dosing (uses calendar schedule)
+    - `start_fill_tank()`: Start tank filling
+    - `start_empty_tank()`: Start tank emptying
+    - `calibrate_ph()`: Start pH sensor calibration
+  - **Component Files**:
+    - `components/plantos_logic/PlantOSLogic.h`: Header with FSM states and API
+    - `components/plantos_logic/PlantOSLogic.cpp`: Implementation (700+ lines)
+    - `components/plantos_logic/__init__.py`: ESPHome Python configuration
+  - **Configuration in plantOS.yaml** (lines 692-770):
+    - Required dependencies: `safety_gate`, `psm`, `calendar`
+    - Optional dependencies: `ph_sensor`, `state_text`
+    - Status logger injected via on_boot automation
+
+- **Web UI Control Buttons**: 7 new buttons for manual routine control
+  - "Start pH Correction": Trigger full pH correction sequence
+  - "Measure pH Only": Check pH without adjusting it
+  - "Start Feeding": Dose nutrients based on current day's schedule
+  - "Fill Tank": Activate freshwater valve for 30 seconds
+  - "Empty Tank": Activate wastewater pump for 30 seconds
+  - "Calibrate pH": Enter pH calibration mode (stops other routines)
+  - "Toggle Safe Mode": Enable/disable automated time-based routines (manual control always works)
+  - Configuration in plantOS.yaml (lines 362-443)
+
+- **Text Sensors**: New status displays
+  - "PlantOS Logic State": Shows current FSM state (IDLE, PH_MEASURING, etc.)
+  - "Safe Mode Status": Shows ENABLED or DISABLED (automated routines on/off)
+  - Updates automatically on state transitions
+  - Configuration in plantOS.yaml (lines 298-320)
+
+### Changed
+- **ActuatorSafetyGate**: Re-enabled after being deactivated in 0.3.2
+  - Now actively used by PlantOSLogic for all actuator control
+  - Provides critical safety layer for pump and valve operations
+  - Configuration in plantOS.yaml (lines 488-489)
+
+- **ESPHome Boot Automation**: Added CentralStatusLogger injection
+  - PlantOSLogic receives status logger pointer from controller on boot
+  - Enables unified status reporting across all components
+  - Priority -100 ensures components are initialized first
+  - Configuration in plantOS.yaml (lines 11-17)
+
+### Technical Details
+- **Non-Blocking FSM**: All timing via millis(), no blocking delays
+- **State Transitions**: Explicit state changes with timestamp tracking
+- **Robust pH Averaging**:
+  - Collects 5 readings at 1-minute intervals
+  - Sorts and rejects 10% outliers from each end
+  - Returns average of middle 80% of values
+  - Handles edge cases (< 2 readings, all outliers)
+- **Acid Dosing Calculation**: Linear formula (1 second per 0.1 pH unit)
+  - Placeholder for production calibration curve
+  - Capped at 30 seconds maximum
+  - Validated against min threshold (1000ms) and max limit (30000ms)
+- **Feeding Sequence**: Sequential pump activation (A→B→C)
+  - Respects individual pump durations from calendar
+  - Skips pumps with 0ms duration
+  - 200ms safety margin after each pump deactivation
+- **Memory Usage**:
+  - CalendarManager: ~15KB (120-day schedule map)
+  - PlantOSLogic: ~2KB (state machine + pH buffer)
+  - Total flash impact: ~50KB (including all new components)
+- **Build Verification**:
+  - RAM: 11.2% (used 36592 bytes from 327680 bytes)
+  - Flash: 57.0% (used 1046248 bytes from 1835008 bytes)
+  - Compile time: ~26 seconds
+  - All components compile successfully with ESP-IDF framework
+
+### Use Cases
+- **Automated pH Control**: Maintain pH within daily target range with minimal user intervention
+- **Nutrient Scheduling**: Automated feeding based on plant growth cycle stage
+- **Water Management**: Scheduled tank fills and empties for reservoir maintenance
+- **Manual Override**: All routines can be triggered manually via Web UI
+- **Safe Mode Operation**:
+  - Toggle via Web UI button for quick enable/disable
+  - Disable automation for maintenance while keeping manual control
+  - Perfect for system cleaning, sensor calibration, or hardware work
+  - All manual buttons remain functional in safe mode
+  - Status visible in Web UI via "Safe Mode Status" text sensor
+- **Development Testing**: Test individual routines without connecting real sensors
+- **Production Deployment**: Full automation with all safety systems active
+
+### Known Limitations
+- **pH Sensor Interface**: Currently uses dummy sensor, EZOPH sensor interface not implemented
+- **Actuator Hardware**: No physical pumps/valves connected (safety gate ready)
+- **Schedule Data**: Only 3-day sample schedule included (production needs all 120 days)
+- **Calibration Routine**: pH calibration state is placeholder (no actual calibration logic)
+- **Water Management**: Fill/empty durations are hardcoded (need configuration)
+- **Timing Calibration**: Acid dosing uses linear placeholder formula (needs calibration)
+
+### Migration Notes
+- **Existing Systems**: No breaking changes to existing controller or sensor components
+- **Configuration Required**: Must add `calendar_manager` and `plantos_logic` to YAML
+- **Dependencies**: Requires ArduinoJson library (auto-installed by PlatformIO)
+- **NVS Usage**: CalendarManager adds one NVS key for current day storage
+
+### Security Considerations
+- **Safe Mode**: Prevents unintended automation during maintenance
+- **Duration Limits**: Prevents runaway pumps via ActuatorSafetyGate
+- **Critical Alerts**: Immediate notification of dangerous pH levels
+- **Persistent Recovery**: Power loss during dosing is logged and recoverable
+- **Manual Control**: All routines can be stopped by power cycle or manual intervention
+
+---
+
 ## [0.4.4] - 2025-12-03
 
 ### Added

@@ -8,6 +8,14 @@
 esphome:
   name: plantos
 
+  # Boot automation: Inject CentralStatusLogger from controller into PlantOSLogic
+  on_boot:
+    priority: -100  # Run after all components are initialized
+    then:
+      - lambda: |-
+          // Inject CentralStatusLogger from controller into PlantOSLogic
+          id(plant_logic)->set_status_logger(id(my_controller)->get_logger());
+
 esp32:
   board: esp32-c6-devkitc-1
   variant: esp32c6
@@ -295,6 +303,22 @@ text_sensor:
     # Update every 5 seconds to show current status
     update_interval: 5s
 
+  - platform: template
+    name: "PlantOS Logic State"
+    id: logic_state_text
+    # Shows current PlantOSLogic FSM state
+    # Updated automatically by PlantOSLogic on state transitions
+
+  - platform: template
+    name: "Safe Mode Status"
+    id: safe_mode_status
+    # Shows current safe mode status: ENABLED or DISABLED
+    # When enabled: automated routines are disabled (manual control still works)
+    lambda: |-
+      return id(plant_calendar)->is_safe_mode() ? std::string("ENABLED") : std::string("DISABLED");
+    # Update every 5 seconds to show current status
+    update_interval: 5s
+
 ################################################################################
 # Button: Reset Controller
 #
@@ -350,6 +374,73 @@ button:
       then:
         - lambda: |-
             id(my_controller)->blaze_it();
+
+  # ========== PlantOS Logic Manual Control Buttons ==========
+
+  - platform: template
+    name: "Start pH Correction"
+    on_press:
+      # Start the full pH correction sequence
+      # Includes measurement, calculation, dosing, and mixing
+      then:
+        - lambda: |-
+            id(plant_logic)->start_ph_correction();
+
+  - platform: template
+    name: "Measure pH Only"
+    on_press:
+      # Measure pH without correcting it
+      # Useful for checking current pH value
+      then:
+        - lambda: |-
+            id(plant_logic)->start_ph_measurement_only();
+
+  - platform: template
+    name: "Start Feeding"
+    on_press:
+      # Start nutrient feeding sequence
+      # Uses dosing durations from current day's schedule
+      then:
+        - lambda: |-
+            id(plant_logic)->start_feeding();
+
+  - platform: template
+    name: "Fill Tank"
+    on_press:
+      # Start tank filling sequence
+      # Opens water valve for configured duration
+      then:
+        - lambda: |-
+            id(plant_logic)->start_fill_tank();
+
+  - platform: template
+    name: "Empty Tank"
+    on_press:
+      # Start tank emptying sequence
+      # Activates wastewater pump for configured duration
+      then:
+        - lambda: |-
+            id(plant_logic)->start_empty_tank();
+
+  - platform: template
+    name: "Calibrate pH"
+    on_press:
+      # Start pH sensor calibration
+      # Stops all other routines until complete
+      then:
+        - lambda: |-
+            id(plant_logic)->calibrate_ph();
+
+  - platform: template
+    name: "Toggle Safe Mode"
+    on_press:
+      # Toggle safe mode on/off
+      # When enabled: automated time-based routines are disabled
+      # When disabled: automated routines are re-enabled
+      # Manual control via buttons always works regardless of safe mode
+      then:
+        - lambda: |-
+            id(plant_calendar)->toggle_safe_mode();
 
 ################################################################################
 # System Controller: Finite State Machine
@@ -485,9 +576,8 @@ interval:
 # This is a critical safety component that should be used for all actuators
 # that could cause damage if left running too long (pumps, valves, heaters, etc.)
 ################################################################################
-# DEACTIVATED: Actuator Safety Gate test
-# actuator_safety_gate:
-#   id: actuator_safety
+actuator_safety_gate:
+  id: actuator_safety
 
 ################################################################################
 # Dummy Actuator Trigger - Test Component for Safety Gate
@@ -661,4 +751,51 @@ i2c_mutex_demo:
   id: my_i2c_mutex_demo
   test_mode: false  # PRODUCTION: false = mutex only, no test tasks
                     # DEMO: true = mutex + test tasks with logging
+
+################################################################################
+# CalendarManager - Daily Schedule Management for 120-Day Grow Cycle
+#
+# Manages target pH values and nutrient dosing durations for each day.
+# Current day is persisted to NVS and survives power cycles.
+################################################################################
+calendar_manager:
+  id: plant_calendar
+
+  # Safe mode: Disable automated time-based routines (manual control still works)
+  safe_mode: false
+
+  # Verbose mode: Enable detailed logging of all operations
+  verbose: false
+
+  # Status log interval: How often to report current day and schedule
+  status_log_interval: 30s
+
+  # Schedule JSON: 120-day schedule (currently showing days 1-3 as example)
+  # Full production schedule would contain all 120 days
+  schedule_json: >-
+    [
+      {"day": 1, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ms": 500, "dose_B_ms": 1200, "dose_C_ms": 800},
+      {"day": 2, "ph_min": 5.8, "ph_max": 6.3, "dose_A_ms": 600, "dose_B_ms": 1300, "dose_C_ms": 900},
+      {"day": 3, "ph_min": 5.9, "ph_max": 6.3, "dose_A_ms": 700, "dose_B_ms": 1400, "dose_C_ms": 1000}
+    ]
+
+################################################################################
+# PlantOSLogic - Main Application Logic FSM
+#
+# Orchestrates pH correction, nutrient feeding, and water management routines.
+# All actuator operations go through ActuatorSafetyGate for safety enforcement.
+# Critical sequences logged to PSM for recovery after power loss.
+################################################################################
+plantos_logic:
+  id: plant_logic
+
+  # Required dependencies
+  safety_gate: actuator_safety
+  psm: psm
+  calendar: plant_calendar
+
+  # Optional dependencies
+  ph_sensor: sensor_dummy_id  # Replace with actual pH sensor when available
+  state_text: logic_state_text
+
 

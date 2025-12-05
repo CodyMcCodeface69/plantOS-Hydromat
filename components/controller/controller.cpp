@@ -28,7 +28,7 @@ void Controller::setup() {
   this->last_status_log_time_ = millis();
 
   // Set initial logger state
-  this->status_logger_.updateStatus(0.0, "INIT");
+  this->status_logger_.updateControllerState("INIT");
   this->status_logger_.updateIP("0.0.0.0");  // Will be updated when WiFi connects
   this->status_logger_.updateWebServerStatus(false, false);
 
@@ -57,8 +57,7 @@ void Controller::setup() {
   if (this->sensor_source_ != nullptr) {
     this->sensor_source_->add_on_state_callback([this](float x) {
       this->current_sensor_value_ = x;
-      // Update status logger with new sensor value
-      this->status_logger_.updateStatus(x, get_state_name(this->current_state_));
+      // Sensor value is just a dummy value for Controller - real pH is tracked by PlantOSLogic
     });
   }
 
@@ -161,8 +160,8 @@ void Controller::loop() {
         this->state_counter_ = 0; // Reset counter for the new state
         this->current_state_ = next_state.func;
 
-        // Update status logger with new state
-        this->status_logger_.updateStatus(this->current_sensor_value_, new_state_name);
+        // Update status logger with new Controller state
+        this->status_logger_.updateControllerState(new_state_name);
 
         publish_state(); // Publish new state to text sensor
     }
@@ -394,7 +393,7 @@ void Controller::trigger_error_test() {
   publish_state();
 
   // Update status logger
-  this->status_logger_.updateStatus(this->current_sensor_value_, "ERROR_TEST");
+  this->status_logger_.updateControllerState("ERROR_TEST");
 }
 
 // ============================================================================

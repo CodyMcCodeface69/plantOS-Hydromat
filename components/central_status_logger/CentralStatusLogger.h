@@ -39,6 +39,32 @@ public:
     void updateStatus(float ph, const String& routine);
 
     /**
+     * Update Controller FSM state (hardware-level state machine)
+     * @param state Current Controller state (INIT, CALIBRATION, READY, ERROR, etc.)
+     */
+    void updateControllerState(const String& state);
+
+    /**
+     * Update PlantOS Logic state (application-level state machine)
+     * @param state Current PlantOS Logic state (IDLE, PH_MEASURING, FEEDING_INJECTING, etc.)
+     */
+    void updateLogicState(const String& state);
+
+    /**
+     * Update maintenance mode status
+     * @param enabled True if maintenance mode is active
+     */
+    void updateMaintenanceMode(bool enabled);
+
+    /**
+     * Update PSM (Persistent State Manager) event status
+     * @param eventID Current event ID (empty string if no event)
+     * @param status Event status code
+     * @param ageSeconds Age of event in seconds (-1 if no event)
+     */
+    void updatePSMEvent(const String& eventID, int status, int64_t ageSeconds);
+
+    /**
      * Add or clear alert status
      * @param alertType Type identifier for the alert (e.g., "SPILL", "PH_CRITICAL")
      * @param reason Detailed reason for the alert (empty to clear)
@@ -97,6 +123,14 @@ private:
     // Web server status
     bool webServerOnline;
     bool webServerClientConnected;
+
+    // System state tracking
+    String controllerState;         // Controller FSM state
+    String logicState;              // PlantOS Logic FSM state
+    bool maintenanceMode;           // Maintenance/shutdown mode flag
+    String psmEventID;              // Current PSM event ID (empty if none)
+    int psmEventStatus;             // PSM event status code
+    int64_t psmEventAge;            // PSM event age in seconds (-1 if no event)
 
     // Alert management - supports multiple simultaneous alerts
     std::vector<Alert> activeAlerts;

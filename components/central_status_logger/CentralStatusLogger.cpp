@@ -6,7 +6,13 @@ CentralStatusLogger::CentralStatusLogger()
       filteredPH(7.0),
       activeRoutine("INIT"),
       webServerOnline(false),
-      webServerClientConnected(false) {
+      webServerClientConnected(false),
+      controllerState("UNKNOWN"),
+      logicState("UNKNOWN"),
+      maintenanceMode(false),
+      psmEventID(""),
+      psmEventStatus(0),
+      psmEventAge(-1) {
 }
 
 void CentralStatusLogger::begin() {
@@ -19,6 +25,12 @@ void CentralStatusLogger::begin() {
     activeRoutine = "IDLE";
     webServerOnline = false;
     webServerClientConnected = false;
+    controllerState = "UNKNOWN";
+    logicState = "UNKNOWN";
+    maintenanceMode = false;
+    psmEventID = "";
+    psmEventStatus = 0;
+    psmEventAge = -1;
     activeAlerts.clear();
 
     printSeparator();
@@ -30,6 +42,24 @@ void CentralStatusLogger::begin() {
 void CentralStatusLogger::updateStatus(float ph, const String& routine) {
     filteredPH = ph;
     activeRoutine = routine;
+}
+
+void CentralStatusLogger::updateControllerState(const String& state) {
+    controllerState = state;
+}
+
+void CentralStatusLogger::updateLogicState(const String& state) {
+    logicState = state;
+}
+
+void CentralStatusLogger::updateMaintenanceMode(bool enabled) {
+    maintenanceMode = enabled;
+}
+
+void CentralStatusLogger::updatePSMEvent(const String& eventID, int status, int64_t ageSeconds) {
+    psmEventID = eventID;
+    psmEventStatus = status;
+    psmEventAge = ageSeconds;
 }
 
 void CentralStatusLogger::updateAlertStatus(const String& alertType, const String& reason) {
@@ -117,10 +147,32 @@ void CentralStatusLogger::logStatus() {
 
     Serial.println();
 
-    // System State
+    // System State - Now shows ALL state machines
     Serial.println("--- SYSTEM STATE ---");
-    Serial.print("  Active Routine: ");
+
+    Serial.print("  Controller FSM:     ");
+    Serial.println(controllerState);
+
+    Serial.print("  PlantOS Logic FSM:  ");
+    Serial.println(logicState);
+
+    Serial.print("  Maintenance Mode:   ");
+    Serial.println(maintenanceMode ? "ENABLED" : "DISABLED");
+
+    Serial.print("  Active Routine:     ");
     Serial.println(activeRoutine);
+
+    if (!psmEventID.isEmpty() && psmEventAge >= 0) {
+        Serial.print("  PSM Event:          ");
+        Serial.print(psmEventID);
+        Serial.print(" (Status: ");
+        Serial.print(psmEventStatus);
+        Serial.print(", Age: ");
+        Serial.print((long)psmEventAge);
+        Serial.println(" sec)");
+    } else {
+        Serial.println("  PSM Event:          None");
+    }
 
     Serial.println();
 

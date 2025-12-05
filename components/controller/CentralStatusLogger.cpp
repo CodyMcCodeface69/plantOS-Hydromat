@@ -9,6 +9,12 @@ CentralStatusLogger::CentralStatusLogger()
       activeRoutine("INIT"),
       webServerOnline(false),
       webServerClientConnected(false),
+      controllerState("UNKNOWN"),
+      logicState("UNKNOWN"),
+      maintenanceMode(false),
+      psmEventID(""),
+      psmEventStatus(0),
+      psmEventAge(-1),
       i2cScanPerformed(false),
       mode420_(false) {
 }
@@ -23,6 +29,12 @@ void CentralStatusLogger::begin() {
     activeRoutine = "IDLE";
     webServerOnline = false;
     webServerClientConnected = false;
+    controllerState = "UNKNOWN";
+    logicState = "UNKNOWN";
+    maintenanceMode = false;
+    psmEventID = "";
+    psmEventStatus = 0;
+    psmEventAge = -1;
     activeAlerts.clear();
 
     printSeparator();
@@ -37,6 +49,36 @@ void CentralStatusLogger::updateStatus(float ph, const std::string& routine) {
 
 void CentralStatusLogger::updateStatus(float ph, const char* routine) {
     updateStatus(ph, std::string(routine));
+}
+
+void CentralStatusLogger::updateControllerState(const std::string& state) {
+    controllerState = state;
+}
+
+void CentralStatusLogger::updateControllerState(const char* state) {
+    updateControllerState(std::string(state));
+}
+
+void CentralStatusLogger::updateLogicState(const std::string& state) {
+    logicState = state;
+}
+
+void CentralStatusLogger::updateLogicState(const char* state) {
+    updateLogicState(std::string(state));
+}
+
+void CentralStatusLogger::updateMaintenanceMode(bool enabled) {
+    maintenanceMode = enabled;
+}
+
+void CentralStatusLogger::updatePSMEvent(const std::string& eventID, int status, int64_t ageSeconds) {
+    psmEventID = eventID;
+    psmEventStatus = status;
+    psmEventAge = ageSeconds;
+}
+
+void CentralStatusLogger::updatePSMEvent(const char* eventID, int status, int64_t ageSeconds) {
+    updatePSMEvent(std::string(eventID), status, ageSeconds);
 }
 
 void CentralStatusLogger::updateAlertStatus(const std::string& alertType, const std::string& reason) {
@@ -192,9 +234,23 @@ void CentralStatusLogger::logStatus() {
 
     ESP_LOGI(TAG, "");
 
-    // System State
+    // System State - Now shows ALL state machines
     ESP_LOGI(TAG, "--- SYSTEM STATE ---");
-    ESP_LOGI(TAG, "  Active Routine: %s", activeRoutine.c_str());
+
+    ESP_LOGI(TAG, "  Controller FSM:     %s", controllerState.c_str());
+
+    ESP_LOGI(TAG, "  PlantOS Logic FSM:  %s", logicState.c_str());
+
+    ESP_LOGI(TAG, "  Maintenance Mode:   %s", maintenanceMode ? "ENABLED" : "DISABLED");
+
+    ESP_LOGI(TAG, "  Active Routine:     %s", activeRoutine.c_str());
+
+    if (!psmEventID.empty() && psmEventAge >= 0) {
+        ESP_LOGI(TAG, "  PSM Event:          %s (Status: %d, Age: %lld sec)",
+                 psmEventID.c_str(), psmEventStatus, (long long)psmEventAge);
+    } else {
+        ESP_LOGI(TAG, "  PSM Event:          None");
+    }
 
     ESP_LOGI(TAG, "");
 

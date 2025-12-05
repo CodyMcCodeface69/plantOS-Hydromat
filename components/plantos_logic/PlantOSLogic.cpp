@@ -50,6 +50,22 @@ void PlantOSLogic::setup() {
             ESP_LOGI(TAG, "No persistent maintenance mode - starting in IDLE");
             this->current_status_ = LogicStatus::IDLE;
         }
+
+        // Update status logger with maintenance mode
+        if (this->status_logger_) {
+            this->status_logger_->updateMaintenanceMode(this->shutdown_requested_);
+        }
+
+        // Check for any PSM events and report them
+        if (this->psm_->hasEvent()) {
+            auto event = this->psm_->getLastEvent();
+            int64_t age = this->psm_->getEventAge();
+            if (this->status_logger_) {
+                this->status_logger_->updatePSMEvent(event.eventID, event.status, age);
+            }
+            ESP_LOGW(TAG, "PSM event recovered: %s (status: %d, age: %lld sec)",
+                     event.eventID, event.status, (long long)age);
+        }
     } else {
         // No PSM available - default to IDLE
         this->current_status_ = LogicStatus::IDLE;
@@ -59,6 +75,11 @@ void PlantOSLogic::setup() {
 
     // Publish initial state
     this->publish_state();
+
+    // Initialize status logger with initial Logic state
+    if (this->status_logger_) {
+        this->status_logger_->updateLogicState(this->get_status_string());
+    }
 
     ESP_LOGI(TAG, "PlantOSLogic initialized - State: %s", this->get_status_string());
 }
@@ -737,12 +758,10 @@ void PlantOSLogic::transition_to(LogicStatus new_status) {
         // Publish state change
         this->publish_state();
 
-        // Update status logger
+        // Update status logger with separate state and sensor data
         if (this->status_logger_) {
-            this->status_logger_->updateStatus(
-                this->ph_current_,
-                this->get_status_string()
-            );
+            this->status_logger_->updateLogicState(this->get_status_string());
+            this->status_logger_->updateStatus(this->ph_current_, ""); // Update pH reading
         }
     }
 }
@@ -875,6 +894,11 @@ bool PlantOSLogic::toggle_maintenance_mode(bool state) {
 
     // Set internal state
     this->shutdown_requested_ = state;
+
+    // Update status logger with maintenance mode status
+    if (this->status_logger_) {
+        this->status_logger_->updateMaintenanceMode(state);
+    }
 
     // Persist to PSM
     if (this->psm_) {

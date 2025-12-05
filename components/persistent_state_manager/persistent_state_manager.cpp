@@ -149,5 +149,46 @@ int64_t PersistentStateManager::getEventAge() const {
     return current_time - current_event_.timestampSec;
 }
 
+bool PersistentStateManager::saveState(const char* key, bool value) {
+    if (key == nullptr) {
+        ESP_LOGE(TAG, "Cannot save state: key is null");
+        return false;
+    }
+
+    // Create a preference object for this specific key
+    // Use fnv1_hash to generate a unique hash for the key
+    auto pref = global_preferences->make_preference<bool>(fnv1_hash(key), true);
+
+    // Save the boolean value to NVS
+    if (pref.save(&value)) {
+        ESP_LOGD(TAG, "State saved to NVS: %s = %s", key, value ? "true" : "false");
+        return true;
+    } else {
+        ESP_LOGE(TAG, "Failed to save state to NVS: %s", key);
+        return false;
+    }
+}
+
+bool PersistentStateManager::loadState(const char* key, bool default_value) {
+    if (key == nullptr) {
+        ESP_LOGE(TAG, "Cannot load state: key is null");
+        return default_value;
+    }
+
+    // Create a preference object for this specific key
+    auto pref = global_preferences->make_preference<bool>(fnv1_hash(key), true);
+
+    // Attempt to load the boolean value from NVS
+    bool loaded_value = default_value;
+    if (pref.load(&loaded_value)) {
+        ESP_LOGD(TAG, "State loaded from NVS: %s = %s", key, loaded_value ? "true" : "false");
+        return loaded_value;
+    } else {
+        ESP_LOGD(TAG, "No state found in NVS for key: %s (using default: %s)",
+                 key, default_value ? "true" : "false");
+        return default_value;
+    }
+}
+
 } // namespace persistent_state_manager
 } // namespace esphome

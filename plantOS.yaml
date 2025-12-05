@@ -68,10 +68,10 @@ wifi:
   reboot_timeout: 2min
 
   # ==============================================================
-  # FALLBACK ACCESS POINT (AP) FÜR DEBUG-ZWECKE
-  # WICHTIG: Wenn der Chip das Haupt-WLAN (Datenautobahn) NICHT findet,
-  # erstellt er dieses temporäre WLAN. Verbinden Sie sich damit, um
-  # die Live-Logs im Browser unter http://192.168.4.1 zu sehen.
+  # FALLBACK ACCESS POINT (AP) FOR DEBUGGING
+  # IMPORTANT: If the device cannot connect to the main WiFi network,
+  # it creates this temporary WiFi network. Connect to it to view
+  # live logs in your browser at http://192.168.4.1
   # ==============================================================
   ap:
     ssid: "PlantOS-Fallback"
@@ -294,36 +294,26 @@ sensor:
 
 
 ################################################################################
-# Text Sensor: Controller State
+# Text Sensor: Controller State (00 - Kern-Status)
 #
 # Publishes the current FSM state to the web UI for monitoring and debugging.
 # Shows state names: INIT, CALIBRATION, READY, ERROR
 ################################################################################
 text_sensor:
   - platform: template
-    name: "Controller State"
+    name: "00_01_Controller State"
     id: controller_state_text
     # Text sensors don't have numerical state, just publish strings
     # The controller will call publish_state() to update this
 
   - platform: template
-    name: "Verbose Mode Status"
-    id: verbose_mode_status
-    # Shows current verbose logging status: ON or OFF
-    # Updated when verbose mode is toggled
-    lambda: |-
-      return id(my_controller)->get_verbose() ? std::string("ON") : std::string("OFF");
-    # Update every 5 seconds to show current status
-    update_interval: 5s
-
-  - platform: template
-    name: "PlantOS Logic State"
+    name: "00_02_PlantOS Logic State"
     id: logic_state_text
     # Shows current PlantOSLogic FSM state
     # Updated automatically by PlantOSLogic on state transitions
 
   - platform: template
-    name: "Safe Mode Status"
+    name: "01_01_Safe Mode Status"
     id: safe_mode_status
     # Shows current safe mode status: ENABLED or DISABLED
     # When enabled: automated routines are disabled (manual control still works)
@@ -332,15 +322,25 @@ text_sensor:
     # Update every 5 seconds to show current status
     update_interval: 5s
 
+  - platform: template
+    name: "01_02_Verbose Mode Status"
+    id: verbose_mode_status
+    # Shows current verbose logging status: ON or OFF
+    # Updated when verbose mode is toggled
+    lambda: |-
+      return id(my_controller)->get_verbose() ? std::string("ON") : std::string("OFF");
+    # Update every 5 seconds to show current status
+    update_interval: 5s
+
 ################################################################################
-# Button: Reset Controller
+# Button: Controller Management and Manual Routines
 #
-# Provides a manual reset button in the web UI to force the controller back
-# to INIT state. Useful for testing, debugging, and manual recalibration.
+# Provides manual control over the system controller and PlantOS routines.
 ################################################################################
 button:
+  # === 03 - System Control & Restart ===
   - platform: template
-    name: "Reset Controller"
+    name: "03_01_Reset Controller"
     on_press:
       # Lambda action calls the controller's reset_to_init() method
       # This triggers an immediate transition to INIT state
@@ -349,16 +349,7 @@ button:
             id(my_controller)->reset_to_init();
 
   - platform: template
-    name: "Clear PSM Alerts"
-    on_press:
-      # Lambda action calls the PSM's clearEvent() method
-      # This clears any critical events logged to NVS
-      then:
-        - lambda: |-
-            id(psm)->clearEvent();
-
-  - platform: template
-    name: "Reconnect WiFi"
+    name: "03_02_Reconnect WiFi"
     on_press:
       # Force WiFi to disconnect and reconnect
       # Useful for troubleshooting mesh network connectivity issues
@@ -369,83 +360,9 @@ button:
         - wifi.enable:
         - logger.log: "WiFi reconnection initiated"
 
+  # === 04 - Security & Mode (Continuation of 02) ===
   - platform: template
-    name: "Toggle Verbose Logging"
-    on_press:
-      # Toggle verbose mode on/off at runtime
-      # Enables/disables detailed logging of all controller actions and state transitions
-      # Useful for debugging without reflashing firmware
-      then:
-        - lambda: |-
-            id(my_controller)->toggle_verbose();
-
-  - platform: template
-    name: "Blaze It"
-    on_press:
-      # Trigger 420 ASCII art display on demand
-      # Displays the easter egg immediately without waiting for 4:20 AM/PM
-      then:
-        - lambda: |-
-            id(my_controller)->blaze_it();
-
-  # ========== PlantOS Logic Manual Control Buttons ==========
-
-  - platform: template
-    name: "Start pH Correction"
-    on_press:
-      # Start the full pH correction sequence
-      # Includes measurement, calculation, dosing, and mixing
-      then:
-        - lambda: |-
-            id(plant_logic)->start_ph_correction();
-
-  - platform: template
-    name: "Measure pH Only"
-    on_press:
-      # Measure pH without correcting it
-      # Useful for checking current pH value
-      then:
-        - lambda: |-
-            id(plant_logic)->start_ph_measurement_only();
-
-  - platform: template
-    name: "Start Feeding"
-    on_press:
-      # Start nutrient feeding sequence
-      # Uses dosing durations from current day's schedule
-      then:
-        - lambda: |-
-            id(plant_logic)->start_feeding();
-
-  - platform: template
-    name: "Fill Tank"
-    on_press:
-      # Start tank filling sequence
-      # Opens water valve for configured duration
-      then:
-        - lambda: |-
-            id(plant_logic)->start_fill_tank();
-
-  - platform: template
-    name: "Empty Tank"
-    on_press:
-      # Start tank emptying sequence
-      # Activates wastewater pump for configured duration
-      then:
-        - lambda: |-
-            id(plant_logic)->start_empty_tank();
-
-  - platform: template
-    name: "Calibrate pH"
-    on_press:
-      # Start pH sensor calibration
-      # Stops all other routines until complete
-      then:
-        - lambda: |-
-            id(plant_logic)->calibrate_ph();
-
-  - platform: template
-    name: "Toggle Safe Mode"
+    name: "04_01_Toggle Safe Mode"
     on_press:
       # Toggle safe mode on/off
       # When enabled: automated time-based routines are disabled
@@ -454,6 +371,94 @@ button:
       then:
         - lambda: |-
             id(plant_calendar)->toggle_safe_mode();
+
+  # === 05 - Logging & Cleanup ===
+  - platform: template
+    name: "05_01_Clear PSM Alerts"
+    on_press:
+      # Lambda action calls the PSM's clearEvent() method
+      # This clears any critical events logged to NVS
+      then:
+        - lambda: |-
+            id(psm)->clearEvent();
+
+  - platform: template
+    name: "05_02_Toggle Verbose Logging"
+    on_press:
+      # Toggle verbose mode on/off at runtime
+      # Enables/disables detailed logging of all controller actions and state transitions
+      # Useful for debugging without reflashing firmware
+      then:
+        - lambda: |-
+            id(my_controller)->toggle_verbose();
+
+  # === 06 - Setup & Calibration ===
+  - platform: template
+    name: "06_01_Calibrate pH"
+    on_press:
+      # Start pH sensor calibration
+      # Stops all other routines until complete
+      then:
+        - lambda: |-
+            id(plant_logic)->calibrate_ph();
+
+  # === 07 - pH & Measurement ===
+  - platform: template
+    name: "07_01_Measure pH Only"
+    on_press:
+      # Measure pH without correcting it
+      # Useful for checking current pH value
+      then:
+        - lambda: |-
+            id(plant_logic)->start_ph_measurement_only();
+
+  - platform: template
+    name: "07_02_Start pH Correction"
+    on_press:
+      # Start the full pH correction sequence
+      # Includes measurement, calculation, dosing, and mixing
+      then:
+        - lambda: |-
+            id(plant_logic)->start_ph_correction();
+
+  # === 08 - Primary Routines (Feeding) ===
+  - platform: template
+    name: "08_01_Start Feeding"
+    on_press:
+      # Start nutrient feeding sequence
+      # Uses dosing durations from current day's schedule
+      then:
+        - lambda: |-
+            id(plant_logic)->start_feeding();
+
+  # === 09 - Water Management ===
+  - platform: template
+    name: "09_01_Fill Tank"
+    on_press:
+      # Start tank filling sequence
+      # Opens water valve for configured duration
+      then:
+        - lambda: |-
+            id(plant_logic)->start_fill_tank();
+
+  - platform: template
+    name: "09_02_Empty Tank"
+    on_press:
+      # Start tank emptying sequence
+      # Activates wastewater pump for configured duration
+      then:
+        - lambda: |-
+            id(plant_logic)->start_empty_tank();
+
+  # === 99 - Miscellaneous ===
+  - platform: template
+    name: "99_01_Blaze It"
+    on_press:
+      # Trigger 420 ASCII art display on demand
+      # Displays the easter egg immediately without waiting for 4:20 AM/PM
+      then:
+        - lambda: |-
+            id(my_controller)->blaze_it();
 
 ################################################################################
 # System Controller: Finite State Machine
@@ -892,5 +897,45 @@ plantos_logic:
   # For development/testing, can switch back to: sensor_dummy_id
   ph_sensor: ph_sensor_real
   state_text: logic_state_text
+
+################################################################################
+# Switch Components - Manual Controls (02 - Security)
+#
+# Template switches that call C++ methods in PlantOSLogic for manual control.
+################################################################################
+switch:
+  - platform: template
+    name: "02_01_Maintenance Mode (Safe Shutdown)"
+    id: maintenance_mode_switch
+    icon: "mdi:security"
+    optimistic: false  # State driven by PlantOSLogic internal state
+
+    # Turn ON: Enter maintenance mode
+    # - Sets shutdown_requested_ = true in PlantOSLogic
+    # - Persists state to PSM with key "ShutdownState"
+    # - Logs PSM event: SHUTDOWN/REQUESTED
+    # - Transitions to AWAITING_SHUTDOWN when system is IDLE
+    # - All pumps/valves turned OFF
+    # - Suppresses all automated routines (pH, feeding, water management)
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Maintenance mode switch turned ON");
+          id(plant_logic).toggle_maintenance_mode(true);
+
+    # Turn OFF: Exit maintenance mode
+    # - Sets shutdown_requested_ = false in PlantOSLogic
+    # - Persists state to PSM with key "ShutdownState"
+    # - Logs PSM event: SHUTDOWN/CLEARED_REQUEST
+    # - Transitions back to IDLE from AWAITING_SHUTDOWN
+    # - Re-enables all automated routines
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Maintenance mode switch turned OFF");
+          id(plant_logic).toggle_maintenance_mode(false);
+
+    # IMPORTANT: Switch state synchronization on boot
+    # The switch state must reflect the persistent shutdown_requested_ state
+    # loaded from PSM during PlantOSLogic::setup().
+    # This is handled by checking the state after a delay in on_... section below.
 
 

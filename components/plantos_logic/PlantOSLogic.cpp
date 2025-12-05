@@ -40,18 +40,71 @@ void PlantOSLogic::setup() {
         ESP_LOGW(TAG, "pH sensor not configured - pH routines will not work");
     }
 
-    // Initialize FSM to IDLE
-    this->current_status_ = LogicStatus::IDLE;
+    // Load persistent shutdown state from PSM
+    if (this->psm_) {
+        this->shutdown_requested_ = this->psm_->loadState("ShutdownState");
+        if (this->shutdown_requested_) {
+            ESP_LOGW(TAG, "Persistent maintenance mode loaded from PSM - entering AWAITING_SHUTDOWN");
+            this->current_status_ = LogicStatus::AWAITING_SHUTDOWN;
+        } else {
+            ESP_LOGI(TAG, "No persistent maintenance mode - starting in IDLE");
+            this->current_status_ = LogicStatus::IDLE;
+        }
+    } else {
+        // No PSM available - default to IDLE
+        this->current_status_ = LogicStatus::IDLE;
+    }
+
     this->state_start_time_ = millis();
 
     // Publish initial state
     this->publish_state();
 
-    ESP_LOGI(TAG, "PlantOSLogic initialized - State: IDLE");
+    ESP_LOGI(TAG, "PlantOSLogic initialized - State: %s", this->get_status_string());
 }
 
 void PlantOSLogic::loop() {
-    // Execute current state handler
+    // ========================================================================
+    // PRIORITY CHECK: Maintenance Mode State Transitions
+    // ========================================================================
+    // This check runs BEFORE the state handler to ensure maintenance mode
+    // transitions happen immediately when the flag changes.
+
+    if (this->shutdown_requested_ && this->current_status_ == LogicStatus::IDLE) {
+        // Activation: Enter maintenance mode from IDLE
+        ESP_LOGW(TAG, "Entering maintenance mode - transitioning to AWAITING_SHUTDOWN");
+
+        // Ensure all actuators are OFF
+        this->turn_all_pumps_off();
+
+        // Log event to PSM
+        if (this->psm_) {
+            this->psm_->logEvent("SHUTDOWN", 1);  // 1 = ENTERED_MAINTENANCE_MODE
+        }
+
+        // Transition to AWAITING_SHUTDOWN
+        this->transition_to(LogicStatus::AWAITING_SHUTDOWN);
+        return;
+    }
+
+    if (!this->shutdown_requested_ && this->current_status_ == LogicStatus::AWAITING_SHUTDOWN) {
+        // Deactivation: Exit maintenance mode back to IDLE
+        ESP_LOGI(TAG, "Exiting maintenance mode - transitioning to IDLE");
+
+        // Log event to PSM
+        if (this->psm_) {
+            this->psm_->logEvent("SHUTDOWN", 2);  // 2 = EXIT_MAINTENANCE_MODE
+        }
+
+        // Transition back to IDLE
+        this->transition_to(LogicStatus::IDLE);
+        return;
+    }
+
+    // ========================================================================
+    // Execute Current State Handler
+    // ========================================================================
+
     switch (this->current_status_) {
         case LogicStatus::IDLE:
             this->handle_idle();
@@ -89,6 +142,9 @@ void PlantOSLogic::loop() {
         case LogicStatus::WATER_EMPTYING:
             this->handle_water_emptying();
             break;
+        case LogicStatus::AWAITING_SHUTDOWN:
+            this->handle_awaiting_shutdown();
+            break;
     }
 }
 
@@ -96,6 +152,12 @@ void PlantOSLogic::loop() {
 
 void PlantOSLogic::start_ph_correction() {
     ESP_LOGI(TAG, "Starting pH correction sequence");
+
+    // Check for maintenance mode suppression
+    if (this->current_status_ == LogicStatus::AWAITING_SHUTDOWN) {
+        ESP_LOGW(TAG, "Cannot start pH correction - system in maintenance mode (AWAITING_SHUTDOWN)");
+        return;
+    }
 
     if (this->current_status_ != LogicStatus::IDLE) {
         ESP_LOGW(TAG, "Cannot start pH correction - system not IDLE (current: %s)",
@@ -119,6 +181,12 @@ void PlantOSLogic::start_ph_correction() {
 void PlantOSLogic::start_ph_measurement_only() {
     ESP_LOGI(TAG, "Starting pH measurement only");
 
+    // Check for maintenance mode suppression
+    if (this->current_status_ == LogicStatus::AWAITING_SHUTDOWN) {
+        ESP_LOGW(TAG, "Cannot start pH measurement - system in maintenance mode (AWAITING_SHUTDOWN)");
+        return;
+    }
+
     if (this->current_status_ != LogicStatus::IDLE) {
         ESP_LOGW(TAG, "Cannot start pH measurement - system not IDLE (current: %s)",
                  this->get_status_string());
@@ -132,6 +200,12 @@ void PlantOSLogic::start_ph_measurement_only() {
 
 void PlantOSLogic::start_feeding() {
     ESP_LOGI(TAG, "Starting feeding sequence");
+
+    // Check for maintenance mode suppression
+    if (this->current_status_ == LogicStatus::AWAITING_SHUTDOWN) {
+        ESP_LOGW(TAG, "Cannot start feeding - system in maintenance mode (AWAITING_SHUTDOWN)");
+        return;
+    }
 
     if (this->current_status_ != LogicStatus::IDLE) {
         ESP_LOGW(TAG, "Cannot start feeding - system not IDLE (current: %s)",
@@ -150,6 +224,12 @@ void PlantOSLogic::start_feeding() {
 void PlantOSLogic::start_fill_tank() {
     ESP_LOGI(TAG, "Starting tank fill sequence");
 
+    // Check for maintenance mode suppression
+    if (this->current_status_ == LogicStatus::AWAITING_SHUTDOWN) {
+        ESP_LOGW(TAG, "Cannot start fill - system in maintenance mode (AWAITING_SHUTDOWN)");
+        return;
+    }
+
     if (this->current_status_ != LogicStatus::IDLE) {
         ESP_LOGW(TAG, "Cannot start fill - system not IDLE (current: %s)",
                  this->get_status_string());
@@ -166,6 +246,12 @@ void PlantOSLogic::start_fill_tank() {
 
 void PlantOSLogic::start_empty_tank() {
     ESP_LOGI(TAG, "Starting tank empty sequence");
+
+    // Check for maintenance mode suppression
+    if (this->current_status_ == LogicStatus::AWAITING_SHUTDOWN) {
+        ESP_LOGW(TAG, "Cannot start empty - system in maintenance mode (AWAITING_SHUTDOWN)");
+        return;
+    }
 
     if (this->current_status_ != LogicStatus::IDLE) {
         ESP_LOGW(TAG, "Cannot start empty - system not IDLE (current: %s)",
@@ -622,6 +708,18 @@ void PlantOSLogic::handle_water_emptying() {
     this->transition_to(LogicStatus::IDLE);
 }
 
+void PlantOSLogic::handle_awaiting_shutdown() {
+    // Maintenance mode - system is idle, all routines suppressed
+    // This state does nothing except wait for shutdown_requested_ to become false
+    // The loop() method handles the transition back to IDLE when the flag clears
+
+    // Periodically log that we're in maintenance mode (every 60 seconds)
+    uint32_t elapsed = millis() - this->state_start_time_;
+    if (elapsed > 60000 && (elapsed % 60000) < 100) {
+        ESP_LOGI(TAG, "System in maintenance mode (AWAITING_SHUTDOWN) - all routines suppressed");
+    }
+}
+
 // ========== Helper Functions ==========
 
 void PlantOSLogic::transition_to(LogicStatus new_status) {
@@ -763,9 +861,91 @@ const char* PlantOSLogic::get_status_string() const {
             return "WATER_FILLING";
         case LogicStatus::WATER_EMPTYING:
             return "WATER_EMPTYING";
+        case LogicStatus::AWAITING_SHUTDOWN:
+            return "AWAITING_SHUTDOWN";
         default:
             return "UNKNOWN";
     }
+}
+
+// ========== Maintenance Mode Methods ==========
+
+bool PlantOSLogic::toggle_maintenance_mode(bool state) {
+    ESP_LOGI(TAG, "toggle_maintenance_mode called with state: %s", state ? "true" : "false");
+
+    // Set internal state
+    this->shutdown_requested_ = state;
+
+    // Persist to PSM
+    if (this->psm_) {
+        this->psm_->saveState("ShutdownState", state);
+
+        // Log event
+        if (state) {
+            this->psm_->logEvent("SHUTDOWN", 0);  // 0 = REQUESTED
+            ESP_LOGW(TAG, "Maintenance mode REQUESTED");
+        } else {
+            this->psm_->logEvent("SHUTDOWN", 3);  // 3 = CLEARED_REQUEST
+            ESP_LOGI(TAG, "Maintenance mode CLEARED");
+        }
+    } else {
+        ESP_LOGW(TAG, "PSM not available - maintenance mode state not persisted!");
+    }
+
+    // ========================================================================
+    // SYNCHRONOUS STATE TRANSITIONS (Hotfix V3.1.1)
+    // ========================================================================
+    // Immediately transition state when toggle is called, rather than waiting
+    // for next loop() iteration. This provides instant UI responsiveness.
+
+    if (state) {
+        // ====================================================================
+        // ACTIVATION: User turned maintenance mode ON
+        // ====================================================================
+        // If system is currently IDLE, immediately transition to AWAITING_SHUTDOWN
+        if (this->current_status_ == LogicStatus::IDLE) {
+            ESP_LOGW(TAG, "SYNCHRONOUS ENTRY: Transitioning IDLE -> AWAITING_SHUTDOWN");
+
+            // Turn all actuators OFF immediately
+            this->turn_all_pumps_off();
+
+            // Log entry event to PSM
+            if (this->psm_) {
+                this->psm_->logEvent("SHUTDOWN", 1);  // 1 = ENTERED_MAINTENANCE_MODE
+            }
+
+            // Transition to AWAITING_SHUTDOWN
+            this->transition_to(LogicStatus::AWAITING_SHUTDOWN);
+        } else {
+            // System is not IDLE - transition will occur in loop() when it becomes IDLE
+            ESP_LOGW(TAG, "System not IDLE (current: %s) - will enter AWAITING_SHUTDOWN when IDLE",
+                     this->get_status_string());
+        }
+
+    } else {
+        // ====================================================================
+        // DEACTIVATION: User turned maintenance mode OFF
+        // ====================================================================
+        // If system is currently AWAITING_SHUTDOWN, immediately transition to IDLE
+        if (this->current_status_ == LogicStatus::AWAITING_SHUTDOWN) {
+            ESP_LOGI(TAG, "SYNCHRONOUS EXIT: Transitioning AWAITING_SHUTDOWN -> IDLE");
+
+            // Log exit event to PSM
+            if (this->psm_) {
+                this->psm_->logEvent("SHUTDOWN", 2);  // 2 = EXIT_MAINTENANCE_MODE
+            }
+
+            // Transition back to IDLE
+            this->transition_to(LogicStatus::IDLE);
+        } else {
+            // System is not in AWAITING_SHUTDOWN - nothing to do
+            ESP_LOGI(TAG, "System not in AWAITING_SHUTDOWN (current: %s) - no immediate action needed",
+                     this->get_status_string());
+        }
+    }
+
+    // Return final state
+    return this->shutdown_requested_;
 }
 
 } // namespace plantos_logic

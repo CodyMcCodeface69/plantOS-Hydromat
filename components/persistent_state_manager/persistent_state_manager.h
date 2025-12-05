@@ -200,6 +200,39 @@ public:
      */
     int64_t getEventAge() const;
 
+    // ========================================================================
+    // PERSISTENT STATE STORAGE METHODS
+    // ========================================================================
+
+    /**
+     * Save a boolean state to NVS with a given key
+     *
+     * @param key NVS key for the state (max 15 chars for ESP32 NVS)
+     * @param value Boolean value to save
+     * @return true if save was successful
+     *
+     * Stores a persistent boolean value that survives reboots.
+     * Used for user preferences and toggleable states.
+     *
+     * Example:
+     *     psm.saveState("ShutdownState", true);  // Save maintenance mode ON
+     */
+    bool saveState(const char* key, bool value);
+
+    /**
+     * Load a boolean state from NVS with a given key
+     *
+     * @param key NVS key for the state
+     * @param default_value Value to return if key doesn't exist (default: false)
+     * @return Loaded boolean value, or default_value if not found
+     *
+     * Retrieves a persistent boolean value from NVS.
+     *
+     * Example:
+     *     bool maintenance = psm.loadState("ShutdownState");  // Returns false if not set
+     */
+    bool loadState(const char* key, bool default_value = false);
+
 private:
     // NVS preference handle for persistent storage
     ESPPreferenceObject pref_;

@@ -30,7 +30,8 @@ enum class LogicStatus {
     FEEDING_INJECTING,          // Nutrient pumps ON (via SafetyGate)
     WATER_MANAGEMENT_DUE,       // Water change/top-off needed
     WATER_FILLING,              // Freshwater valve ON
-    WATER_EMPTYING              // Wastewater pump ON
+    WATER_EMPTYING,             // Wastewater pump ON
+    AWAITING_SHUTDOWN           // System in persistent maintenance mode, all routines suppressed
 };
 
 /**
@@ -225,6 +226,21 @@ public:
      */
     const char* get_status_string() const;
 
+    /**
+     * Toggle maintenance mode (persistent shutdown state)
+     *
+     * @param state true to enter maintenance mode, false to exit
+     * @return Final state of maintenance mode
+     *
+     * This method enables/disables the persistent maintenance mode that:
+     * - Suppresses all automated routines (pH, feeding, water management)
+     * - Transitions system to AWAITING_SHUTDOWN state when IDLE
+     * - Persists across reboots via PersistentStateManager
+     * - Ensures all actuators are turned OFF when entering maintenance
+     * - Logs state changes to PSM event log
+     */
+    bool toggle_maintenance_mode(bool state);
+
 private:
     // ========== Component Dependencies ==========
 
@@ -240,6 +256,10 @@ private:
     LogicStatus current_status_{LogicStatus::IDLE};
     uint32_t state_start_time_{0};      // Timestamp when state was entered
     uint32_t state_counter_{0};         // General-purpose counter for state logic
+
+    // ========== Maintenance Mode State ==========
+
+    bool shutdown_requested_{false};    // Persistent maintenance mode flag (loaded from PSM)
 
     // ========== pH Correction State ==========
 
@@ -272,6 +292,7 @@ private:
     void handle_water_management_due();
     void handle_water_filling();
     void handle_water_emptying();
+    void handle_awaiting_shutdown();
 
     // ========== Helper Functions ==========
 

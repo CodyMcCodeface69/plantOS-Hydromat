@@ -11,7 +11,9 @@
       "Bash(mkdir:*)",
       "WebFetch(domain:github.com)",
       "Bash(wc:*)",
-      "Bash(esphome compile:*)"
+      "Bash(esphome compile:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

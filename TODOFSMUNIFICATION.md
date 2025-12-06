@@ -1571,24 +1571,33 @@ plantos_controller:
 
 ## Phase 9: Remove Old Components
 
+**Completion Status**: ✅ COMPLETE
+- Deleted components/controller/ directory (old hardware FSM)
+- Deleted components/plantos_logic/ directory (old application FSM)
+- Removed all old component references from plantOS.yaml:
+  - Removed "controller" from external_components list
+  - Removed commented verbose mode status text sensor
+  - Removed commented network status logger interval
+  - Removed commented PSM checker configuration
+- Updated external_components list (removed controller and plantos_logic)
+- Build successful - firmware compiles without errors
+- RAM usage: 11.2% (36,544 bytes)
+- Flash usage: 58.9% (1,080,028 bytes)
+
 ### Issue #9.1: Delete Old Controller Component
 **Directory**: `components/controller/`
 **Priority**: P0
 
 **Task**: Remove entire old hardware FSM directory
 
-**Files to Delete**:
-- `controller.h/cpp`
-- `state_init.cpp`
-- `state_calibration.cpp`
-- `state_ready.cpp`
-- `state_error.cpp`
-- `state_error_test.cpp`
-- `CentralStatusLogger.h/cpp` (moved to standalone)
-- `__init__.py`
+**Completion Status**: ✅ Done
+
+**Files Deleted**:
+- Entire `components/controller/` directory removed via `rm -rf`
+- All old hardware FSM files deleted (controller.h/cpp, state files, __init__.py)
 
 **Dependencies**: Phase 8 complete, new Controller working
-**Testing**: Build succeeds without old component
+**Testing**: Build succeeds without old component ✅
 
 ---
 
@@ -1598,12 +1607,14 @@ plantos_controller:
 
 **Task**: Remove entire old application FSM directory
 
-**Files to Delete**:
-- `PlantOSLogic.h/cpp`
-- `__init__.py`
+**Completion Status**: ✅ Done
+
+**Files Deleted**:
+- Entire `components/plantos_logic/` directory removed via `rm -rf`
+- All old application FSM files deleted (PlantOSLogic.h/cpp, __init__.py)
 
 **Dependencies**: Phase 8 complete, new Controller working
-**Testing**: Build succeeds without old component
+**Testing**: Build succeeds without old component ✅
 
 ---
 
@@ -1613,8 +1624,16 @@ plantos_controller:
 
 **Task**: Remove unused includes and namespace references
 
+**Completion Status**: ✅ Done
+
+**Changes Made**:
+- Verified no old component references in C++ includes
+- Removed all YAML references to `my_controller` and `plant_logic`
+- Removed "controller" from external_components list
+- psm_checker/__init__.py still references old controller namespace (component is deactivated, so not compiled)
+
 **Dependencies**: Issues #9.1, #9.2
-**Testing**: No compiler warnings about unused includes
+**Testing**: No compiler warnings about unused includes ✅
 
 ---
 

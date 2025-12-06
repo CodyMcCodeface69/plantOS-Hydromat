@@ -8,16 +8,6 @@
 esphome:
   name: plantos
 
-  # Boot automation: Inject CentralStatusLogger from controller into PlantOSLogic
-  # NOTE: Phase 4 - old controller (my_controller) is being replaced with unified_controller
-  # This automation is temporarily disabled until PlantOSLogic is updated in future phases
-  # on_boot:
-  #   priority: -100  # Run after all components are initialized
-  #   then:
-  #     - lambda: |-
-  #         // Inject CentralStatusLogger from controller into PlantOSLogic
-  #         id(plant_logic)->set_status_logger(id(my_controller)->get_logger());
-
 esp32:
   board: esp32-c6-devkitc-1
   variant: esp32c6
@@ -144,8 +134,7 @@ external_components:
   # Points to local custom components directory
   # ESPHome will compile and link C++ code from here alongside generated code
   - source: components
-    components: [controller, sensor_dummy, sensor_filter, ezo_ph,
-                 # plantos_logic,  # Phase 4: Temporarily excluded due to old controller dependency
+    components: [sensor_dummy, sensor_filter, ezo_ph,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
                  i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo, plantos_hal,
                  plantos_controller]
@@ -206,11 +195,6 @@ i2c:
 i2c_scanner:
   id: my_i2c_scanner
   i2c_id: i2c_bus
-
-  # Link to controller for status reporting
-  # This enables I²C scan results to appear in the central status logger
-  # COMMENTED OUT - Phase 4: Old controller not available
-  # status_logger: my_controller
 
   # Scan once at boot to validate hardware setup
   scan_on_boot: true
@@ -327,16 +311,6 @@ text_sensor:
     # Update every 5 seconds to show current status
     update_interval: 5s
 
-  # COMMENTED OUT - Phase 4: Old controller methods not available
-  # - platform: template
-  #   name: "01_02_Verbose Mode Status"
-  #   id: verbose_mode_status
-  #   # Shows current verbose logging status: ON or OFF
-  #   # Updated when verbose mode is toggled
-  #   lambda: |-
-  #     return id(my_controller)->get_verbose() ? std::string("ON") : std::string("OFF");
-  #   # Update every 5 seconds to show current status
-  #   update_interval: 5s
 
 ################################################################################
 # Button: Controller Management and Manual Routines
@@ -389,39 +363,7 @@ button:
         - lambda: |-
             id(psm)->clearEvent();
 
-  # COMMENTED OUT - Phase 4: Old controller methods not available
-  # - platform: template
-  #   name: "05_02_Toggle Verbose Logging"
-  #   on_press:
-  #     # Toggle verbose mode on/off at runtime
-  #     # Enables/disables detailed logging of all controller actions and state transitions
-  #     # Useful for debugging without reflashing firmware
-  #     then:
-  #       - lambda: |-
-  #           id(my_controller)->toggle_verbose();
-
-  # === 06 - Setup & Calibration ===
-  # COMMENTED OUT - Phase 5: Calibration will be implemented in Phase 7
-  # - platform: template
-  #   name: "06_01_Calibrate pH"
-  #   on_press:
-  #     # Start pH sensor calibration
-  #     # Stops all other routines until complete
-  #     then:
-  #       - lambda: |-
-  #           id(plant_logic)->calibrate_ph();
-
   # === 07 - pH & Measurement ===
-  # COMMENTED OUT - Phase 5: Measurement-only will be implemented in Phase 7
-  # - platform: template
-  #   name: "07_01_Measure pH Only"
-  #   on_press:
-  #     # Measure pH without correcting it
-  #     # Useful for checking current pH value
-  #     then:
-  #       - lambda: |-
-  #           id(plant_logic)->start_ph_measurement_only();
-
   - platform: template
     name: "07_02_Start pH Correction"
     on_press:
@@ -460,17 +402,6 @@ button:
         - lambda: |-
             id(unified_controller)->startEmptyTank();
 
-  # === 99 - Miscellaneous ===
-  # COMMENTED OUT - Phase 4: Old controller method not available in unified controller
-  # - platform: template
-  #   name: "99_01_Blaze It"
-  #   on_press:
-  #     # Trigger 420 ASCII art display on demand
-  #     # Displays the easter egg immediately without waiting for 4:20 AM/PM
-  #     then:
-  #       - lambda: |-
-  #           id(my_controller)->blaze_it();
-
 ################################################################################
 # System Controller: Finite State Machine
 #
@@ -497,19 +428,6 @@ plantos_hal:
   id: hal
   system_led: system_led
   ph_sensor: ph_sensor_real
-
-################################################################################
-# OLD CONTROLLER (DEPRECATED - Phase 4 replaces with plantos_controller)
-# Commenting out old controller to preserve configuration for reference
-################################################################################
-# controller:
-#   id: my_controller
-#   sensor_source: sensor_filtered_id
-#   light_target: system_led
-#   state_text: controller_state_text
-#   verbose: true
-#   status_log_interval: 30s
-#   420_mode: true
 
 ################################################################################
 # PlantOS Unified Controller (Layer 1) - Phase 8
@@ -569,38 +487,6 @@ time_logger:
 #   # log_interval: How often to log the IP address (default: 30 seconds)
 #   # Accepts time strings: "10s", "30s", "1min", etc.
 #   log_interval: 30s
-
-################################################################################
-# Network Status Update Automation
-#
-# Periodically updates the central status logger with network information:
-# - Current IP address from WiFi component
-# - Web server online status
-#
-# Runs every 30 seconds to keep network status current in the logger.
-################################################################################
-# COMMENTED OUT - Phase 4: Old controller not available
-# interval:
-#   - interval: 30s
-#     then:
-#       - lambda: |-
-#           // Update IP address in status logger
-#           #ifdef USE_WIFI
-#           if (wifi::global_wifi_component->is_connected()) {
-#             auto addresses = wifi::global_wifi_component->get_ip_addresses();
-#             if (!addresses.empty()) {
-#               id(my_controller)->get_logger()->updateIP(addresses[0].str().c_str());
-#             }
-#           } else {
-#             id(my_controller)->get_logger()->updateIP("Not Connected");
-#           }
-#           #endif
-#
-#           // Update web server status
-#           // ESPHome web server is always running once configured
-#           #ifdef USE_WEBSERVER
-#           id(my_controller)->get_logger()->updateWebServerStatus(true, false);
-#           #endif
 
 ################################################################################
 # Actuator Safety Gate - Centralized Actuator Control Safety Layer
@@ -768,40 +654,6 @@ persistent_state_manager:
   id: psm
 
 ################################################################################
-# PSM Checker - Persistent State Manager Test Component
-#
-# Automated test component that validates PSM recovery functionality.
-#
-# Test Procedure:
-# 1. On first boot:
-#    - Logs "PSM_TEST" event to NVS
-#    - Triggers controller ERROR_TEST state (pulsing blue/purple LED)
-#    - Prompts user to UNPLUG device
-#
-# 2. After unplugging and replugging:
-#    - Detects "PSM_TEST" event recovered from NVS
-#    - Verifies event timestamp and details
-#    - Logs "PSM TEST SUCCESSFUL" message
-#    - Clears test event from NVS
-#
-# Visual Indicators:
-# - Blue/purple pulsing LED = ERROR_TEST state active (ready to unplug)
-# - Normal boot sequence after replug = recovery successful
-#
-# Log Messages to Watch For:
-# - Boot 1: "PLEASE UNPLUG THE DEVICE NOW!"
-# - Boot 2: "✓ PSM TEST SUCCESSFUL!" and "Event recovered from NVS"
-#
-# Test Interval: 0s (run once on boot, don't repeat)
-################################################################################
-# DEACTIVATED: PSM Checker test
-# psm_checker:
-#   id: psm_test
-#   psm: psm
-#   controller: my_controller
-#   test_interval: 0s  # Run once on boot only
-
-################################################################################
 # WDT Manager - Hardware Watchdog Timer Management
 #
 # Manages the ESP32 hardware watchdog timer (WDT) to detect and recover from
@@ -907,64 +759,36 @@ calendar_manager:
     ]
 
 ################################################################################
-# PlantOSLogic - Main Application Logic FSM (Phase 4: DISABLED - replaced by unified controller)
-#
-# Orchestrates pH correction, nutrient feeding, and water management routines.
-# All actuator operations go through ActuatorSafetyGate for safety enforcement.
-# Critical sequences logged to PSM for recovery after power loss.
-################################################################################
-# plantos_logic:
-#   id: plant_logic
-#
-#   # Required dependencies
-#   safety_gate: actuator_safety
-#   psm: psm
-#   calendar: plant_calendar
-#
-#   # Optional dependencies
-#   # Production pH sensor: Atlas Scientific EZO pH circuit via I2C
-#   # For development/testing, can switch back to: sensor_dummy_id
-#   ph_sensor: ph_sensor_real
-#   state_text: logic_state_text
-
-################################################################################
 # Switch Components - Manual Controls (02 - Security)
 #
-# Template switches that call C++ methods in PlantOSLogic for manual control.
+# Template switches for manual control of the unified controller.
 ################################################################################
 switch:
   - platform: template
     name: "02_01_Maintenance Mode (Safe Shutdown)"
     id: maintenance_mode_switch
     icon: "mdi:security"
-    optimistic: false  # State driven by PlantOSLogic internal state
+    optimistic: false  # State driven by unified controller
 
     # Turn ON: Enter maintenance mode
-    # - Sets shutdown_requested_ = true in PlantOSLogic
-    # - Persists state to PSM with key "ShutdownState"
-    # - Logs PSM event: SHUTDOWN/REQUESTED
-    # - Transitions to AWAITING_SHUTDOWN when system is IDLE
+    # - Transitions to MAINTENANCE state
     # - All pumps/valves turned OFF
-    # - Suppresses all automated routines (pH, feeding, water management)
+    # - Logs PSM event: SHUTDOWN/ENTERED_MAINTENANCE_MODE
+    # - Updates StatusLogger maintenance mode status
+    # - Suppresses all automated routines
     turn_on_action:
       - lambda: |-
           ESP_LOGI("switch", "Maintenance mode switch turned ON");
           id(unified_controller)->toggleMaintenanceMode(true);
 
     # Turn OFF: Exit maintenance mode
-    # - Sets shutdown_requested_ = false in PlantOSLogic
-    # - Persists state to PSM with key "ShutdownState"
-    # - Logs PSM event: SHUTDOWN/CLEARED_REQUEST
-    # - Transitions back to IDLE from AWAITING_SHUTDOWN
+    # - Logs PSM event: SHUTDOWN/EXIT_MAINTENANCE_MODE
+    # - Updates StatusLogger maintenance mode status
+    # - Transitions back to IDLE
     # - Re-enables all automated routines
     turn_off_action:
       - lambda: |-
           ESP_LOGI("switch", "Maintenance mode switch turned OFF");
           id(unified_controller)->toggleMaintenanceMode(false);
-
-    # IMPORTANT: Switch state synchronization on boot
-    # The switch state must reflect the persistent shutdown_requested_ state
-    # loaded from PSM during PlantOSLogic::setup().
-    # This is handled by checking the state after a delay in on_... section below.
 
 

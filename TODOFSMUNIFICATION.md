@@ -335,6 +335,13 @@ private:
 **Dependencies**: Phase 1 complete
 **Testing**: Compile-only test
 
+**Completion Status**: ✅ Done
+- Created `components/plantos_controller/led_behaviors/led_behavior.h` with base classes
+- Defined LedBehavior abstract base class with onEnter(), update(), onExit(), isComplete()
+- Implemented LedBehaviorSystem manager with state-to-behavior mapping
+- LedBehaviorSystem handles transitions and calls behavior lifecycle methods
+- All behaviors run at ~1000 Hz via HAL for smooth animations
+
 ---
 
 ### Issue #3.2: Implement Boot Sequence Behavior
@@ -366,6 +373,12 @@ public:
 **Dependencies**: Issue #3.1
 **Testing**: Visual test - verify LED shows R→Y→G sequence
 
+**Completion Status**: ✅ Done
+- Created `components/plantos_controller/led_behaviors/boot_sequence.h/.cpp`
+- Implements 3-second boot sequence: Red (0-1s), Yellow (1-2s), Green (2-3s)
+- isComplete() returns true after 3 seconds
+- Used by INIT state in LedBehaviorSystem
+
 ---
 
 ### Issue #3.3: Implement Breathing Green Behavior
@@ -389,6 +402,13 @@ public:
 
 **Dependencies**: Issue #3.1
 **Testing**: Visual test - verify smooth breathing
+
+**Completion Status**: ✅ Done
+- Created `components/plantos_controller/led_behaviors/breathing_green.h/.cpp`
+- Implements smooth sine wave breathing (10% to 100% brightness)
+- Green LED pulses continuously for IDLE state
+- Uses std::sin() for smooth animation
+- Continuous behavior (never completes)
 
 ---
 
@@ -432,6 +452,21 @@ class ErrorFlashBehavior : public LedBehavior {
 
 **Dependencies**: Issue #3.1
 **Testing**: Visual test for each behavior
+
+**Completion Status**: ✅ Done
+All LED behaviors implemented in `components/plantos_controller/led_behaviors/`:
+- ✅ `solid_yellow.h/.cpp` - MAINTENANCE state (solid yellow)
+- ✅ `error_flash.h/.cpp` - ERROR state (5 Hz red flash)
+- ✅ `yellow_pulse.h/.cpp` - PH_MEASURING (0.5 Hz yellow pulse)
+- ✅ `yellow_fast_blink.h/.cpp` - PH_CALCULATING (2 Hz yellow blink)
+- ✅ `cyan_pulse.h/.cpp` - PH_INJECTING (0.5 Hz cyan pulse)
+- ✅ `blue_pulse.h/.cpp` - PH_MIXING (0.5 Hz blue pulse)
+- ✅ `orange_pulse.h/.cpp` - FEEDING (0.5 Hz orange pulse)
+- ✅ `blue_solid.h/.cpp` - WATER_FILLING (solid blue)
+- ✅ `purple_pulse.h/.cpp` - WATER_EMPTYING (0.5 Hz purple pulse)
+
+All behaviors use HAL for LED control, supporting smooth animations and state-based visual feedback.
+LedBehaviorSystem in led_behavior.cpp maps all 12 ControllerState values to appropriate behaviors.
 
 ---
 

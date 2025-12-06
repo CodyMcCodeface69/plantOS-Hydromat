@@ -1,6 +1,7 @@
 #include "controller.h"
 #include "esphome/components/plantos_hal/hal.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
+#include "esphome/components/persistent_state_manager/persistent_state_manager.h"
 #include <algorithm> // for std::sort, std::min, std::max
 
 namespace plantos_controller {
@@ -17,6 +18,9 @@ PlantOSController::PlantOSController() {
 void PlantOSController::setup() {
     ESP_LOGI(TAG, "PlantOS Unified Controller initializing...");
 
+    // Initialize status logger
+    status_logger_.begin();
+
     // Verify critical dependencies
     if (!hal_) {
         ESP_LOGE(TAG, "HAL not configured - Controller cannot function!");
@@ -25,6 +29,13 @@ void PlantOSController::setup() {
 
     if (!safety_gate_) {
         ESP_LOGW(TAG, "SafetyGate not configured - Actuator control disabled");
+    }
+
+    // Optional PSM dependency
+    if (psm_) {
+        ESP_LOGI(TAG, "PSM configured - Crash recovery enabled");
+    } else {
+        ESP_LOGW(TAG, "PSM not configured - Crash recovery disabled");
     }
 
     ESP_LOGI(TAG, "Controller initialized - Starting in INIT state");
@@ -123,6 +134,15 @@ void PlantOSController::handleMaintenance() {
     if (elapsed < 100) {
         turnOffAllPumps();
         ESP_LOGI(TAG, "Maintenance mode ACTIVE - all pumps OFF, automation disabled");
+
+        // Log maintenance mode entry to PSM for persistence
+        if (psm_) {
+            psm_->logEvent("SHUTDOWN", 1);  // 1 = ENTERED_MAINTENANCE_MODE
+        }
+
+        // Update status logger
+        status_logger_.updateMaintenanceMode(true);
+
         return;
     }
 
@@ -145,7 +165,12 @@ void PlantOSController::handleError() {
 
     // Wait 5 seconds to display error
     if (elapsed >= ERROR_DURATION) {
-        ESP_LOGI(TAG, "Error timeout - restarting to INIT");
+        // Clear alerts before transitioning back to INIT
+        status_logger_.clearAlert("PH_CRITICAL");
+        status_logger_.clearAlert("PH_MAX_ATTEMPTS");
+        status_logger_.clearAlert("SENSOR_CRITICAL");
+
+        ESP_LOGI(TAG, "Error timeout - clearing alerts and restarting to INIT");
         transitionTo(ControllerState::INIT);
     }
 }
@@ -531,10 +556,10 @@ void PlantOSController::startPhCorrection() {
     ph_current_ = 0.0f;
     ph_dose_duration_ms_ = 0;
 
-    // Phase 7: Log event for persistence (PSM)
-    // if (psm_) {
-    //     psm_->logEvent("PH_CORRECTION", 0); // 0 = STARTED
-    // }
+    // Log event for crash recovery persistence
+    if (psm_) {
+        psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+    }
 
     transitionTo(ControllerState::PH_MEASURING);
 }
@@ -542,6 +567,12 @@ void PlantOSController::startPhCorrection() {
 void PlantOSController::startFeeding() {
     if (current_state_ == ControllerState::IDLE || current_state_ == ControllerState::MAINTENANCE) {
         ESP_LOGI(TAG, "Starting feeding sequence");
+
+        // Log event for crash recovery persistence
+        if (psm_) {
+            psm_->logEvent("FEEDING", 0);  // 0 = STARTED
+        }
+
         transitionTo(ControllerState::FEEDING);
     } else {
         ESP_LOGW(TAG, "Cannot start feeding - system busy");
@@ -551,6 +582,12 @@ void PlantOSController::startFeeding() {
 void PlantOSController::startFillTank() {
     if (current_state_ == ControllerState::IDLE || current_state_ == ControllerState::MAINTENANCE) {
         ESP_LOGI(TAG, "Starting tank fill");
+
+        // Log event for crash recovery persistence
+        if (psm_) {
+            psm_->logEvent("WATER_FILL", 0);  // 0 = STARTED
+        }
+
         transitionTo(ControllerState::WATER_FILLING);
     } else {
         ESP_LOGW(TAG, "Cannot start fill - system busy");
@@ -560,6 +597,12 @@ void PlantOSController::startFillTank() {
 void PlantOSController::startEmptyTank() {
     if (current_state_ == ControllerState::IDLE || current_state_ == ControllerState::MAINTENANCE) {
         ESP_LOGI(TAG, "Starting tank drain");
+
+        // Log event for crash recovery persistence
+        if (psm_) {
+            psm_->logEvent("WATER_EMPTY", 0);  // 0 = STARTED
+        }
+
         transitionTo(ControllerState::WATER_EMPTYING);
     } else {
         ESP_LOGW(TAG, "Cannot start drain - system busy");
@@ -577,6 +620,15 @@ bool PlantOSController::toggleMaintenanceMode(bool enable) {
     } else {
         if (current_state_ == ControllerState::MAINTENANCE) {
             ESP_LOGI(TAG, "Exiting maintenance mode");
+
+            // Log exit event to PSM
+            if (psm_) {
+                psm_->logEvent("SHUTDOWN", 2);  // 2 = EXIT_MAINTENANCE_MODE
+            }
+
+            // Update status logger
+            status_logger_.updateMaintenanceMode(false);
+
             transitionTo(ControllerState::IDLE);
             return true;
         }

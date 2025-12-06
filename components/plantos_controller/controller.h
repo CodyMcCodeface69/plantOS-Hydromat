@@ -3,6 +3,7 @@
 #include "esphome/core/component.h"
 #include "esphome/core/log.h"
 #include "led_behavior.h"
+#include "CentralStatusLogger.h"  // Local copy owned by controller
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,6 +16,9 @@ class HAL;
 namespace esphome {
 namespace actuator_safety_gate {
 class ActuatorSafetyGate;
+}
+namespace persistent_state_manager {
+class PersistentStateManager;
 }
 }
 
@@ -81,6 +85,14 @@ public:
         safety_gate_ = gate;
     }
 
+    /**
+     * Set Persistent State Manager
+     * OPTIONAL - Used for crash recovery and event persistence
+     */
+    void setPersistenceManager(esphome::persistent_state_manager::PersistentStateManager* psm) {
+        psm_ = psm;
+    }
+
     // ========================================================================
     // Public API for External Control (ESPHome services, buttons, etc.)
     // ========================================================================
@@ -128,6 +140,12 @@ public:
      */
     ControllerState getCurrentState() const { return current_state_; }
 
+    /**
+     * Get status logger instance
+     * @return Pointer to the owned CentralStatusLogger
+     */
+    CentralStatusLogger* getStatusLogger() { return &status_logger_; }
+
 private:
     // ========================================================================
     // Dependencies
@@ -135,6 +153,10 @@ private:
 
     plantos_hal::HAL* hal_{nullptr};
     esphome::actuator_safety_gate::ActuatorSafetyGate* safety_gate_{nullptr};
+    esphome::persistent_state_manager::PersistentStateManager* psm_{nullptr};
+
+    // Status logger (owned by controller, not injected)
+    CentralStatusLogger status_logger_;
 
     // ========================================================================
     // FSM State Management

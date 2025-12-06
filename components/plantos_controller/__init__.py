@@ -2,7 +2,7 @@
 PlantOS Unified Controller Component
 
 Unified controller managing system state, LED behaviors, and operation sequences.
-Phase 4: Full Controller FSM implementation with HAL and SafetyGate integration.
+Phase 8: Full Controller FSM with PSM integration and CentralStatusLogger ownership.
 """
 import esphome.codegen as cg
 import esphome.config_validation as cv
@@ -19,15 +19,20 @@ HAL = plantos_hal_ns.class_('HAL')
 actuator_safety_gate_ns = cg.esphome_ns.namespace('actuator_safety_gate')
 ActuatorSafetyGate = actuator_safety_gate_ns.class_('ActuatorSafetyGate')
 
+persistent_state_manager_ns = cg.esphome_ns.namespace('persistent_state_manager')
+PersistentStateManager = persistent_state_manager_ns.class_('PersistentStateManager')
+
 # Configuration keys
 CONF_HAL = 'hal'
 CONF_SAFETY_GATE = 'safety_gate'
+CONF_PERSISTENCE = 'persistence'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(PlantOSController),
     cv.Required(CONF_HAL): cv.use_id(HAL),
     cv.Required(CONF_SAFETY_GATE): cv.use_id(ActuatorSafetyGate),
+    cv.Optional(CONF_PERSISTENCE): cv.use_id(PersistentStateManager),
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -35,10 +40,15 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    # Inject HAL dependency
+    # Inject HAL dependency (required)
     hal = await cg.get_variable(config[CONF_HAL])
     cg.add(var.setHAL(hal))
 
-    # Inject SafetyGate dependency
+    # Inject SafetyGate dependency (required)
     safety_gate = await cg.get_variable(config[CONF_SAFETY_GATE])
     cg.add(var.setSafetyGate(safety_gate))
+
+    # Inject PersistentStateManager dependency (optional)
+    if CONF_PERSISTENCE in config:
+        psm = await cg.get_variable(config[CONF_PERSISTENCE])
+        cg.add(var.setPersistenceManager(psm))

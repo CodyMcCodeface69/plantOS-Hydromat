@@ -144,7 +144,7 @@ external_components:
   - source: components
     components: [controller, sensor_dummy, sensor_filter, ezo_ph, plantos_logic,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
-                 i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo]
+                 i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo, plantos_hal]
 
 ################################################################################
 # I²C Bus Configuration
@@ -475,6 +475,18 @@ button:
 # 2. Type safety: ESPHome validates IDs at compile time
 # 3. Testability: Different configurations can reuse the same controller logic
 ################################################################################
+
+################################################################################
+# PlantOS HAL (Hardware Abstraction Layer) - Layer 3
+#
+# Provides platform-agnostic hardware interface for the unified Controller.
+# Phase 1 implementation - testing compilation only.
+################################################################################
+plantos_hal:
+  id: hal
+  system_led: system_led
+  ph_sensor: ph_sensor_real
+
 controller:
   id: my_controller
 

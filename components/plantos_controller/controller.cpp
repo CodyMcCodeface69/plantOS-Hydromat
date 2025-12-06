@@ -304,63 +304,191 @@ void PlantOSController::handlePhCalibrating() {
 }
 
 void PlantOSController::handleFeeding() {
-    // Orange pulse - nutrient dosing
-    // Placeholder for nutrient dosing logic
+    // Orange pulse LED handled by LedBehaviorSystem
+    // Sequential nutrient pump activation: A → B → C
 
     uint32_t elapsed = getStateElapsed();
 
-    if (elapsed == 0) {
-        ESP_LOGI(TAG, "Starting feeding sequence");
-        // Future: Dose nutrients A, B, C based on calendar schedule
-        // For now, just a 5-second placeholder
+    // Phase 7 TODO: Get durations from CalendarManager
+    // For now, use hardcoded example durations (in milliseconds)
+    static constexpr uint32_t NUTRIENT_A_DURATION = 5000;  // 5 seconds
+    static constexpr uint32_t NUTRIENT_B_DURATION = 4000;  // 4 seconds
+    static constexpr uint32_t NUTRIENT_C_DURATION = 3000;  // 3 seconds
+
+    // Use state_counter to track which pump we're on (0=A, 1=B, 2=C, 3=done)
+    const char* pump_name = nullptr;
+    uint32_t duration_ms = 0;
+
+    if (state_counter_ == 0) {
+        pump_name = NUTRIENT_PUMP_A;
+        duration_ms = NUTRIENT_A_DURATION;
+    } else if (state_counter_ == 1) {
+        pump_name = NUTRIENT_PUMP_B;
+        duration_ms = NUTRIENT_B_DURATION;
+    } else if (state_counter_ == 2) {
+        pump_name = NUTRIENT_PUMP_C;
+        duration_ms = NUTRIENT_C_DURATION;
+    } else {
+        // All pumps complete
+        ESP_LOGI(TAG, "Feeding sequence complete");
+
+        // Phase 7 TODO: Clear PSM event
+        // if (psm_) {
+        //     psm_->clearEvent();
+        // }
+
+        transitionTo(ControllerState::IDLE);
+        return;
     }
 
-    if (elapsed >= 5000) {
-        ESP_LOGI(TAG, "Feeding complete");
-        transitionTo(ControllerState::IDLE);
+    // On entry for this pump: activate it
+    if (elapsed < 100) {
+        if (duration_ms > 0) {
+            if (safety_gate_) {
+                uint32_t duration_sec = (duration_ms + 999) / 1000;  // Round up to seconds
+                bool approved = safety_gate_->executeCommand(pump_name, true, duration_sec);
+
+                if (!approved) {
+                    ESP_LOGE(TAG, "%s command rejected by SafetyGate!", pump_name);
+
+                    // Phase 7 TODO: Clear PSM event
+                    // if (psm_) {
+                    //     psm_->clearEvent();
+                    // }
+
+                    // Abort feeding sequence
+                    transitionTo(ControllerState::IDLE);
+                    return;
+                }
+            }
+
+            ESP_LOGI(TAG, "%s ON for %d ms", pump_name, duration_ms);
+        } else {
+            ESP_LOGI(TAG, "%s duration is 0 - skipping", pump_name);
+            // Immediately move to next pump
+            state_counter_++;
+            state_start_time_ = hal_->getSystemTime();
+        }
+        return;
     }
+
+    // Wait for duration + 200ms safety margin
+    if (elapsed < duration_ms + 200) {
+        return;
+    }
+
+    // Turn off current pump explicitly
+    if (safety_gate_) {
+        safety_gate_->executeCommand(pump_name, false, 0);
+    }
+
+    ESP_LOGI(TAG, "%s complete", pump_name);
+
+    // Move to next pump
+    state_counter_++;
+    state_start_time_ = hal_->getSystemTime();
 }
 
 void PlantOSController::handleWaterFilling() {
-    // Blue solid - fresh water addition
-    // Placeholder for water fill logic
+    // Blue solid LED handled by LedBehaviorSystem
+    // Open water valve for fixed duration
 
     uint32_t elapsed = getStateElapsed();
 
-    if (elapsed == 0) {
-        ESP_LOGI(TAG, "Starting water fill");
-        // Open water valve
-        requestValve(WATER_VALVE, true, 60); // Max 60 seconds
+    // Fill duration: 30 seconds (matches old PlantOSLogic implementation)
+    static constexpr uint32_t FILL_DURATION_MS = 30000;
+
+    // On entry: open water valve
+    if (elapsed < 100) {
+        if (safety_gate_) {
+            bool approved = safety_gate_->executeCommand(WATER_VALVE, true, 30);  // 30 seconds
+
+            if (!approved) {
+                ESP_LOGE(TAG, "Water valve command rejected by SafetyGate!");
+
+                // Phase 7 TODO: Clear PSM event
+                // if (psm_) {
+                //     psm_->clearEvent();
+                // }
+
+                transitionTo(ControllerState::IDLE);
+                return;
+            }
+        }
+
+        ESP_LOGI(TAG, "Water valve OPEN for %d seconds", FILL_DURATION_MS / 1000);
+        return;
     }
 
-    // For now, auto-complete after 10 seconds
-    // Production would use water level sensor
-    if (elapsed >= 10000) {
-        requestValve(WATER_VALVE, false);
-        ESP_LOGI(TAG, "Water fill complete");
-        transitionTo(ControllerState::IDLE);
+    // Wait for fill duration + 200ms safety margin
+    if (elapsed < FILL_DURATION_MS + 200) {
+        return;
     }
+
+    // Close valve explicitly
+    if (safety_gate_) {
+        safety_gate_->executeCommand(WATER_VALVE, false, 0);
+    }
+
+    ESP_LOGI(TAG, "Water fill complete");
+
+    // Phase 7 TODO: Clear PSM event
+    // if (psm_) {
+    //     psm_->clearEvent();
+    // }
+
+    transitionTo(ControllerState::IDLE);
 }
 
 void PlantOSController::handleWaterEmptying() {
-    // Purple pulse - wastewater removal
-    // Placeholder for water empty logic
+    // Purple pulse LED handled by LedBehaviorSystem
+    // Activate wastewater pump for fixed duration
 
     uint32_t elapsed = getStateElapsed();
 
-    if (elapsed == 0) {
-        ESP_LOGI(TAG, "Starting water drain");
-        // Turn on wastewater pump
-        requestPump(WASTEWATER_PUMP, true, 180); // Max 3 minutes
+    // Empty duration: 30 seconds (matches old PlantOSLogic implementation)
+    static constexpr uint32_t EMPTY_DURATION_MS = 30000;
+
+    // On entry: activate wastewater pump
+    if (elapsed < 100) {
+        if (safety_gate_) {
+            bool approved = safety_gate_->executeCommand(WASTEWATER_PUMP, true, 30);  // 30 seconds
+
+            if (!approved) {
+                ESP_LOGE(TAG, "Wastewater pump command rejected by SafetyGate!");
+
+                // Phase 7 TODO: Clear PSM event
+                // if (psm_) {
+                //     psm_->clearEvent();
+                // }
+
+                transitionTo(ControllerState::IDLE);
+                return;
+            }
+        }
+
+        ESP_LOGI(TAG, "Wastewater pump ON for %d seconds", EMPTY_DURATION_MS / 1000);
+        return;
     }
 
-    // For now, auto-complete after 15 seconds
-    // Production would use water level sensor
-    if (elapsed >= 15000) {
-        requestPump(WASTEWATER_PUMP, false);
-        ESP_LOGI(TAG, "Water drain complete");
-        transitionTo(ControllerState::IDLE);
+    // Wait for empty duration + 200ms safety margin
+    if (elapsed < EMPTY_DURATION_MS + 200) {
+        return;
     }
+
+    // Turn off pump explicitly
+    if (safety_gate_) {
+        safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
+    }
+
+    ESP_LOGI(TAG, "Water empty complete");
+
+    // Phase 7 TODO: Clear PSM event
+    // if (psm_) {
+    //     psm_->clearEvent();
+    // }
+
+    transitionTo(ControllerState::IDLE);
 }
 
 // ============================================================================

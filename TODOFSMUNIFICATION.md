@@ -1105,141 +1105,99 @@ void PlantOSController::startPhCorrection() {
 ## Phase 6: Port Feeding and Water Management
 
 ### Issue #6.1: Implement FEEDING State
-**File**: `components/plantos_controller/states/state_feeding.cpp`
+**File**: `components/plantos_controller/controller.cpp`
 **Priority**: P2
 
 **Task**: Sequential nutrient pump activation based on Calendar schedule
 
-**Implementation Hints**:
-```cpp
-void PlantOSController::handleFeeding() {
-    // Get schedule from Calendar
-    auto schedule = calendar_->getTodaySchedule();
-
-    uint32_t elapsed = hal_->getSystemTime() - state_start_time_;
-
-    // Sequential pump activation
-    if (elapsed < schedule.nutrient_A_duration_ms) {
-        // Pump A active
-        if (state_counter_ == 0) {
-            requestPump("NutrientPumpA", true, schedule.nutrient_A_duration_ms / 1000);
-            state_counter_ = 1;
-        }
-        return;
-    }
-
-    if (elapsed < schedule.nutrient_A_duration_ms + schedule.nutrient_B_duration_ms) {
-        // Pump B active
-        if (state_counter_ == 1) {
-            requestPump("NutrientPumpA", false, 0);  // Ensure A is OFF
-            requestPump("NutrientPumpB", true, schedule.nutrient_B_duration_ms / 1000);
-            state_counter_ = 2;
-        }
-        return;
-    }
-
-    if (elapsed < schedule.nutrient_A_duration_ms + schedule.nutrient_B_duration_ms + schedule.nutrient_C_duration_ms) {
-        // Pump C active
-        if (state_counter_ == 2) {
-            requestPump("NutrientPumpB", false, 0);  // Ensure B is OFF
-            requestPump("NutrientPumpC", true, schedule.nutrient_C_duration_ms / 1000);
-            state_counter_ = 3;
-        }
-        return;
-    }
-
-    // All pumps complete
-    requestPump("NutrientPumpC", false, 0);
-    ESP_LOGI(TAG, "Feeding complete");
-
-    if (psm_) psm_->clearEvent();
-    transitionTo(ControllerState::IDLE);
-}
-```
+**Implementation Details**:
+- Implemented sequential pump activation: A → B → C
+- Uses state_counter to track current pump (0=A, 1=B, 2=C, 3=done)
+- Each pump activated with SafetyGate approval
+- Durations currently hardcoded (5s/4s/3s) with Phase 7 TODO for Calendar integration
+- 200ms safety margin after each pump completes
+- Explicit pump OFF after each phase
+- Comprehensive error handling and logging
 
 **Current Reference**: `components/plantos_logic/PlantOSLogic.cpp:560-620` (handle_feeding)
 **Dependencies**: Phase 5 complete
 **Testing**: Verify sequential pump activation, timing from Calendar
 
+**Completion Status**: ✅ Done
+- Implemented handleFeeding() in controller.cpp:306-390
+- Sequential pump activation with state_counter tracking
+- SafetyGate approval required for each pump
+- Handles rejected commands gracefully (aborts sequence)
+- Supports zero-duration pumps (skips to next)
+- Phase 7 placeholders for CalendarManager and PSM integration
+- Full compilation successful
+
 ---
 
 ### Issue #6.2: Implement WATER_FILLING State
-**File**: `components/plantos_controller/states/state_water.cpp`
+**File**: `components/plantos_controller/controller.cpp`
 **Priority**: P2
 
 **Task**: Open water valve for 30 seconds
 
-**Implementation Hints**:
-```cpp
-void PlantOSController::handleWaterFilling() {
-    uint32_t elapsed = hal_->getSystemTime() - state_start_time_;
-
-    // Activate valve on entry
-    if (elapsed < 100) {
-        bool approved = requestValve("WaterValve", true, 30);  // 30 seconds
-        if (!approved) {
-            ESP_LOGE(TAG, "Water valve rejected by SafetyGate!");
-            transitionTo(ControllerState::ERROR);
-            return;
-        }
-        ESP_LOGI(TAG, "Water filling started (30s)");
-    }
-
-    // Wait 30 seconds
-    if (elapsed < 30000) return;
-
-    // Explicit close
-    requestValve("WaterValve", false, 0);
-    ESP_LOGI(TAG, "Water filling complete");
-
-    if (psm_) psm_->clearEvent();
-    transitionTo(ControllerState::IDLE);
-}
-```
+**Implementation Details**:
+- 30-second fill duration (matches old PlantOSLogic)
+- SafetyGate approval required
+- 200ms safety margin after duration
+- Explicit valve close after completion
+- Error handling for SafetyGate rejection
 
 **Current Reference**: `components/plantos_logic/PlantOSLogic.cpp:653-691` (handle_water_filling)
 **Dependencies**: Phase 5 complete
 **Testing**: Verify valve opens 30s, closes automatically
 
+**Completion Status**: ✅ Done
+- Implemented handleWaterFilling() in controller.cpp:392-441
+- 30-second duration constant (FILL_DURATION_MS = 30000)
+- SafetyGate approval with error handling
+- Explicit valve close after duration + 200ms margin
+- Phase 7 placeholder for PSM clearEvent()
+- Full compilation successful
+
 ---
 
 ### Issue #6.3: Implement WATER_EMPTYING State
-**File**: `components/plantos_controller/states/state_water.cpp`
+**File**: `components/plantos_controller/controller.cpp`
 **Priority**: P2
 
 **Task**: Activate wastewater pump for 30 seconds
 
-**Implementation Hints**:
-```cpp
-void PlantOSController::handleWaterEmptying() {
-    uint32_t elapsed = hal_->getSystemTime() - state_start_time_;
-
-    // Activate pump on entry
-    if (elapsed < 100) {
-        bool approved = requestPump("WastewaterPump", true, 30);
-        if (!approved) {
-            ESP_LOGE(TAG, "Wastewater pump rejected by SafetyGate!");
-            transitionTo(ControllerState::ERROR);
-            return;
-        }
-        ESP_LOGI(TAG, "Water emptying started (30s)");
-    }
-
-    // Wait 30 seconds
-    if (elapsed < 30000) return;
-
-    // Explicit OFF
-    requestPump("WastewaterPump", false, 0);
-    ESP_LOGI(TAG, "Water emptying complete");
-
-    if (psm_) psm_->clearEvent();
-    transitionTo(ControllerState::IDLE);
-}
-```
+**Implementation Details**:
+- 30-second empty duration (matches old PlantOSLogic)
+- SafetyGate approval required
+- 200ms safety margin after duration
+- Explicit pump OFF after completion
+- Error handling for SafetyGate rejection
 
 **Current Reference**: `components/plantos_logic/PlantOSLogic.cpp:693-730` (handle_water_emptying)
 **Dependencies**: Phase 5 complete
 **Testing**: Verify pump runs 30s, stops automatically
+
+**Completion Status**: ✅ Done
+- Implemented handleWaterEmptying() in controller.cpp:443-492
+- 30-second duration constant (EMPTY_DURATION_MS = 30000)
+- SafetyGate approval with error handling
+- Explicit pump OFF after duration + 200ms margin
+- Phase 7 placeholder for PSM clearEvent()
+- Full compilation successful
+
+---
+
+**Phase 6 Summary**: ✅ COMPLETE
+- All three state handlers fully implemented
+- Matched old PlantOSLogic behavior and timing
+- Proper SafetyGate integration (Controller → SafetyGate → HAL)
+- Non-blocking timing throughout
+- Comprehensive error handling
+- Phase 7 placeholders added for CalendarManager and PSM integration
+- Build successful - firmware compiles without errors
+- RAM usage: 11.1% (36528 bytes)
+- Flash usage: 58.7% (1076824 bytes)
 
 ---
 

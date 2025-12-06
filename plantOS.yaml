@@ -345,15 +345,15 @@ text_sensor:
 ################################################################################
 button:
   # === 03 - System Control & Restart ===
-  # COMMENTED OUT - Phase 4: Old controller methods not available
-  # - platform: template
-  #   name: "03_01_Reset Controller"
-  #   on_press:
-  #     # Lambda action calls the controller's reset_to_init() method
-  #     # This triggers an immediate transition to INIT state
-  #     then:
-  #       - lambda: |-
-  #           id(my_controller)->reset_to_init();
+  - platform: template
+    name: "03_01_Reset Controller to INIT"
+    on_press:
+      # Lambda action calls the unified controller's resetToInit() method
+      # This triggers an immediate transition to INIT state (clears errors, resets FSM)
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Reset Controller button pressed");
+            id(unified_controller)->resetToInit();
 
   - platform: template
     name: "03_02_Reconnect WiFi"
@@ -512,20 +512,27 @@ plantos_hal:
 #   420_mode: true
 
 ################################################################################
-# PlantOS Unified Controller (Layer 1) - Phase 4
+# PlantOS Unified Controller (Layer 1) - Phase 7
 #
 # Unified controller managing:
 # - System FSM with 12 states
 # - LED behaviors via LedBehaviorSystem
 # - HAL integration for sensors/LED
 # - SafetyGate integration for actuators
+# - StatusLogger integration for system reporting (optional - not configured)
+# - PSM integration for crash recovery (optional - not configured)
 #
 # Architecture: Controller → SafetyGate → HAL → Hardware
+#
+# NOTE: StatusLogger and PSM are optional dependencies that can be added in future phases
+#       The controller gracefully handles their absence with null checks
 ################################################################################
 plantos_controller:
   id: unified_controller
   hal: hal                      # Hardware abstraction layer
   safety_gate: actuator_safety  # Actuator control with safety enforcement
+  # status_logger: csl          # Optional - Central status logger (not yet configured as standalone)
+  # persistence: psm            # Optional - Persistent state manager (configured below)
 
 ################################################################################
 # Time Logger: Periodic Time Logging

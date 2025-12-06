@@ -114,16 +114,38 @@ void PlantOSController::handleIdle() {
 }
 
 void PlantOSController::handleMaintenance() {
-    // Solid yellow - all automation disabled
-    // User must manually exit this mode
+    // Solid yellow LED handled by LedBehaviorSystem
+    // All automation disabled - user must manually exit this mode
+
+    uint32_t elapsed = getStateElapsed();
+
+    // On entry: Turn off all pumps for safety
+    if (elapsed < 100) {
+        turnOffAllPumps();
+        ESP_LOGI(TAG, "Maintenance mode ACTIVE - all pumps OFF, automation disabled");
+        return;
+    }
+
+    // Stay in this state until toggleMaintenanceMode(false) is called
+    // No automatic exit from maintenance mode
 }
 
 void PlantOSController::handleError() {
-    // Fast red flash - error condition
-    // Automatically return to INIT after timeout
+    // Fast red flash LED handled by LedBehaviorSystem
+    // Error condition with automatic recovery to INIT after 5 seconds
 
-    if (getStateElapsed() >= ERROR_DURATION) {
-        ESP_LOGI(TAG, "Error timeout - returning to INIT");
+    uint32_t elapsed = getStateElapsed();
+
+    // On entry: Turn off all pumps for safety
+    if (elapsed < 100) {
+        turnOffAllPumps();
+        ESP_LOGE(TAG, "ERROR state: All pumps OFF for safety");
+        return;
+    }
+
+    // Wait 5 seconds to display error
+    if (elapsed >= ERROR_DURATION) {
+        ESP_LOGI(TAG, "Error timeout - restarting to INIT");
         transitionTo(ControllerState::INIT);
     }
 }

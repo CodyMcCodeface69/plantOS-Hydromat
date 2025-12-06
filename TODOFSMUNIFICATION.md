@@ -1203,11 +1203,30 @@ void PlantOSController::startPhCorrection() {
 
 ## Phase 7: Port Maintenance and Error States
 
+**Completion Status**: ✅ COMPLETE
+- handleMaintenance() state handler fully implemented in controller.cpp:116-131
+- handleError() state handler fully implemented in controller.cpp:133-151
+- toggleMaintenanceMode() method working correctly
+- All pumps turn OFF on entry to both states for safety
+- Solid yellow LED for MAINTENANCE (via LedBehaviorSystem)
+- Fast red flash LED for ERROR (via LedBehaviorSystem)
+- Automatic recovery to INIT after 5 seconds in ERROR state
+- Build successful - firmware compiles without errors
+- RAM usage: 11.2% (36544 bytes)
+- Flash usage: 58.7% (1077538 bytes)
+
+**Note**: PSM and StatusLogger integration deferred to future phase. These components
+are not yet configured as standalone ESPHome components. The controller architecture
+includes setter methods and forward declarations for these dependencies, allowing easy
+integration when the components are available.
+
 ### Issue #7.1: Implement MAINTENANCE State
-**File**: `components/plantos_controller/states/state_maintenance.cpp`
+**File**: `components/plantos_controller/controller.cpp:116-131`
 **Priority**: P2
 
 **Task**: Persistent shutdown state with solid yellow LED
+
+**Completion Status**: ✅ Done
 
 **Implementation Hints**:
 ```cpp
@@ -1264,10 +1283,12 @@ bool PlantOSController::toggleMaintenanceMode(bool state) {
 ---
 
 ### Issue #7.2: Implement ERROR State
-**File**: `components/plantos_controller/states/state_error.cpp`
+**File**: `components/plantos_controller/controller.cpp:133-151`
 **Priority**: P2
 
 **Task**: Fast red flashing for 5 seconds, then return to INIT
+
+**Completion Status**: ✅ Done
 
 **Implementation Hints**:
 ```cpp
@@ -1423,6 +1444,103 @@ button:
 
 **Dependencies**: Issue #8.1
 **Testing**: Verify all buttons trigger correct methods
+
+---
+
+### Issue #8.3: Create ESPHome Integration for PSM and StatusLogger
+**Files**:
+- `components/central_status_logger/__init__.py`
+- `components/persistent_state_manager/__init__.py`
+**Priority**: P2
+
+**Task**: Create ESPHome Python integration files to make PSM and StatusLogger standalone components
+
+**Background**:
+Phase 7 deferred PSM and StatusLogger integration because these components exist as C++ code but lack ESPHome Python integration (`__init__.py` files). The unified controller already has:
+- Forward declarations in controller.h (lines 19-24)
+- Setter methods: `setPersistenceManager()`, `setStatusLogger()`
+- Optional dependency handling in plantos_controller/__init__.py (commented out)
+- Null checks throughout controller.cpp code
+
+**Implementation Requirements**:
+
+1. **Create `components/central_status_logger/__init__.py`**:
+```python
+import esphome.codegen as cg
+import esphome.config_validation as cv
+from esphome.const import CONF_ID
+
+central_status_logger_ns = cg.esphome_ns.namespace('central_status_logger')
+CentralStatusLogger = central_status_logger_ns.class_('CentralStatusLogger', cg.Component)
+
+CONFIG_SCHEMA = cv.Schema({
+    cv.GenerateID(): cv.declare_id(CentralStatusLogger),
+    cv.Optional('verbose', default=True): cv.boolean,
+    cv.Optional('status_log_interval', default='30s'): cv.time_period,
+    cv.Optional('420_mode', default=True): cv.boolean,
+}).extend(cv.COMPONENT_SCHEMA)
+
+async def to_code(config):
+    var = cg.new_Pvariable(config[CONF_ID])
+    await cg.register_component(var, config)
+    # Add configuration setters as needed
+```
+
+2. **Create `components/persistent_state_manager/__init__.py`**:
+```python
+import esphome.codegen as cg
+import esphome.config_validation as cv
+from esphome.const import CONF_ID
+
+persistent_state_manager_ns = cg.esphome_ns.namespace('persistent_state_manager')
+PersistentStateManager = persistent_state_manager_ns.class_('PersistentStateManager', cg.Component)
+
+CONFIG_SCHEMA = cv.Schema({
+    cv.GenerateID(): cv.declare_id(PersistentStateManager),
+}).extend(cv.COMPONENT_SCHEMA)
+
+async def to_code(config):
+    var = cg.new_Pvariable(config[CONF_ID])
+    await cg.register_component(var, config)
+```
+
+3. **Uncomment PSM/StatusLogger integration in `plantos_controller/__init__.py`**:
+   - Uncomment status_logger and persistence optional parameters
+   - Uncomment dependency injection code
+
+4. **Update plantOS.yaml**:
+```yaml
+central_status_logger:
+  id: status_logger
+  verbose: true
+  status_log_interval: 30s
+  420_mode: true
+
+persistent_state_manager:
+  id: psm
+
+plantos_controller:
+  id: unified_controller
+  hal: hal
+  safety_gate: actuator_safety
+  status_logger: status_logger  # Now available
+  persistence: psm              # Now available
+```
+
+5. **Restore PSM/StatusLogger method calls in controller.cpp**:
+   - Add includes for CentralStatusLogger.h and PersistentStateManager.h
+   - Uncomment all psm_->logEvent() calls
+   - Uncomment all status_logger->updateAlert() calls
+   - These were implemented in Phase 7 but commented out due to missing headers
+
+**Dependencies**: Issues #8.1, #8.2, Phase 7 complete
+**Testing**:
+- Build succeeds with PSM and StatusLogger configured
+- PSM logs events correctly (check NVS after power cycle)
+- StatusLogger reports system status every 30 seconds
+- Controller crash recovery works via PSM
+
+**Current Status**: ⏸️ Pending (deferred from Phase 7)
 
 ---
 

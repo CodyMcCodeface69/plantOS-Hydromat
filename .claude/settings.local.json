@@ -13,7 +13,8 @@
       "Bash(wc:*)",
       "Bash(esphome compile:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and control system built on ESPHome. The project implements **~10,000 lines of code** organized into **16 custom components** that manage pH correction, nutrient dosing, water management, and system safety. The architecture follows a layered design with clear separation between hardware control, application logic, and multi-layer safety systems.
+PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and control system built on ESPHome. The project implements **~10,000 lines of code** organized into **15 custom components** that manage pH correction, nutrient dosing, water management, and system safety. The architecture follows a **3-layer HAL (Hardware Abstraction Layer) design** with clear separation between the unified controller (Layer 1), safety gate (Layer 2), and hardware abstraction (Layer 3).
 
 ### Key Statistics
 - **Total Lines of Code**: ~10,000
-- **Custom Components**: 16
+- **Custom Components**: 15 (unified from original 16 via FSM consolidation)
 - **Programming Languages**: C++ (implementation), Python (ESPHome integration), YAML (configuration), Nix (environment)
 - **Main Configuration**: 942 lines (plantOS.yaml)
+- **Architecture**: 3-layer HAL (Controller → SafetyGate → HAL)
 
 ## Development Environment
 
@@ -55,30 +56,43 @@ esphome clean plantOS.yaml
 
 ## System Architecture
 
-### Architecture Layers
+### 3-Layer HAL Architecture
 
-PlantOS uses a 5-layer architecture for clear separation of concerns:
+PlantOS uses a 3-layer HAL (Hardware Abstraction Layer) architecture for clean separation of concerns and hardware independence:
 
-1. **Layer 1: Infrastructure** (Foundation)
-   - Hardware-level FSM with visual feedback
-   - Unified status reporting and monitoring
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 1: UNIFIED CONTROLLER (The Brain)                    │
+│ - Single unified FSM orchestrating all system behavior     │
+│ - States: INIT, IDLE, MAINTENANCE, ERROR, PH_*, FEEDING,   │
+│   WATER_FILLING, WATER_EMPTYING                            │
+│ - LED behavior system for visual feedback                  │
+│ - Owns services: CentralStatusLogger                       │
+│ - Uses services: PSM, Calendar (via dependency injection)  │
+└────────────────┬────────────────────────────────────────────┘
+                 │ (Controller → SafetyGate)
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 2: ACTUATOR SAFETY GATE (The Guard)                  │
+│ - Validates all actuator commands before execution         │
+│ - Debouncing, duration limits, soft-start/soft-stop        │
+│ - Runtime tracking with comprehensive violation logging    │
+└────────────────┬────────────────────────────────────────────┘
+                 │ (SafetyGate → HAL)
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 3: HAL - Hardware Abstraction Layer (The Hands)      │
+│ - Pure hardware interface: setPump(), readPH(), setLED()   │
+│ - Wraps ESPHome components (Light, Sensor, GPIO, PWM)      │
+│ - NO direct GPIO/I2C access above this layer               │
+└─────────────────────────────────────────────────────────────┘
+```
 
-2. **Layer 2: Safety & Persistence** (Critical Systems)
-   - Centralized actuator safety controls
-   - Power-loss recovery via NVS storage
-   - Hardware watchdog timer
-
-3. **Layer 3: Application Logic** (Business Rules)
-   - Main application FSM for routine orchestration
-   - 120-day grow cycle schedule management
-
-4. **Layer 4: Sensors & I/O** (Hardware Interfaces)
-   - pH sensor driver with calibration
-   - Sensor filtering and validation
-   - I2C bus diagnostics
-
-5. **Layer 5: Utilities** (Supporting Components)
-   - Testing and development helpers
+**Key Benefits:**
+- **Hardware Independence**: Controller and SafetyGate work with any HAL implementation
+- **Testability**: HAL can be mocked for unit testing without hardware
+- **Clear Responsibility**: Each layer has a single, well-defined purpose
+- **Safety by Design**: All hardware access flows through validation layers
 
 ### Configuration Files
 
@@ -89,14 +103,28 @@ PlantOS uses a 5-layer architecture for clear separation of concerns:
 
 ### Data Flow Overview
 
+**Sensor Reading Path:**
 ```
 I2C Bus (pH Sensor)
   → Sensor Filter (outlier rejection)
-    → Controller FSM (LED feedback) + PlantOS Logic (routines)
-      → Calendar Manager (get schedule)
-        → Actuator Safety Gate (validate + execute)
-          → Persistent State Manager (log critical events)
-            → Hardware (pumps, valves, etc.)
+    → HAL (readPH)
+      → Unified Controller (state machine decisions)
+```
+
+**Actuator Control Path:**
+```
+Unified Controller (state handler)
+  → Actuator Safety Gate (validate command)
+    → HAL (setPump/setValve)
+      → Hardware (pumps, valves, etc.)
+```
+
+**Service Integration:**
+```
+Unified Controller
+  ├─ Calendar Manager (get daily schedule: pH targets, nutrient doses)
+  ├─ Persistent State Manager (log critical events for crash recovery)
+  └─ CentralStatusLogger (owned: system status, alerts, monitoring)
 ```
 
 ### Custom Components
@@ -107,52 +135,89 @@ Components are located in `components/` and follow ESPHome's external component 
 
 ## Component Reference
 
-### Layer 1: Infrastructure Components
+### Layer 1: Unified Controller
 
-#### controller
+#### plantos_controller
 
-**Purpose**: Hardware-level finite state machine for system status and visual feedback
-**Location**: `components/controller/`
-**LOC**: ~800
+**Purpose**: Unified finite state machine orchestrating all system behavior
+**Location**: `components/plantos_controller/`
+**LOC**: ~1200
 
 **Files:**
-- `__init__.py`: Config schema requiring `sensor_source` and `light_target`
-- `controller.h/cpp`: Core FSM logic (setup, loop, helper functions)
-- `state_init.cpp`: INIT state (boot sequence: red → yellow → green, 3s)
-- `state_calibration.cpp`: CALIBRATION state (blinking yellow, 4s)
-- `state_ready.cpp`: READY state (breathing green, continuous)
-- `state_error.cpp`: ERROR state (fast red flashing, 5s)
-- `state_error_test.cpp`: ERROR_TEST state (blue/purple pulse for PSM testing)
-- `CentralStatusLogger.h/cpp`: Unified status reporting system
+- `__init__.py`: ESPHome integration with dependency injection
+- `controller.h/cpp`: Main FSM logic, state handlers, public API
+- `led_behavior.h/cpp`: LED behavior system and manager
+- `led_behaviors/*.h/.cpp`: Individual LED behaviors per state
+- `CentralStatusLogger.h/cpp`: Owned status reporting system
 
 **Architecture:**
-- Function pointer-based FSM (no vtable overhead)
-- State transitions via returned next state
+- Enum-based FSM with switch statement dispatch
+- 12 states covering all system operations
 - Non-blocking timing with `millis()`
 - Runs at ~1000 Hz in main loop
+- LED behavior system for smooth animations
 
 **State Diagram:**
 ```
-INIT (3s) → CALIBRATION (4s) → READY (continuous)
-                                   ↓ (sensor > 90)
-                                ERROR (5s)
-                                   ↓
-                                INIT (restart)
+INIT (3s) → IDLE (breathing green)
+             ↓
+             ├─ PH_MEASURING (5 min) → PH_CALCULATING → PH_INJECTING → PH_MIXING → (loop)
+             ├─ FEEDING (sequential nutrient pumps)
+             ├─ WATER_FILLING (30s)
+             ├─ WATER_EMPTYING (30s)
+             ├─ MAINTENANCE (persistent shutdown)
+             └─ ERROR (5s timeout) → INIT
+```
+
+**States:**
+```cpp
+enum class ControllerState {
+    INIT,              // Boot sequence (Red→Yellow→Green)
+    IDLE,              // Ready state (Breathing Green)
+    MAINTENANCE,       // Manual maintenance mode (Solid Yellow)
+    ERROR,             // Error condition (Fast Red Flash)
+    PH_MEASURING,      // pH stabilization phase (Yellow Pulse)
+    PH_CALCULATING,    // Determining pH adjustment (Yellow Fast Blink)
+    PH_INJECTING,      // Acid dosing in progress (Cyan Pulse)
+    PH_MIXING,         // Air pump mixing after injection (Blue Pulse)
+    PH_CALIBRATING,    // pH sensor calibration (Yellow Fast Blink)
+    FEEDING,           // Nutrient dosing (Orange Pulse)
+    WATER_FILLING,     // Fresh water addition (Blue Solid)
+    WATER_EMPTYING     // Wastewater removal (Purple Pulse)
+};
+```
+
+**Dependencies (Dependency Injection):**
+- `plantos_hal::HAL*` - Required: Hardware abstraction layer
+- `actuator_safety_gate::ActuatorSafetyGate*` - Required: Safety validation
+- `persistent_state_manager::PersistentStateManager*` - Optional: Crash recovery
+- `calendar_manager::CalendarManager*` - Optional: Grow schedule (future)
+
+**Public API:**
+```cpp
+void startPhCorrection();        // Begin pH correction sequence
+void startFeeding();             // Begin nutrient dosing sequence
+void startFillTank();            // Begin water fill operation
+void startEmptyTank();           // Begin water empty operation
+bool toggleMaintenanceMode(bool enable);  // Enter/exit maintenance
+void resetToInit();              // Reset FSM to INIT state
+ControllerState getCurrentState();        // Get current state
+CentralStatusLogger* getStatusLogger();   // Access status logger
 ```
 
 **Usage:**
 ```yaml
-controller:
-  id: my_logic_controller
-  sensor_source: filtered_ph_sensor  # Any ESPHome sensor
-  light_target: system_led           # Any ESPHome light
-  state_text: controller_state       # Optional text sensor for UI
+plantos_controller:
+  id: unified_controller
+  hal: hal                      # Hardware abstraction layer
+  safety_gate: actuator_safety  # Safety validation layer
+  persistence: psm              # Optional: crash recovery
 ```
 
 #### central_status_logger
 
 **Purpose**: Unified logging and monitoring system
-**Location**: `components/central_status_logger/` (embedded in controller)
+**Location**: `components/plantos_controller/` (owned by controller)
 **LOC**: ~400
 
 **Features:**
@@ -197,7 +262,7 @@ System Time: 2025-12-05 14:23:45
 ================================================================================
 ```
 
-### Layer 2: Safety and Persistence Components
+### Layer 2: Safety Gate
 
 #### actuator_safety_gate
 
@@ -286,61 +351,65 @@ if (psm->wasInterrupted(60)) {  // Within last 60s
 - Hardware reset if feeding stops (crash detection)
 - Optional test mode for validation
 
-### Layer 3: Application Logic Components
+### Layer 3: Hardware Abstraction Layer (HAL)
 
-#### plantos_logic
+#### plantos_hal
 
-**Purpose**: Main application FSM for routine orchestration
-**Location**: `components/plantos_logic/`
-**LOC**: ~600
+**Purpose**: Pure hardware abstraction interface for hardware independence
+**Location**: `components/plantos_hal/`
+**LOC**: ~300
 
-**FSM States:**
+**Architecture:**
+- Abstract base class `HAL` defining hardware interface
+- Concrete implementation `ESPHomeHAL` wrapping ESPHome components
+- Enables testing via HAL mocking (no hardware required)
+- Single point of hardware access for entire system
+
+**HAL Interface:**
 ```cpp
-enum class LogicStatus {
-    IDLE,                     // Waiting for trigger
-    PH_CORRECTION_DUE,        // pH sequence triggered
-    PH_MEASURING,             // Stabilization (5 min)
-    PH_CALCULATING,           // Determine dosing
-    PH_INJECTING,             // Acid pump active
-    PH_MIXING,                // Air pump mixing (2 min)
-    PH_CALIBRATING,           // Calibration routine
-    FEEDING_DUE,              // Nutrient sequence triggered
-    FEEDING_INJECTING,        // Nutrient pumps active
-    WATER_MANAGEMENT_DUE,     // Water task triggered
-    WATER_FILLING,            // Fresh water valve open
-    WATER_EMPTYING,           // Wastewater pump active
-    AWAITING_SHUTDOWN         // Maintenance mode
+class HAL {
+public:
+    virtual ~HAL() = default;
+
+    // Actuators (called by SafetyGate)
+    virtual void setPump(const std::string& pumpId, bool state) = 0;
+    virtual void setValve(const std::string& valveId, bool state) = 0;
+    virtual bool getPumpState(const std::string& pumpId) const = 0;
+
+    // Sensors (called by Controller)
+    virtual float readPH() = 0;
+    virtual bool hasPhValue() const = 0;
+    virtual void onPhChange(std::function<void(float)> callback) = 0;
+    virtual bool startPhCalibration(float point) = 0;
+
+    // User feedback (called by LED behaviors)
+    virtual void setSystemLED(float r, float g, float b, float brightness = 1.0f) = 0;
+    virtual void turnOffLED() = 0;
+    virtual bool isLEDOn() const = 0;
+
+    // System
+    virtual uint32_t getSystemTime() const = 0;  // millis()
 };
 ```
 
-**pH Correction Sequence** (Critical Flow):
-```
-1. PH_MEASURING (5 min)
-   - All pumps OFF
-   - Read pH until stable
+**ESPHomeHAL Implementation:**
+- Wraps `light::LightState` for RGB LED control
+- Wraps `sensor::Sensor` for pH reading with state callbacks
+- Tracks pump/valve states in memory
+- Uses `esphome::millis()` for system time
 
-2. PH_CALCULATING
-   - Compare pH with target range
-   - Calculate required acid duration
-   - If in range → IDLE
-   - Else → PH_INJECTING
-
-3. PH_INJECTING
-   - Air pump ON (mixing)
-   - Acid pump ON (via SafetyGate)
-   - Wait duration + 200ms margin
-
-4. PH_MIXING
-   - Air pump ON only
-   - Wait 2 minutes
-   - Loop back to PH_MEASURING (max 5 attempts)
+**Usage:**
+```yaml
+plantos_hal:
+  id: hal
+  system_led: system_led       # ESPHome light component
+  ph_sensor: filtered_ph_sensor  # ESPHome sensor component
 ```
 
 **Dependencies:**
-- `ActuatorSafetyGate` - All actuator control
-- `PersistentStateManager` - Recovery logging
-- `CalendarManager` - Daily schedule
-- `CentralStatusLogger` - Status reporting
+- `esphome::light::LightState` - RGB LED
+- `esphome::sensor::Sensor` - pH sensor
+- GPIO/PWM outputs added by SafetyGate (future)
 
 #### calendar_manager
 
@@ -503,28 +572,36 @@ sensor:
 
 ## Safety Architecture
 
-PlantOS implements a multi-layer safety design:
+PlantOS implements a multi-layer safety design with defense-in-depth:
 
-### Layer 1: Application Logic (PlantOSLogic)
-- Sequence validation
-- State machine flow control
-- pH range checking (software limits: 5.0-7.5)
+### Layer 1: Unified Controller (PlantOSController)
+- State machine flow validation (only valid state transitions allowed)
+- Sequence validation (pH correction, feeding, water management)
+- pH range checking (software limits: 5.0-7.5, triggers ERROR state)
+- Max attempt limits (pH correction limited to 5 attempts)
+- Safety margins (200ms margins after pump operations)
 
 ### Layer 2: ActuatorSafetyGate
-- Debouncing (prevent redundant commands)
-- Duration limits (prevent overruns)
-- Soft-start/soft-stop (inrush protection)
-- Runtime tracking with violation logging
+- Debouncing (prevents redundant commands)
+- Duration limits (enforces max runtime per actuator)
+- Soft-start/soft-stop (PWM ramping for inrush protection)
+- Runtime tracking with comprehensive violation logging
+- All hardware access flows through validation
 
-### Layer 3: PersistentStateManager
-- Critical event logging (NVS)
-- Power-loss recovery
-- Operation age validation
+### Layer 3: Hardware Abstraction Layer (HAL)
+- Single point of hardware access (no GPIO bypassing)
+- Clean interface prevents direct hardware manipulation
+- Enables testing and validation without physical hardware
 
-### Layer 4: Hardware Watchdog (WDTManager)
-- System hang detection
-- Automatic reset (10s timeout)
-- Hardware-enforced (ESP-IDF TWDT)
+### Layer 4: PersistentStateManager
+- Critical event logging to NVS (survives power loss)
+- Power-loss recovery and crash detection
+- Operation age validation (detect stuck operations)
+
+### Layer 5: Hardware Watchdog (WDTManager)
+- System hang detection via ESP-IDF TWDT
+- Automatic reset after 10s timeout
+- Hardware-enforced (cannot be disabled by software bugs)
 
 ### Additional Safety Features
 - **I2C Mutex**: Thread-safe bus access (prevents race conditions)
@@ -744,32 +821,67 @@ time:
 
 ## Key Architectural Decisions
 
-### Why Function Pointer FSM (Controller)
+### Why Enum-Based FSM (Unified Controller)
+
+**Design Choice**: Use `enum class ControllerState` with switch statement dispatch
 
 **Advantages**:
-- Direct function calls (no vtable overhead)
-- Clean state transitions (explicit return values)
-- Memory efficient on embedded systems
+- Type-safe state representation (compile-time checking)
+- Easy to visualize all possible states
+- Clear state transitions in code (explicit `transitionTo()` calls)
+- LED behavior mapping straightforward (state → behavior)
+- Debugging friendly (can print state names easily)
+
+**Implementation**:
+```cpp
+void PlantOSController::loop() {
+    switch (current_state_) {
+        case ControllerState::INIT: handleInit(); break;
+        case ControllerState::IDLE: handleIdle(); break;
+        case ControllerState::PH_MEASURING: handlePhMeasuring(); break;
+        // ... 9 more states
+    }
+}
+```
 
 **Trade-offs**:
-- Less type-safe than enums
-- Harder to visualize transitions
+- Slightly less memory efficient than function pointers (negligible on ESP32)
+- All states compiled into single switch statement (acceptable for 12 states)
 
-### Why Separate Controller and PlantOSLogic FSMs
+### Why 3-Layer HAL Architecture
 
-**Controller** (Hardware Level):
-- Fast (1000 Hz)
-- Visual feedback (LED patterns)
-- Hardware state management
-- Boot sequences, error indication
+**Problem with Old Architecture**:
+- Dual FSMs (Controller + PlantOSLogic) created confusion about responsibility
+- Direct hardware access scattered across components (hard to test)
+- No clear abstraction layer for hardware (couldn't mock for testing)
+- Tight coupling between application logic and ESPHome specifics
 
-**PlantOSLogic** (Application Level):
-- Slow (minute-scale operations)
-- Chemical dosing sequences
-- Business logic (pH correction, feeding)
-- Safety-critical operations
+**Solution: 3-Layer HAL Design**:
 
-**Benefit**: Clear separation of concerns enables independent testing and development.
+**Layer 1: Unified Controller**:
+- Single FSM orchestrating ALL system behavior (12 states)
+- Clear state transitions with LED feedback per state
+- Business logic (pH correction, feeding, water management)
+- Hardware-independent (works with any HAL implementation)
+
+**Layer 2: Actuator Safety Gate**:
+- Single point of validation for ALL actuator commands
+- Enforces safety rules consistently across system
+- Hardware-independent (delegates to HAL for execution)
+- Easy to audit and test safety logic
+
+**Layer 3: HAL (Hardware Abstraction Layer)**:
+- Pure hardware interface (setPump, readPH, setLED)
+- Wraps ESPHome components (Light, Sensor, GPIO)
+- Can be mocked for unit testing without hardware
+- Enables future hardware changes without touching controller
+
+**Benefits**:
+1. **Testability**: Mock HAL for unit testing controller logic
+2. **Clarity**: Each layer has single, well-defined responsibility
+3. **Safety**: All hardware access flows through validation layers
+4. **Portability**: Controller code works on any platform with HAL implementation
+5. **Maintainability**: Changes to hardware don't require controller changes
 
 ### Why Centralized ActuatorSafetyGate
 

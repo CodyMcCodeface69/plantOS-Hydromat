@@ -1645,14 +1645,53 @@ plantos_controller:
 
 **Task**: Replace dual FSM documentation with 3-layer architecture
 
-**Sections to Update**:
-1. Project Overview - mention 3-layer HAL architecture
-2. System Architecture - replace dual FSM diagram with 3-layer
-3. Component Reference - update Controller section, remove old PlantOSLogic
-4. Key Architectural Decisions - explain HAL rationale
+**Completion Status**: ✅ Done
 
-**Dependencies**: Phase 9 complete
-**Testing**: Documentation review
+**Updates Made**:
+
+1. **Project Overview** (line 7):
+   - Updated to mention "3-layer HAL (Hardware Abstraction Layer) design"
+   - Updated component count from 16 to 15 (unified controller)
+   - Added Architecture key statistic
+
+2. **System Architecture** (lines 56-94):
+   - Replaced 5-layer architecture with 3-layer HAL architecture
+   - Added ASCII diagram showing Controller → SafetyGate → HAL flow
+   - Added "Key Benefits" section explaining advantages
+
+3. **Data Flow Overview** (lines 103-127):
+   - Replaced old dual FSM flow with three separate flows:
+     - Sensor Reading Path (I2C → Filter → HAL → Controller)
+     - Actuator Control Path (Controller → SafetyGate → HAL → Hardware)
+     - Service Integration (Controller + Calendar + PSM + StatusLogger)
+
+4. **Component Reference** (lines 135-214):
+   - Removed old "controller" component documentation
+   - Added new "plantos_controller" (Layer 1: Unified Controller) with:
+     - 12 states enumeration
+     - State diagram showing all transitions
+     - Public API documentation
+     - Dependency injection details
+   - Removed "plantos_logic" component documentation
+   - Added "plantos_hal" (Layer 3: HAL) with:
+     - HAL interface definition
+     - ESPHomeHAL implementation details
+     - Usage examples
+
+5. **Safety Architecture** (lines 572-603):
+   - Updated Layer 1 from "Application Logic (PlantOSLogic)" to "Unified Controller (PlantOSController)"
+   - Added Layer 3: HAL for hardware access control
+   - Expanded to 5 layers of defense-in-depth
+
+6. **Key Architectural Decisions** (lines 821-867):
+   - Replaced "Why Function Pointer FSM" with "Why Enum-Based FSM"
+   - Replaced "Why Separate Controller and PlantOSLogic FSMs" with "Why 3-Layer HAL Architecture"
+   - Added detailed rationale for architectural choice
+   - Explained problems with old dual FSM design
+   - Listed 5 key benefits of HAL architecture
+
+**Dependencies**: Phase 9 complete ✅
+**Testing**: Documentation review ✅
 
 ---
 

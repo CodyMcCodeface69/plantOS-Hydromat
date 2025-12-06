@@ -248,6 +248,16 @@ void ActuatorSafetyGate::turnOnActuator(const std::string& actuatorId) {
 **Dependencies**: Phase 1 complete
 **Testing**: Verify SafetyGate calls HAL correctly
 
+**Completion Status**: ✅ Done
+- Added forward declaration for plantos_hal::HAL in ActuatorSafetyGate.h
+- Added setHAL() method for dependency injection
+- Added private hal_ member variable
+- Created executeHardwareCommand() helper method to route commands to HAL
+- Updated executeCommand() to call executeHardwareCommand() for instant ON/OFF
+- Updated updateRamping() to call executeHardwareCommand() when ramp completes
+- Actuators are identified by name pattern (Pump/Valve) and routed to correct HAL method
+- Compilation successful with HAL integration
+
 ---
 
 ### Issue #2.2: Update SafetyGate Python Integration
@@ -278,6 +288,14 @@ async def to_code(config):
 
 **Dependencies**: Issue #2.1
 **Testing**: YAML parse test, verify HAL injection
+
+**Completion Status**: ✅ Done
+- Updated __init__.py to import plantos_hal namespace and HAL class
+- Added CONF_HAL configuration key
+- Updated CONFIG_SCHEMA to require 'hal' parameter
+- Updated to_code() to inject HAL dependency via var.setHAL(hal)
+- Updated plantOS.yaml to add hal: hal to actuator_safety_gate configuration
+- Full compilation successful with HAL dependency injection
 
 ---
 

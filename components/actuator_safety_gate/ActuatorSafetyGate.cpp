@@ -1,4 +1,5 @@
 #include "ActuatorSafetyGate.h"
+#include "esphome/components/plantos_hal/hal.h"
 #include <cstring>
 
 namespace esphome {
@@ -12,6 +13,13 @@ ActuatorSafetyGate::ActuatorSafetyGate() {
 void ActuatorSafetyGate::setup() {
     ESP_LOGI(TAG, "ActuatorSafetyGate initialized");
     ESP_LOGI(TAG, "Safety features: Debouncing, Duration Limits, Runtime Tracking, Soft-Start/Soft-Stop");
+
+    // Verify HAL dependency (Phase 2)
+    if (!hal_) {
+        ESP_LOGW(TAG, "HAL not configured - actuator commands will be logged but not executed");
+    } else {
+        ESP_LOGI(TAG, "HAL configured - actuators will be controlled via hardware abstraction layer");
+    }
 }
 
 bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
@@ -80,11 +88,15 @@ bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
             state.currentDutyCycle = 0.0f;
             ESP_LOGI(TAG, "APPROVED: %s RAMPING UP (duration: %u ms)",
                      actuatorID, state.rampDuration);
+            // Hardware control will be handled gradually in updateRamping()
         } else {
             // Instant ON (no ramping)
             state.rampState = RAMP_FULL_ON;
             state.currentDutyCycle = 1.0f;
             logApproval(actuatorID, targetState, maxDurationSeconds);
+
+            // Execute hardware command via HAL (Phase 2)
+            executeHardwareCommand(id, true);
         }
     } else {
         // Turning OFF - calculate total runtime
@@ -103,10 +115,14 @@ bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
             state.rampStartTime = currentTime;
             ESP_LOGI(TAG, "         %s RAMPING DOWN (duration: %u ms)",
                      actuatorID, state.rampDuration);
+            // Hardware control will be handled gradually in updateRamping()
         } else {
             // Instant OFF (no ramping or already off)
             state.rampState = RAMP_OFF;
             state.currentDutyCycle = 0.0f;
+
+            // Execute hardware command via HAL (Phase 2)
+            executeHardwareCommand(id, false);
         }
 
         // Clear turn-on time
@@ -398,6 +414,9 @@ void ActuatorSafetyGate::updateRamping(const std::string& actuatorID,
             state.rampState = RAMP_FULL_ON;
             state.currentDutyCycle = 1.0f;
             ESP_LOGI(TAG, "Ramp complete: %s now at 100%% (FULL ON)", actuatorID.c_str());
+
+            // Execute final hardware command via HAL (Phase 2)
+            executeHardwareCommand(actuatorID, true);
         } else {
             // Calculate linear ramp: 0.0 to 1.0 over rampDuration
             float progress = static_cast<float>(elapsed) / static_cast<float>(state.rampDuration);
@@ -418,6 +437,9 @@ void ActuatorSafetyGate::updateRamping(const std::string& actuatorID,
             state.rampState = RAMP_OFF;
             state.currentDutyCycle = 0.0f;
             ESP_LOGI(TAG, "Ramp complete: %s now at 0%% (OFF)", actuatorID.c_str());
+
+            // Execute final hardware command via HAL (Phase 2)
+            executeHardwareCommand(actuatorID, false);
         } else {
             // Calculate linear ramp: 1.0 to 0.0 over rampDuration
             float progress = static_cast<float>(elapsed) / static_cast<float>(state.rampDuration);
@@ -428,6 +450,38 @@ void ActuatorSafetyGate::updateRamping(const std::string& actuatorID,
                 state.currentDutyCycle = 0.0f;
             }
         }
+    }
+}
+
+// ============================================================================
+// HARDWARE EXECUTION (Phase 2: HAL Integration)
+// ============================================================================
+
+void ActuatorSafetyGate::executeHardwareCommand(const std::string& actuatorID, bool state) {
+    // Check if HAL is available
+    if (!hal_) {
+        ESP_LOGD(TAG, "HAL not available - skipping hardware execution for %s", actuatorID.c_str());
+        return;
+    }
+
+    // Determine actuator type and call appropriate HAL method
+    // Convention: IDs ending in "Pump" are pumps, ending in "Valve" are valves
+    if (actuatorID.find("Pump") != std::string::npos) {
+        // This is a pump - call HAL setPump()
+        ESP_LOGD(TAG, "Executing via HAL: setPump(%s, %s)",
+                 actuatorID.c_str(), state ? "ON" : "OFF");
+        hal_->setPump(actuatorID, state);
+    }
+    else if (actuatorID.find("Valve") != std::string::npos) {
+        // This is a valve - call HAL setValve()
+        ESP_LOGD(TAG, "Executing via HAL: setValve(%s, %s)",
+                 actuatorID.c_str(), state ? "OPEN" : "CLOSED");
+        hal_->setValve(actuatorID, state);
+    }
+    else {
+        // Unknown actuator type - default to pump
+        ESP_LOGW(TAG, "Unknown actuator type: %s (defaulting to pump)", actuatorID.c_str());
+        hal_->setPump(actuatorID, state);
     }
 }
 

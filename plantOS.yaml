@@ -631,8 +631,17 @@ interval:
 #
 # See components/actuator_safety_gate/README.md for complete documentation.
 ################################################################################
+################################################################################
+# Actuator Safety Gate (Layer 2) - Phase 2 HAL Integration
+#
+# Centralized safety layer for all actuator control with:
+# - Debouncing, Duration Limits, Runtime Tracking
+# - Soft-Start/Soft-Stop ramping
+# - HAL integration for hardware control
+################################################################################
 actuator_safety_gate:
   id: actuator_safety
+  hal: hal  # Phase 2: Inject HAL dependency for hardware control
 
 ################################################################################
 # EZO pH Sensor Component (Atlas Scientific)

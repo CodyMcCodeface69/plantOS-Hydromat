@@ -6,6 +6,11 @@
 #include <string>
 #include <map>
 
+// Forward declaration for HAL
+namespace plantos_hal {
+class HAL;
+}
+
 namespace esphome {
 namespace actuator_safety_gate {
 
@@ -132,6 +137,24 @@ public:
      * Monitors actuator runtimes and logs duration violations.
      */
     void loop() override;
+
+    // ========================================================================
+    // DEPENDENCY INJECTION (Phase 2: HAL Integration)
+    // ========================================================================
+
+    /**
+     * Set Hardware Abstraction Layer (HAL) dependency
+     *
+     * @param hal Pointer to PlantOS HAL instance
+     *
+     * This must be called during component initialization (via Python to_code).
+     * The SafetyGate will use the HAL to execute approved actuator commands.
+     */
+    void setHAL(plantos_hal::HAL* hal) { hal_ = hal; }
+
+    // ========================================================================
+    // COMMAND EXECUTION
+    // ========================================================================
 
     /**
      * Execute an actuator command with safety enforcement
@@ -286,11 +309,29 @@ public:
     RampState getRampState(const char* actuatorID) const;
 
 private:
+    // ========================================================================
+    // DEPENDENCIES (Phase 2: HAL Integration)
+    // ========================================================================
+
+    // Hardware Abstraction Layer for actuator control
+    plantos_hal::HAL* hal_{nullptr};
+
+    // ========================================================================
+    // STATE TRACKING
+    // ========================================================================
+
     // Map of actuator ID to state tracking info
     std::map<std::string, ActuatorState> actuators_;
 
+    // ========================================================================
+    // HELPER METHODS
+    // ========================================================================
+
     // Helper to get or create actuator state entry
     ActuatorState& getOrCreateState(const std::string& actuatorID);
+
+    // Helper to execute hardware command via HAL
+    void executeHardwareCommand(const std::string& actuatorID, bool state);
 
     // Helper to log safety violations
     void logRejection(const char* actuatorID, const char* reason);

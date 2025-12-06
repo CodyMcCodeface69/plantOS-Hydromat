@@ -6,8 +6,12 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "../actuator_safety_gate/ActuatorSafetyGate.h"
 #include "../persistent_state_manager/persistent_state_manager.h"
-#include "../controller/CentralStatusLogger.h"
+// Phase 4: Old controller status logger not available
+// #include "../controller/CentralStatusLogger.h"
 #include "../calendar_manager/CalendarManager.h"
+
+// Forward declaration for status logger (Phase 4 - not currently available)
+class CentralStatusLogger;
 
 namespace esphome {
 namespace plantos_logic {

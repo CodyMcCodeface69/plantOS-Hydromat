@@ -9,12 +9,14 @@ esphome:
   name: plantos
 
   # Boot automation: Inject CentralStatusLogger from controller into PlantOSLogic
-  on_boot:
-    priority: -100  # Run after all components are initialized
-    then:
-      - lambda: |-
-          // Inject CentralStatusLogger from controller into PlantOSLogic
-          id(plant_logic)->set_status_logger(id(my_controller)->get_logger());
+  # NOTE: Phase 4 - old controller (my_controller) is being replaced with unified_controller
+  # This automation is temporarily disabled until PlantOSLogic is updated in future phases
+  # on_boot:
+  #   priority: -100  # Run after all components are initialized
+  #   then:
+  #     - lambda: |-
+  #         // Inject CentralStatusLogger from controller into PlantOSLogic
+  #         id(plant_logic)->set_status_logger(id(my_controller)->get_logger());
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -142,9 +144,11 @@ external_components:
   # Points to local custom components directory
   # ESPHome will compile and link C++ code from here alongside generated code
   - source: components
-    components: [controller, sensor_dummy, sensor_filter, ezo_ph, plantos_logic,
+    components: [controller, sensor_dummy, sensor_filter, ezo_ph,
+                 # plantos_logic,  # Phase 4: Temporarily excluded due to old controller dependency
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
-                 i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo, plantos_hal]
+                 i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo, plantos_hal,
+                 plantos_controller]
 
 ################################################################################
 # I²C Bus Configuration
@@ -205,7 +209,8 @@ i2c_scanner:
 
   # Link to controller for status reporting
   # This enables I²C scan results to appear in the central status logger
-  status_logger: my_controller
+  # COMMENTED OUT - Phase 4: Old controller not available
+  # status_logger: my_controller
 
   # Scan once at boot to validate hardware setup
   scan_on_boot: true
@@ -322,15 +327,16 @@ text_sensor:
     # Update every 5 seconds to show current status
     update_interval: 5s
 
-  - platform: template
-    name: "01_02_Verbose Mode Status"
-    id: verbose_mode_status
-    # Shows current verbose logging status: ON or OFF
-    # Updated when verbose mode is toggled
-    lambda: |-
-      return id(my_controller)->get_verbose() ? std::string("ON") : std::string("OFF");
-    # Update every 5 seconds to show current status
-    update_interval: 5s
+  # COMMENTED OUT - Phase 4: Old controller methods not available
+  # - platform: template
+  #   name: "01_02_Verbose Mode Status"
+  #   id: verbose_mode_status
+  #   # Shows current verbose logging status: ON or OFF
+  #   # Updated when verbose mode is toggled
+  #   lambda: |-
+  #     return id(my_controller)->get_verbose() ? std::string("ON") : std::string("OFF");
+  #   # Update every 5 seconds to show current status
+  #   update_interval: 5s
 
 ################################################################################
 # Button: Controller Management and Manual Routines
@@ -339,14 +345,15 @@ text_sensor:
 ################################################################################
 button:
   # === 03 - System Control & Restart ===
-  - platform: template
-    name: "03_01_Reset Controller"
-    on_press:
-      # Lambda action calls the controller's reset_to_init() method
-      # This triggers an immediate transition to INIT state
-      then:
-        - lambda: |-
-            id(my_controller)->reset_to_init();
+  # COMMENTED OUT - Phase 4: Old controller methods not available
+  # - platform: template
+  #   name: "03_01_Reset Controller"
+  #   on_press:
+  #     # Lambda action calls the controller's reset_to_init() method
+  #     # This triggers an immediate transition to INIT state
+  #     then:
+  #       - lambda: |-
+  #           id(my_controller)->reset_to_init();
 
   - platform: template
     name: "03_02_Reconnect WiFi"
@@ -382,15 +389,16 @@ button:
         - lambda: |-
             id(psm)->clearEvent();
 
-  - platform: template
-    name: "05_02_Toggle Verbose Logging"
-    on_press:
-      # Toggle verbose mode on/off at runtime
-      # Enables/disables detailed logging of all controller actions and state transitions
-      # Useful for debugging without reflashing firmware
-      then:
-        - lambda: |-
-            id(my_controller)->toggle_verbose();
+  # COMMENTED OUT - Phase 4: Old controller methods not available
+  # - platform: template
+  #   name: "05_02_Toggle Verbose Logging"
+  #   on_press:
+  #     # Toggle verbose mode on/off at runtime
+  #     # Enables/disables detailed logging of all controller actions and state transitions
+  #     # Useful for debugging without reflashing firmware
+  #     then:
+  #       - lambda: |-
+  #           id(my_controller)->toggle_verbose();
 
   # === 06 - Setup & Calibration ===
   - platform: template
@@ -451,14 +459,15 @@ button:
             id(plant_logic)->start_empty_tank();
 
   # === 99 - Miscellaneous ===
-  - platform: template
-    name: "99_01_Blaze It"
-    on_press:
-      # Trigger 420 ASCII art display on demand
-      # Displays the easter egg immediately without waiting for 4:20 AM/PM
-      then:
-        - lambda: |-
-            id(my_controller)->blaze_it();
+  # COMMENTED OUT - Phase 4: Old controller method not available in unified controller
+  # - platform: template
+  #   name: "99_01_Blaze It"
+  #   on_press:
+  #     # Trigger 420 ASCII art display on demand
+  #     # Displays the easter egg immediately without waiting for 4:20 AM/PM
+  #     then:
+  #       - lambda: |-
+  #           id(my_controller)->blaze_it();
 
 ################################################################################
 # System Controller: Finite State Machine
@@ -487,41 +496,34 @@ plantos_hal:
   system_led: system_led
   ph_sensor: ph_sensor_real
 
-controller:
-  id: my_controller
+################################################################################
+# OLD CONTROLLER (DEPRECATED - Phase 4 replaces with plantos_controller)
+# Commenting out old controller to preserve configuration for reference
+################################################################################
+# controller:
+#   id: my_controller
+#   sensor_source: sensor_filtered_id
+#   light_target: system_led
+#   state_text: controller_state_text
+#   verbose: true
+#   status_log_interval: 30s
+#   420_mode: true
 
-  # sensor_source: ID reference to any ESPHome sensor component
-  # The controller subscribes to this sensor's state changes via callback
-  # UPDATED: Now using filtered sensor for robust, outlier-free data
-  sensor_source: sensor_filtered_id
-
-  # light_target: ID reference to any ESPHome light component
-  # The controller calls the light's API to set colors/brightness
-  light_target: system_led
-
-  # state_text: ID reference to a text sensor for FSM state publishing
-  # The controller will publish state changes (INIT, CALIBRATION, READY, ERROR)
-  # to this text sensor for display in the web UI
-  state_text: controller_state_text
-
-  # verbose: Enable detailed logging of all controller actions and state transitions
-  # When enabled, logs:
-  # - State transitions with time spent in each state
-  # - Every action taken (LED updates, sensor checks, etc.)
-  # - Timing information for each action (how long it took)
-  # Useful for debugging FSM behavior and performance profiling
-  # Default: false (minimal logging)
-  verbose: true
-
-  # status_log_interval: How often to print central status logger reports
-  # Controls the frequency of comprehensive system status reports
-  # Default: 30s (prints status every 30 seconds)
-  # Common values: 10s, 30s, 1min, 5min
-  status_log_interval: 30s
-
-  # 420_mode: Easter egg mode for special ASCII art logging
-  # When enabled, displays special ASCII art at 4:20 AM and 4:20 PM
-  420_mode: true
+################################################################################
+# PlantOS Unified Controller (Layer 1) - Phase 4
+#
+# Unified controller managing:
+# - System FSM with 12 states
+# - LED behaviors via LedBehaviorSystem
+# - HAL integration for sensors/LED
+# - SafetyGate integration for actuators
+#
+# Architecture: Controller → SafetyGate → HAL → Hardware
+################################################################################
+plantos_controller:
+  id: unified_controller
+  hal: hal                      # Hardware abstraction layer
+  safety_gate: actuator_safety  # Actuator control with safety enforcement
 
 ################################################################################
 # Time Logger: Periodic Time Logging
@@ -572,27 +574,28 @@ time_logger:
 #
 # Runs every 30 seconds to keep network status current in the logger.
 ################################################################################
-interval:
-  - interval: 30s
-    then:
-      - lambda: |-
-          // Update IP address in status logger
-          #ifdef USE_WIFI
-          if (wifi::global_wifi_component->is_connected()) {
-            auto addresses = wifi::global_wifi_component->get_ip_addresses();
-            if (!addresses.empty()) {
-              id(my_controller)->get_logger()->updateIP(addresses[0].str().c_str());
-            }
-          } else {
-            id(my_controller)->get_logger()->updateIP("Not Connected");
-          }
-          #endif
-
-          // Update web server status
-          // ESPHome web server is always running once configured
-          #ifdef USE_WEBSERVER
-          id(my_controller)->get_logger()->updateWebServerStatus(true, false);
-          #endif
+# COMMENTED OUT - Phase 4: Old controller not available
+# interval:
+#   - interval: 30s
+#     then:
+#       - lambda: |-
+#           // Update IP address in status logger
+#           #ifdef USE_WIFI
+#           if (wifi::global_wifi_component->is_connected()) {
+#             auto addresses = wifi::global_wifi_component->get_ip_addresses();
+#             if (!addresses.empty()) {
+#               id(my_controller)->get_logger()->updateIP(addresses[0].str().c_str());
+#             }
+#           } else {
+#             id(my_controller)->get_logger()->updateIP("Not Connected");
+#           }
+#           #endif
+#
+#           // Update web server status
+#           // ESPHome web server is always running once configured
+#           #ifdef USE_WEBSERVER
+#           id(my_controller)->get_logger()->updateWebServerStatus(true, false);
+#           #endif
 
 ################################################################################
 # Actuator Safety Gate - Centralized Actuator Control Safety Layer

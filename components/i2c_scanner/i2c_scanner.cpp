@@ -1,7 +1,8 @@
 #include "i2c_scanner.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
-#include "../controller/CentralStatusLogger.h"
+// Phase 4: Old controller status logger not available
+// #include "../controller/CentralStatusLogger.h"
 
 namespace esphome {
 namespace i2c_scanner {
@@ -146,43 +147,44 @@ void I2CScanner::scanI2CBus() {
   }
 
   // ===== REPORT TO CENTRAL STATUS LOGGER =====
-  if (status_logger_ != nullptr) {
-    // Build device list for status logger
-    std::vector<I2CDeviceInfo> devices;
-
-    // Add all found devices
-    for (uint8_t address : found_devices) {
-      std::string device_name;
-      bool is_critical = isCriticalDevice(address, device_name);
-
-      if (is_critical) {
-        devices.push_back(I2CDeviceInfo(address, device_name, true, true));
-      } else {
-        // Unknown device - just show address
-        char addr_str[16];
-        snprintf(addr_str, sizeof(addr_str), "Unknown (0x%02X)", address);
-        devices.push_back(I2CDeviceInfo(address, std::string(addr_str), true, false));
-      }
-    }
-
-    // Add missing critical devices
-    for (const auto &critical : critical_devices_) {
-      bool found = false;
-      for (uint8_t address : found_devices) {
-        if (address == critical.address) {
-          found = true;
-          break;
-        }
-      }
-
-      if (!found) {
-        devices.push_back(I2CDeviceInfo(critical.address, critical.name, false, true));
-      }
-    }
-
-    // Report to status logger
-    status_logger_->updateI2CHardwareStatus(devices);
-  }
+  // Phase 4: Status logger not available - commented out
+  // if (status_logger_ != nullptr) {
+  //   // Build device list for status logger
+  //   std::vector<I2CDeviceInfo> devices;
+  //
+  //   // Add all found devices
+  //   for (uint8_t address : found_devices) {
+  //     std::string device_name;
+  //     bool is_critical = isCriticalDevice(address, device_name);
+  //
+  //     if (is_critical) {
+  //       devices.push_back(I2CDeviceInfo(address, device_name, true, true));
+  //     } else {
+  //       // Unknown device - just show address
+  //       char addr_str[16];
+  //       snprintf(addr_str, sizeof(addr_str), "Unknown (0x%02X)", address);
+  //       devices.push_back(I2CDeviceInfo(address, std::string(addr_str), true, false));
+  //     }
+  //   }
+  //
+  //   // Add missing critical devices
+  //   for (const auto &critical : critical_devices_) {
+  //     bool found = false;
+  //     for (uint8_t address : found_devices) {
+  //       if (address == critical.address) {
+  //         found = true;
+  //         break;
+  //       }
+  //     }
+  //
+  //     if (!found) {
+  //       devices.push_back(I2CDeviceInfo(critical.address, critical.name, false, true));
+  //     }
+  //   }
+  //
+  //   // Report to status logger
+  //   status_logger_->updateI2CHardwareStatus(devices);
+  // }
 }
 
 void I2CScanner::add_critical_device(uint8_t address, const std::string &name) {

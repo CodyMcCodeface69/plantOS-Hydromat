@@ -2,9 +2,10 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/log.h"
-#include "esphome/components/plantos_controller/led_behaviors/led_behavior.h"
+#include "led_behavior.h"
 #include <memory>
 #include <string>
+#include <vector>
 
 // Forward declarations
 namespace plantos_hal {
@@ -144,6 +145,16 @@ private:
     uint32_t state_counter_{0};           // General-purpose counter for states
 
     // ========================================================================
+    // pH Correction State
+    // ========================================================================
+
+    float ph_current_{0.0f};              // Current pH reading
+    std::vector<float> ph_readings_;      // Buffer for robust averaging
+    uint32_t ph_attempt_count_{0};        // Number of pH correction attempts
+    uint32_t ph_dose_duration_ms_{0};     // Calculated acid dose duration
+    static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
+
+    // ========================================================================
     // LED Behavior System
     // ========================================================================
 
@@ -223,6 +234,31 @@ private:
      * Check if pH sensor has valid reading
      */
     bool hasPhValue();
+
+    // ========================================================================
+    // pH Correction Helpers
+    // ========================================================================
+
+    /**
+     * Calculate required acid pump duration based on pH difference
+     * @param current_ph Current pH reading
+     * @param target_ph_max Upper bound of target pH range
+     * @return Dosing duration in milliseconds
+     */
+    uint32_t calculateAcidDuration(float current_ph, float target_ph_max);
+
+    /**
+     * Perform robust average of pH readings
+     * Calculates average after rejecting outliers
+     * @return Robust average pH value
+     */
+    float calculateRobustPhAverage();
+
+    /**
+     * Check if pH reading is stable (consecutive readings within threshold)
+     * @return true if pH has stabilized
+     */
+    bool isPhStable();
 
     // ========================================================================
     // Constants

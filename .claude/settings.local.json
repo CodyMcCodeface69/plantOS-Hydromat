@@ -10,7 +10,8 @@
       "Bash(esphome config:*)",
       "Bash(mkdir:*)",
       "WebFetch(domain:github.com)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(esphome compile:*)"
     ],
     "deny": [],
     "ask": []

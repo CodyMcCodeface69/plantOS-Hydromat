@@ -865,6 +865,17 @@ void PlantOSController::handlePhMeasuring() {
 **Dependencies**: Issue #4.4
 **Testing**: Verify 5min timing, readings collected, pumps OFF
 
+**Completion Status**: ✅ Done
+- Implemented handlePhMeasuring() in controller.cpp
+- Turns off all pumps on entry for accurate measurement
+- Takes pH readings every 60 seconds via state_counter tracking
+- Waits full 5 minutes (300000ms) for stabilization
+- Collects readings in ph_readings_ vector
+- Checks for critical pH (< 5.0 or > 7.5) and logs warnings
+- Calculates robust average using helper method
+- Transitions to PH_CALCULATING after measurement complete
+- Handles error case if no readings collected
+
 ---
 
 ### Issue #5.2: Implement PH_CALCULATING State
@@ -931,6 +942,19 @@ void PlantOSController::handlePhCalculating() {
 **Dependencies**: Issue #5.1
 **Testing**: Verify decision logic, dose calculation
 
+**Completion Status**: ✅ Done
+- Implemented handlePhCalculating() in controller.cpp
+- Uses hardcoded target range (PH_TARGET_MIN/MAX = 5.5-6.5) for Phase 5
+- Checks if pH is within target range → transitions to IDLE
+- Checks if pH too low (cannot correct without base pump) → transitions to IDLE
+- Calculates acid dose using calculateAcidDuration() helper method
+- Checks minimum dose threshold (1000ms) to avoid tiny corrections
+- Checks max attempts (MAX_PH_ATTEMPTS = 5) to prevent infinite loops
+- Stores dose duration in ph_dose_duration_ms_
+- Increments ph_attempt_count_ before injection
+- Comprehensive logging of decision logic
+- Phase 7 placeholders for PSM and StatusLogger integration
+
 ---
 
 ### Issue #5.3: Implement PH_INJECTING State
@@ -978,6 +1002,17 @@ void PlantOSController::handlePhInjecting() {
 **Dependencies**: Issue #5.2
 **Testing**: Verify acid pump activates, SafetyGate approves
 
+**Completion Status**: ✅ Done
+- Implemented handlePhInjecting() in controller.cpp
+- Activates air pump first for immediate mixing (continuous)
+- Calculates duration in seconds (rounds up) for SafetyGate
+- Requests acid pump via SafetyGate with calculated duration
+- Handles SafetyGate rejection → transitions to ERROR state
+- Waits for ph_dose_duration_ms_ + 200ms safety margin
+- Explicitly stops acid pump after injection complete
+- Transitions to PH_MIXING for 2-minute mixing phase
+- Comprehensive error handling and logging
+
 ---
 
 ### Issue #5.4: Implement PH_MIXING State
@@ -1008,6 +1043,15 @@ void PlantOSController::handlePhMixing() {
 **Current Reference**: `components/plantos_logic/PlantOSLogic.cpp:516-536` (handle_ph_mixing)
 **Dependencies**: Issue #5.3
 **Testing**: Verify 2min mixing, loop back to PH_MEASURING
+
+**Completion Status**: ✅ Done
+- Implemented handlePhMixing() in controller.cpp
+- Air pump continues running for 2 minutes (PH_MIXING_DURATION = 120000ms)
+- Explicitly stops air pump after mixing complete
+- Transitions back to PH_MEASURING to verify correction
+- Logs attempt count for debugging
+- Implements closed-loop pH correction (measure → calculate → inject → mix → repeat)
+- Will loop until pH is in range OR max attempts reached (5)
 
 ---
 
@@ -1042,6 +1086,19 @@ void PlantOSController::startPhCorrection() {
 
 **Dependencies**: Issues #5.1-5.4
 **Testing**: Manual trigger via button, verify full sequence
+
+**Completion Status**: ✅ Done
+- Implemented startPhCorrection() in controller.cpp
+- Checks current state (must be IDLE or MAINTENANCE)
+- Resets all pH correction state variables:
+  - ph_attempt_count_ = 0
+  - ph_readings_.clear()
+  - ph_current_ = 0.0f
+  - ph_dose_duration_ms_ = 0
+- Transitions to PH_MEASURING to begin sequence
+- Added Phase 7 placeholder for PSM event logging
+- Connected to button via plantOS.yaml (07_02_Start pH Correction)
+- Public API allows manual triggering from ESPHome web UI
 
 ---
 

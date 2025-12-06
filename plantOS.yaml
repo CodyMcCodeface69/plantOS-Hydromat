@@ -401,24 +401,26 @@ button:
   #           id(my_controller)->toggle_verbose();
 
   # === 06 - Setup & Calibration ===
-  - platform: template
-    name: "06_01_Calibrate pH"
-    on_press:
-      # Start pH sensor calibration
-      # Stops all other routines until complete
-      then:
-        - lambda: |-
-            id(plant_logic)->calibrate_ph();
+  # COMMENTED OUT - Phase 5: Calibration will be implemented in Phase 7
+  # - platform: template
+  #   name: "06_01_Calibrate pH"
+  #   on_press:
+  #     # Start pH sensor calibration
+  #     # Stops all other routines until complete
+  #     then:
+  #       - lambda: |-
+  #           id(plant_logic)->calibrate_ph();
 
   # === 07 - pH & Measurement ===
-  - platform: template
-    name: "07_01_Measure pH Only"
-    on_press:
-      # Measure pH without correcting it
-      # Useful for checking current pH value
-      then:
-        - lambda: |-
-            id(plant_logic)->start_ph_measurement_only();
+  # COMMENTED OUT - Phase 5: Measurement-only will be implemented in Phase 7
+  # - platform: template
+  #   name: "07_01_Measure pH Only"
+  #   on_press:
+  #     # Measure pH without correcting it
+  #     # Useful for checking current pH value
+  #     then:
+  #       - lambda: |-
+  #           id(plant_logic)->start_ph_measurement_only();
 
   - platform: template
     name: "07_02_Start pH Correction"
@@ -427,7 +429,7 @@ button:
       # Includes measurement, calculation, dosing, and mixing
       then:
         - lambda: |-
-            id(plant_logic)->start_ph_correction();
+            id(unified_controller)->startPhCorrection();
 
   # === 08 - Primary Routines (Feeding) ===
   - platform: template
@@ -437,7 +439,7 @@ button:
       # Uses dosing durations from current day's schedule
       then:
         - lambda: |-
-            id(plant_logic)->start_feeding();
+            id(unified_controller)->startFeeding();
 
   # === 09 - Water Management ===
   - platform: template
@@ -447,7 +449,7 @@ button:
       # Opens water valve for configured duration
       then:
         - lambda: |-
-            id(plant_logic)->start_fill_tank();
+            id(unified_controller)->startFillTank();
 
   - platform: template
     name: "09_02_Empty Tank"
@@ -456,7 +458,7 @@ button:
       # Activates wastewater pump for configured duration
       then:
         - lambda: |-
-            id(plant_logic)->start_empty_tank();
+            id(unified_controller)->startEmptyTank();
 
   # === 99 - Miscellaneous ===
   # COMMENTED OUT - Phase 4: Old controller method not available in unified controller
@@ -902,25 +904,25 @@ calendar_manager:
     ]
 
 ################################################################################
-# PlantOSLogic - Main Application Logic FSM
+# PlantOSLogic - Main Application Logic FSM (Phase 4: DISABLED - replaced by unified controller)
 #
 # Orchestrates pH correction, nutrient feeding, and water management routines.
 # All actuator operations go through ActuatorSafetyGate for safety enforcement.
 # Critical sequences logged to PSM for recovery after power loss.
 ################################################################################
-plantos_logic:
-  id: plant_logic
-
-  # Required dependencies
-  safety_gate: actuator_safety
-  psm: psm
-  calendar: plant_calendar
-
-  # Optional dependencies
-  # Production pH sensor: Atlas Scientific EZO pH circuit via I2C
-  # For development/testing, can switch back to: sensor_dummy_id
-  ph_sensor: ph_sensor_real
-  state_text: logic_state_text
+# plantos_logic:
+#   id: plant_logic
+#
+#   # Required dependencies
+#   safety_gate: actuator_safety
+#   psm: psm
+#   calendar: plant_calendar
+#
+#   # Optional dependencies
+#   # Production pH sensor: Atlas Scientific EZO pH circuit via I2C
+#   # For development/testing, can switch back to: sensor_dummy_id
+#   ph_sensor: ph_sensor_real
+#   state_text: logic_state_text
 
 ################################################################################
 # Switch Components - Manual Controls (02 - Security)
@@ -944,7 +946,7 @@ switch:
     turn_on_action:
       - lambda: |-
           ESP_LOGI("switch", "Maintenance mode switch turned ON");
-          id(plant_logic).toggle_maintenance_mode(true);
+          id(unified_controller)->toggleMaintenanceMode(true);
 
     # Turn OFF: Exit maintenance mode
     # - Sets shutdown_requested_ = false in PlantOSLogic
@@ -955,7 +957,7 @@ switch:
     turn_off_action:
       - lambda: |-
           ESP_LOGI("switch", "Maintenance mode switch turned OFF");
-          id(plant_logic).toggle_maintenance_mode(false);
+          id(unified_controller)->toggleMaintenanceMode(false);
 
     # IMPORTANT: Switch state synchronization on boot
     # The switch state must reflect the persistent shutdown_requested_ state

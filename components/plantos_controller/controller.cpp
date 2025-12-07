@@ -31,11 +31,27 @@ void PlantOSController::setup() {
         ESP_LOGW(TAG, "SafetyGate not configured - Actuator control disabled");
     }
 
-    // Optional PSM dependency
+    // Check for persisted SHUTDOWN or PAUSE states from PSM
     if (psm_) {
-        ESP_LOGI(TAG, "PSM configured - Crash recovery enabled");
+        ESP_LOGI(TAG, "PSM configured - Checking for persisted state");
+
+        // Check if we were in SHUTDOWN or PAUSE state before power loss
+        if (psm_->hasEvent()) {
+            esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+            std::string eventID(event.eventID);
+
+            if (eventID == "STATE_SHUTDOWN") {
+                ESP_LOGI(TAG, "Recovering SHUTDOWN state from power loss");
+                transitionTo(ControllerState::SHUTDOWN);
+                return;
+            } else if (eventID == "STATE_PAUSE") {
+                ESP_LOGI(TAG, "Recovering PAUSE state from power loss");
+                transitionTo(ControllerState::PAUSE);
+                return;
+            }
+        }
     } else {
-        ESP_LOGW(TAG, "PSM not configured - Crash recovery disabled");
+        ESP_LOGW(TAG, "PSM not configured - State persistence disabled");
     }
 
     ESP_LOGI(TAG, "Controller initialized - Starting in INIT state");
@@ -51,6 +67,15 @@ void PlantOSController::loop() {
     uint32_t elapsed = getStateElapsed();
     led_behaviors_->update(current_state_, elapsed, hal_);
 
+    // Check if we should print periodic status report
+    if (status_logger_.shouldPrintStatusReport()) {
+        // Update status logger with current pH before printing
+        if (hal_->hasPhValue()) {
+            status_logger_.updateStatus(readPH(), "");
+        }
+        status_logger_.logStatus();
+    }
+
     // Call state-specific handler
     switch (current_state_) {
         case ControllerState::INIT:
@@ -61,8 +86,12 @@ void PlantOSController::loop() {
             handleIdle();
             break;
 
-        case ControllerState::MAINTENANCE:
-            handleMaintenance();
+        case ControllerState::SHUTDOWN:
+            handleShutdown();
+            break;
+
+        case ControllerState::PAUSE:
+            handlePause();
             break;
 
         case ControllerState::ERROR:
@@ -124,20 +153,21 @@ void PlantOSController::handleIdle() {
     // Future: Check for scheduled tasks, sensor thresholds, etc.
 }
 
-void PlantOSController::handleMaintenance() {
+void PlantOSController::handleShutdown() {
     // Solid yellow LED handled by LedBehaviorSystem
-    // All automation disabled - user must manually exit this mode
+    // All actuators OFF, calendar/time-based events disabled
+    // Persists across power cycles - must use setToIdle() to exit
 
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Turn off all pumps for safety
+    // On entry: Turn off all pumps and valves for safety
     if (elapsed < 100) {
         turnOffAllPumps();
-        ESP_LOGI(TAG, "Maintenance mode ACTIVE - all pumps OFF, automation disabled");
+        ESP_LOGI(TAG, "SHUTDOWN state ACTIVE - all actuators OFF, calendar disabled");
 
-        // Log maintenance mode entry to PSM for persistence
+        // Persist SHUTDOWN state to NVS
         if (psm_) {
-            psm_->logEvent("SHUTDOWN", 1);  // 1 = ENTERED_MAINTENANCE_MODE
+            psm_->logEvent("STATE_SHUTDOWN", 1);  // 1 = ENTERED_SHUTDOWN
         }
 
         // Update status logger
@@ -146,8 +176,31 @@ void PlantOSController::handleMaintenance() {
         return;
     }
 
-    // Stay in this state until toggleMaintenanceMode(false) is called
-    // No automatic exit from maintenance mode
+    // Stay in this state until setToIdle() is called
+    // No automatic exit - persists across reboots
+}
+
+void PlantOSController::handlePause() {
+    // Solid orange LED handled by LedBehaviorSystem
+    // Actuators maintain current state, calendar/time-based events disabled
+    // Persists across power cycles - must use setToIdle() to exit
+
+    uint32_t elapsed = getStateElapsed();
+
+    // On entry: Log state change
+    if (elapsed < 100) {
+        ESP_LOGI(TAG, "PAUSE state ACTIVE - actuators maintained, calendar disabled");
+
+        // Persist PAUSE state to NVS
+        if (psm_) {
+            psm_->logEvent("STATE_PAUSE", 1);  // 1 = ENTERED_PAUSE
+        }
+
+        return;
+    }
+
+    // Stay in this state until setToIdle() is called
+    // No automatic exit - persists across reboots
 }
 
 void PlantOSController::handleError() {
@@ -543,8 +596,8 @@ void PlantOSController::handleWaterEmptying() {
 // ============================================================================
 
 void PlantOSController::startPhCorrection() {
-    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::MAINTENANCE) {
-        ESP_LOGW(TAG, "Cannot start pH correction - system busy (state: %d)", static_cast<int>(current_state_));
+    if (current_state_ != ControllerState::IDLE) {
+        ESP_LOGW(TAG, "Cannot start pH correction - system not in IDLE state (state: %d)", static_cast<int>(current_state_));
         return;
     }
 
@@ -565,7 +618,7 @@ void PlantOSController::startPhCorrection() {
 }
 
 void PlantOSController::startFeeding() {
-    if (current_state_ == ControllerState::IDLE || current_state_ == ControllerState::MAINTENANCE) {
+    if (current_state_ == ControllerState::IDLE) {
         ESP_LOGI(TAG, "Starting feeding sequence");
 
         // Log event for crash recovery persistence
@@ -580,7 +633,7 @@ void PlantOSController::startFeeding() {
 }
 
 void PlantOSController::startFillTank() {
-    if (current_state_ == ControllerState::IDLE || current_state_ == ControllerState::MAINTENANCE) {
+    if (current_state_ == ControllerState::IDLE) {
         ESP_LOGI(TAG, "Starting tank fill");
 
         // Log event for crash recovery persistence
@@ -595,7 +648,7 @@ void PlantOSController::startFillTank() {
 }
 
 void PlantOSController::startEmptyTank() {
-    if (current_state_ == ControllerState::IDLE || current_state_ == ControllerState::MAINTENANCE) {
+    if (current_state_ == ControllerState::IDLE) {
         ESP_LOGI(TAG, "Starting tank drain");
 
         // Log event for crash recovery persistence
@@ -609,37 +662,44 @@ void PlantOSController::startEmptyTank() {
     }
 }
 
-bool PlantOSController::toggleMaintenanceMode(bool enable) {
-    if (enable) {
-        if (current_state_ != ControllerState::MAINTENANCE) {
-            ESP_LOGI(TAG, "Entering maintenance mode");
-            turnOffAllPumps();
-            transitionTo(ControllerState::MAINTENANCE);
-            return true;
+void PlantOSController::setToShutdown() {
+    ESP_LOGI(TAG, "Transitioning to SHUTDOWN state");
+    transitionTo(ControllerState::SHUTDOWN);
+}
+
+void PlantOSController::setToPause() {
+    ESP_LOGI(TAG, "Transitioning to PAUSE state");
+    transitionTo(ControllerState::PAUSE);
+}
+
+void PlantOSController::setToIdle() {
+    if (current_state_ == ControllerState::SHUTDOWN || current_state_ == ControllerState::PAUSE) {
+        ESP_LOGI(TAG, "Exiting %s state to IDLE",
+                 current_state_ == ControllerState::SHUTDOWN ? "SHUTDOWN" : "PAUSE");
+
+        // Clear PSM persistence
+        if (psm_) {
+            psm_->clearEvent();
         }
+
+        // Update status logger
+        status_logger_.updateMaintenanceMode(false);
+
+        transitionTo(ControllerState::IDLE);
     } else {
-        if (current_state_ == ControllerState::MAINTENANCE) {
-            ESP_LOGI(TAG, "Exiting maintenance mode");
-
-            // Log exit event to PSM
-            if (psm_) {
-                psm_->logEvent("SHUTDOWN", 2);  // 2 = EXIT_MAINTENANCE_MODE
-            }
-
-            // Update status logger
-            status_logger_.updateMaintenanceMode(false);
-
-            transitionTo(ControllerState::IDLE);
-            return true;
-        }
+        ESP_LOGW(TAG, "setToIdle() called but not in SHUTDOWN or PAUSE state (current: %d)",
+                 static_cast<int>(current_state_));
     }
-    return false;
 }
 
 void PlantOSController::resetToInit() {
     ESP_LOGI(TAG, "Manual reset requested");
     turnOffAllPumps();
     transitionTo(ControllerState::INIT);
+}
+
+void PlantOSController::configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode) {
+    status_logger_.configure(enableReports, reportIntervalMs, verboseMode);
 }
 
 // ============================================================================
@@ -651,7 +711,28 @@ void PlantOSController::transitionTo(ControllerState newState) {
         return; // Already in this state
     }
 
-    ESP_LOGI(TAG, "State transition: %d → %d", static_cast<int>(current_state_), static_cast<int>(newState));
+    // State name mapping for readable logging
+    const char* state_names[] = {
+        "INIT", "IDLE", "SHUTDOWN", "PAUSE", "ERROR",
+        "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
+        "FEEDING", "WATER_FILLING", "WATER_EMPTYING"
+    };
+
+    const char* oldStateName = state_names[static_cast<int>(current_state_)];
+    const char* newStateName = state_names[static_cast<int>(newState)];
+
+    ESP_LOGI(TAG, "State transition: %s → %s", oldStateName, newStateName);
+
+    // Update status logger with new state
+    status_logger_.updateControllerState(newStateName);
+
+    // Verbose mode: Log detailed state transition info
+    if (status_logger_.isVerboseMode()) {
+        ESP_LOGI(TAG, "[VERBOSE] State change details:");
+        ESP_LOGI(TAG, "[VERBOSE]   Previous state: %s", oldStateName);
+        ESP_LOGI(TAG, "[VERBOSE]   New state: %s", newStateName);
+        ESP_LOGI(TAG, "[VERBOSE]   Time in previous state: %u ms", getStateElapsed());
+    }
 
     current_state_ = newState;
     state_start_time_ = esphome::millis();
@@ -675,6 +756,12 @@ bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint3
         return false;
     }
 
+    // Verbose mode: Log actuator commands
+    if (status_logger_.isVerboseMode()) {
+        ESP_LOGI(TAG, "[VERBOSE] Actuator command: %s → %s for %u seconds",
+                 pumpId.c_str(), state ? "ON" : "OFF", durationSec);
+    }
+
     return safety_gate_->executeCommand(pumpId.c_str(), state, durationSec);
 }
 
@@ -682,6 +769,12 @@ bool PlantOSController::requestValve(const std::string& valveId, bool state, uin
     if (!safety_gate_) {
         ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", valveId.c_str());
         return false;
+    }
+
+    // Verbose mode: Log actuator commands
+    if (status_logger_.isVerboseMode()) {
+        ESP_LOGI(TAG, "[VERBOSE] Valve command: %s → %s for %u seconds",
+                 valveId.c_str(), state ? "OPEN" : "CLOSED", durationSec);
     }
 
     return safety_gate_->executeCommand(valveId.c_str(), state, durationSec);
@@ -714,7 +807,16 @@ float PlantOSController::readPH() {
     if (!hal_) {
         return 0.0f;
     }
-    return hal_->readPH();
+
+    float ph = hal_->readPH();
+
+    // Verbose mode: Log sensor readings (sample every 10th reading to avoid spam)
+    static uint32_t reading_counter = 0;
+    if (status_logger_.isVerboseMode() && (++reading_counter % 10 == 0)) {
+        ESP_LOGI(TAG, "[VERBOSE] pH sensor reading: %.2f", ph);
+    }
+
+    return ph;
 }
 
 bool PlantOSController::hasPhValue() {

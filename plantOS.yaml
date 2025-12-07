@@ -206,11 +206,14 @@ i2c_scanner:
   # Verbose mode: Enable detailed I²C scan logging to serial
   # true (default): Log detailed scan results every scan_interval
   # false: Silent mode - only report to central status logger
-  verbose: false
+  verbose: true
 
   # Define critical devices for your PlantOS system
   # Uncomment and modify based on your hardware configuration
-  critical_devices: []
+  critical_devices: 
+    - address: 0x61
+      name: "EZO pH Sensor"
+    # Add other critical devices as needed
     # - address: 0x48
     #   name: "ADS1115 ADC"
     # - address: 0x20
@@ -341,17 +344,44 @@ button:
         - wifi.enable:
         - logger.log: "WiFi reconnection initiated"
 
-  # === 04 - Security & Mode (Continuation of 02) ===
+  # === 04 - System State Control ===
   - platform: template
-    name: "04_01_Toggle Safe Mode"
+    name: "04_01_Set to SHUTDOWN"
     on_press:
-      # Toggle safe mode on/off
-      # When enabled: automated time-based routines are disabled
-      # When disabled: automated routines are re-enabled
-      # Manual control via buttons always works regardless of safe mode
+      # Transition to SHUTDOWN state
+      # - Turns off all actuators
+      # - Disables calendar and time-based events
+      # - Persists across power cycles
+      # - Only "Set to IDLE" can exit this state
       then:
         - lambda: |-
-            id(plant_calendar)->toggle_safe_mode();
+            ESP_LOGI("button", "Set to SHUTDOWN button pressed");
+            id(unified_controller)->setToShutdown();
+
+  - platform: template
+    name: "04_02_Set to PAUSE"
+    on_press:
+      # Transition to PAUSE state
+      # - Maintains actuator states
+      # - Disables calendar and time-based events
+      # - Persists across power cycles
+      # - Only "Set to IDLE" can exit this state
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Set to PAUSE button pressed");
+            id(unified_controller)->setToPause();
+
+  - platform: template
+    name: "04_03_Set to IDLE"
+    on_press:
+      # Transition to IDLE state
+      # - Only way to exit SHUTDOWN or PAUSE states
+      # - Clears state persistence from NVS
+      # - Re-enables calendar and time-based events
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Set to IDLE button pressed");
+            id(unified_controller)->setToIdle();
 
   # === 05 - Logging & Cleanup ===
   - platform: template
@@ -403,22 +433,6 @@ button:
             id(unified_controller)->startEmptyTank();
 
 ################################################################################
-# System Controller: Finite State Machine
-#
-# The controller is the "brain" of plantOS, implementing a finite state machine
-# that processes sensor data and drives LED visual feedback. This architecture
-# cleanly separates:
-# - Input (sensor_source): What data to monitor
-# - Logic (controller FSM): How to interpret data and manage states
-# - Output (light_target): How to display system status
-#
-# Component linking by ID enables:
-# 1. Loose coupling: Swap sensors/LEDs without changing controller code
-# 2. Type safety: ESPHome validates IDs at compile time
-# 3. Testability: Different configurations can reuse the same controller logic
-################################################################################
-
-################################################################################
 # PlantOS HAL (Hardware Abstraction Layer) - Layer 3
 #
 # Provides platform-agnostic hardware interface for the unified Controller.
@@ -448,6 +462,14 @@ plantos_controller:
   safety_gate: actuator_safety  # Actuator control with safety enforcement
   persistence: psm              # Persistent state manager for crash recovery
 
+  # Status Logger Configuration
+  enable_status_reports: true   # Enable/disable periodic status reports (default: true)
+  status_report_interval: 10s   # How often to print status reports (default: 30s)
+  verbose_mode: false           # Enable instant verbose logging of all events (default: false)
+                                # Verbose mode logs state changes, sensor readings, and actuator
+                                # commands in real-time without waiting for periodic reports.
+                                # Note: LED changes are automatically filtered out.
+
 ################################################################################
 # Time Logger: Periodic Time Logging
 #
@@ -469,24 +491,7 @@ time_logger:
 
   # log_interval: How often to log the time (default: 5 seconds)
   # Accepts time strings: "1s", "5s", "10s", "1min", etc.
-  log_interval: 1min
-
-################################################################################
-# IP Logger: Periodic IP Address Logging
-#
-# DISABLED: IP logging is now handled by the central status logger, which
-# provides comprehensive system status including IP address, web server status,
-# sensor readings, FSM state, and alerts in a unified format.
-#
-# The central status logger logs every 30 seconds and provides much more
-# context than the standalone IP logger.
-################################################################################
-# ip_logger:
-#   id: my_ip_logger
-#
-#   # log_interval: How often to log the IP address (default: 30 seconds)
-#   # Accepts time strings: "10s", "30s", "1min", etc.
-#   log_interval: 30s
+  log_interval: 30min
 
 ################################################################################
 # Actuator Safety Gate - Centralized Actuator Control Safety Layer
@@ -764,31 +769,5 @@ calendar_manager:
 # Template switches for manual control of the unified controller.
 ################################################################################
 switch:
-  - platform: template
-    name: "02_01_Maintenance Mode (Safe Shutdown)"
-    id: maintenance_mode_switch
-    icon: "mdi:security"
-    optimistic: false  # State driven by unified controller
-
-    # Turn ON: Enter maintenance mode
-    # - Transitions to MAINTENANCE state
-    # - All pumps/valves turned OFF
-    # - Logs PSM event: SHUTDOWN/ENTERED_MAINTENANCE_MODE
-    # - Updates StatusLogger maintenance mode status
-    # - Suppresses all automated routines
-    turn_on_action:
-      - lambda: |-
-          ESP_LOGI("switch", "Maintenance mode switch turned ON");
-          id(unified_controller)->toggleMaintenanceMode(true);
-
-    # Turn OFF: Exit maintenance mode
-    # - Logs PSM event: SHUTDOWN/EXIT_MAINTENANCE_MODE
-    # - Updates StatusLogger maintenance mode status
-    # - Transitions back to IDLE
-    # - Re-enables all automated routines
-    turn_off_action:
-      - lambda: |-
-          ESP_LOGI("switch", "Maintenance mode switch turned OFF");
-          id(unified_controller)->toggleMaintenanceMode(false);
 
 

@@ -6,6 +6,7 @@
 #include "boot_sequence.h"
 #include "breathing_green.h"
 #include "solid_yellow.h"
+#include "solid_orange.h"
 #include "error_flash.h"
 #include "yellow_pulse.h"
 #include "yellow_fast_blink.h"
@@ -24,7 +25,8 @@ static const char* TAG = "led_behavior";
 enum class ControllerState {
     INIT,
     IDLE,
-    MAINTENANCE,
+    SHUTDOWN,
+    PAUSE,
     ERROR,
     PH_MEASURING,
     PH_CALCULATING,
@@ -101,9 +103,14 @@ void LedBehaviorSystem::transitionToBehavior(ControllerState newState) {
             ESP_LOGI(TAG, "LED: Breathing Green");
             break;
 
-        case ControllerState::MAINTENANCE:
+        case ControllerState::SHUTDOWN:
             newBehavior = std::make_unique<SolidYellowBehavior>();
-            ESP_LOGI(TAG, "LED: Solid Yellow (Maintenance)");
+            ESP_LOGI(TAG, "LED: Solid Yellow (Shutdown)");
+            break;
+
+        case ControllerState::PAUSE:
+            newBehavior = std::make_unique<SolidOrangeBehavior>();
+            ESP_LOGI(TAG, "LED: Solid Orange (Pause)");
             break;
 
         case ControllerState::ERROR:

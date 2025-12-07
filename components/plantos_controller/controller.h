@@ -33,7 +33,8 @@ namespace plantos_controller {
 enum class ControllerState {
     INIT,              // Boot sequence (Red→Yellow→Green)
     IDLE,              // Ready state (Breathing Green)
-    MAINTENANCE,       // Manual maintenance mode (Solid Yellow)
+    SHUTDOWN,          // System shutdown - all actuators OFF, calendar disabled (Solid Yellow)
+    PAUSE,             // System paused - actuators maintain state, calendar disabled (Solid Orange)
     ERROR,             // Error condition (Fast Red Flash)
     PH_MEASURING,      // pH stabilization phase (Yellow Pulse)
     PH_CALCULATING,    // Determining pH adjustment (Yellow Fast Blink)
@@ -122,11 +123,25 @@ public:
     void startEmptyTank();
 
     /**
-     * Toggle maintenance mode
-     * @param enable true to enter maintenance, false to exit
-     * @return true if state changed
+     * Set controller to SHUTDOWN state
+     * Turns off all actuators and disables time-based events
+     * Persists to NVS - will resume in SHUTDOWN if power cycled
      */
-    bool toggleMaintenanceMode(bool enable);
+    void setToShutdown();
+
+    /**
+     * Set controller to PAUSE state
+     * Maintains actuator states but disables time-based events
+     * Persists to NVS - will resume in PAUSE if power cycled
+     */
+    void setToPause();
+
+    /**
+     * Set controller to IDLE state
+     * Only way to exit SHUTDOWN or PAUSE states
+     * Clears PSM state persistence
+     */
+    void setToIdle();
 
     /**
      * Reset controller to INIT state
@@ -145,6 +160,15 @@ public:
      * @return Pointer to the owned CentralStatusLogger
      */
     CentralStatusLogger* getStatusLogger() { return &status_logger_; }
+
+    /**
+     * Configure status logger behavior
+     * Called from Python during component initialization
+     * @param enableReports Enable/disable periodic status reports
+     * @param reportIntervalMs Report interval in milliseconds
+     * @param verboseMode Enable instant verbose logging (filters out LED changes)
+     */
+    void configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode);
 
 private:
     // ========================================================================
@@ -188,7 +212,8 @@ private:
 
     void handleInit();
     void handleIdle();
-    void handleMaintenance();
+    void handleShutdown();
+    void handlePause();
     void handleError();
     void handlePhMeasuring();
     void handlePhCalculating();

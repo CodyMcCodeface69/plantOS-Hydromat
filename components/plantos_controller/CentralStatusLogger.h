@@ -58,18 +58,11 @@ public:
     void updateStatus(float ph, const char* routine);
 
     /**
-     * Update Controller FSM state (hardware-level state machine)
-     * @param state Current Controller state (INIT, CALIBRATION, READY, ERROR, etc.)
+     * Update unified controller state
+     * @param state Current controller state (INIT, IDLE, PH_MEASURING, FEEDING, etc.)
      */
     void updateControllerState(const std::string& state);
     void updateControllerState(const char* state);
-
-    /**
-     * Update PlantOS Logic state (application-level state machine)
-     * @param state Current PlantOS Logic state (IDLE, PH_MEASURING, FEEDING_INJECTING, etc.)
-     */
-    void updateLogicState(const std::string& state);
-    void updateLogicState(const char* state);
 
     /**
      * Update maintenance mode status
@@ -156,6 +149,26 @@ public:
      */
     void print420Art();
 
+    /**
+     * Configure status logger behavior
+     * @param enableReports Enable/disable periodic status reports
+     * @param reportIntervalMs Report interval in milliseconds
+     * @param verboseMode Enable instant verbose logging (filters out LED changes)
+     */
+    void configure(bool enableReports, uint32_t reportIntervalMs, bool verboseMode);
+
+    /**
+     * Check if periodic status reports should be printed
+     * @return true if enough time has elapsed since last report
+     */
+    bool shouldPrintStatusReport();
+
+    /**
+     * Check if verbose mode is enabled
+     * @return true if verbose mode is enabled
+     */
+    bool isVerboseMode() const { return verboseMode_; }
+
 private:
     // Core system variables
     std::string currentIP;
@@ -168,12 +181,16 @@ private:
     bool webServerClientConnected;
 
     // System state tracking
-    std::string controllerState;         // Controller FSM state
-    std::string logicState;              // PlantOS Logic FSM state
+    std::string controllerState;         // Unified controller FSM state
     bool maintenanceMode;                // Maintenance/shutdown mode flag
     std::string psmEventID;              // Current PSM event ID (empty if none)
     int psmEventStatus;                  // PSM event status code
     int64_t psmEventAge;                 // PSM event age in seconds (-1 if no event)
+
+    // Configuration
+    bool enableReports_;                 // Enable/disable periodic status reports
+    uint32_t reportInterval_;            // Report interval in milliseconds
+    bool verboseMode_;                   // Enable instant verbose logging
 
     // Alert management - supports multiple simultaneous alerts
     std::vector<Alert> activeAlerts;

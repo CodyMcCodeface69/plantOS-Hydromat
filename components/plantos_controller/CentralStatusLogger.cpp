@@ -10,13 +10,15 @@ CentralStatusLogger::CentralStatusLogger()
       webServerOnline(false),
       webServerClientConnected(false),
       controllerState("UNKNOWN"),
-      logicState("UNKNOWN"),
       maintenanceMode(false),
       psmEventID(""),
       psmEventStatus(0),
       psmEventAge(-1),
+      enableReports_(true),
+      reportInterval_(30000),
+      verboseMode_(false),
       i2cScanPerformed(false),
-      mode420_(false) {
+      mode420_(true) {
 }
 
 void CentralStatusLogger::begin() {
@@ -30,7 +32,6 @@ void CentralStatusLogger::begin() {
     webServerOnline = false;
     webServerClientConnected = false;
     controllerState = "UNKNOWN";
-    logicState = "UNKNOWN";
     maintenanceMode = false;
     psmEventID = "";
     psmEventStatus = 0;
@@ -39,6 +40,11 @@ void CentralStatusLogger::begin() {
 
     printSeparator();
     ESP_LOGI(TAG, "  CENTRAL STATUS LOGGER INITIALIZED");
+    ESP_LOGI(TAG, "  Status Reports: %s", enableReports_ ? "ENABLED" : "DISABLED");
+    if (enableReports_) {
+        ESP_LOGI(TAG, "  Report Interval: %u ms", reportInterval_);
+    }
+    ESP_LOGI(TAG, "  Verbose Mode: %s", verboseMode_ ? "ENABLED" : "DISABLED");
     printSeparator();
 }
 
@@ -59,13 +65,6 @@ void CentralStatusLogger::updateControllerState(const char* state) {
     updateControllerState(std::string(state));
 }
 
-void CentralStatusLogger::updateLogicState(const std::string& state) {
-    logicState = state;
-}
-
-void CentralStatusLogger::updateLogicState(const char* state) {
-    updateLogicState(std::string(state));
-}
 
 void CentralStatusLogger::updateMaintenanceMode(bool enabled) {
     maintenanceMode = enabled;
@@ -141,6 +140,11 @@ void CentralStatusLogger::updateI2CHardwareStatus(const std::vector<I2CDeviceInf
 }
 
 void CentralStatusLogger::logStatus() {
+    // Check if status reports are enabled
+    if (!enableReports_) {
+        return;
+    }
+
     printSeparator('=');
     ESP_LOGI(TAG, "  PLANTOS SYSTEM STATUS REPORT");
     printSeparator('=');
@@ -234,16 +238,12 @@ void CentralStatusLogger::logStatus() {
 
     ESP_LOGI(TAG, "");
 
-    // System State - Now shows ALL state machines
+    // System State - Unified controller architecture
     ESP_LOGI(TAG, "--- SYSTEM STATE ---");
 
-    ESP_LOGI(TAG, "  Controller FSM:     %s", controllerState.c_str());
-
-    ESP_LOGI(TAG, "  PlantOS Logic FSM:  %s", logicState.c_str());
+    ESP_LOGI(TAG, "  Controller State:   %s", controllerState.c_str());
 
     ESP_LOGI(TAG, "  Maintenance Mode:   %s", maintenanceMode ? "ENABLED" : "DISABLED");
-
-    ESP_LOGI(TAG, "  Active Routine:     %s", activeRoutine.c_str());
 
     if (!psmEventID.empty() && psmEventAge >= 0) {
         ESP_LOGI(TAG, "  PSM Event:          %s (Status: %d, Age: %lld sec)",
@@ -337,4 +337,30 @@ void CentralStatusLogger::print420Art() {
     ESP_LOGI(TAG, "     ##    ###     ##   ##    @+++%%=%%#%=%%@   ");
     ESP_LOGI(TAG, "     ##  ########   #####        @#%=@%%@      ");
     ESP_LOGI(TAG, "============================        +          ");
+}
+
+void CentralStatusLogger::configure(bool enableReports, uint32_t reportIntervalMs, bool verboseMode) {
+    enableReports_ = enableReports;
+    reportInterval_ = reportIntervalMs;
+    verboseMode_ = verboseMode;
+
+    ESP_LOGI(TAG, "Configuration updated:");
+    ESP_LOGI(TAG, "  Status Reports: %s", enableReports_ ? "ENABLED" : "DISABLED");
+    if (enableReports_) {
+        ESP_LOGI(TAG, "  Report Interval: %u ms", reportInterval_);
+    }
+    ESP_LOGI(TAG, "  Verbose Mode: %s", verboseMode_ ? "ENABLED" : "DISABLED");
+}
+
+bool CentralStatusLogger::shouldPrintStatusReport() {
+    if (!enableReports_) {
+        return false;
+    }
+
+    uint32_t now = esphome::millis();
+    if (now - lastLogTimestamp >= reportInterval_) {
+        return true;
+    }
+
+    return false;
 }

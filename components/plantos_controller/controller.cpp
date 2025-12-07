@@ -80,6 +80,18 @@ void PlantOSController::loop() {
         if (hal_->hasPhValue()) {
             status_logger_.updateStatus(readPH(), "");
         }
+
+        // Update PSM event info in status logger
+        if (psm_) {
+            if (psm_->hasEvent()) {
+                esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+                status_logger_.updatePSMEvent(event.eventID, event.status, psm_->getEventAge());
+            } else {
+                // No event - clear PSM info in status logger
+                status_logger_.updatePSMEvent("", 0, -1);
+            }
+        }
+
         status_logger_.logStatus();
     }
 

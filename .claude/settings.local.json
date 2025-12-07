@@ -16,7 +16,8 @@
       "Bash(git commit:*)",
       "Bash(git checkout:*)",
       "Bash(esphome clean:*)",
-      "Bash(esphome run:*)"
+      "Bash(esphome run:*)",
+      "Bash(timeout 30 task run:*)"
     ],
     "deny": [],
     "ask": []

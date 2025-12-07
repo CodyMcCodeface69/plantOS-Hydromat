@@ -9,12 +9,17 @@ PersistentStateManager::PersistentStateManager() {
 }
 
 void PersistentStateManager::setup() {
+    ESP_LOGW(TAG, "========================================");
+    ESP_LOGW(TAG, "  PSM SETUP STARTING");
+    ESP_LOGW(TAG, "========================================");
     ESP_LOGI(TAG, "Initializing Persistent State Manager");
 
     // Initialize NVS preference object
     // The hash is used to create a unique namespace for this preference
     pref_ = global_preferences->make_preference<CriticalEventLog>(
         fnv1_hash(NVS_KEY), true);
+
+    ESP_LOGI(TAG, "NVS preference object created (key: %s)", NVS_KEY);
 
     // Attempt to load existing event from NVS
     CriticalEventLog loaded_event;
@@ -44,6 +49,9 @@ void PersistentStateManager::setup() {
         ESP_LOGI(TAG, "No critical event found in NVS - clean boot");
     }
 
+    ESP_LOGW(TAG, "========================================");
+    ESP_LOGW(TAG, "  PSM SETUP COMPLETE");
+    ESP_LOGW(TAG, "========================================");
     ESP_LOGI(TAG, "Persistent State Manager initialized");
 }
 

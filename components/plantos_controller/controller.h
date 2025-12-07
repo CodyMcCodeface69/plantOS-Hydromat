@@ -156,6 +156,12 @@ public:
     ControllerState getCurrentState() const { return current_state_; }
 
     /**
+     * Get current controller state as string
+     * @return Current state name (e.g., "IDLE", "PH_MEASURING", "SHUTDOWN")
+     */
+    std::string getStateAsString() const;
+
+    /**
      * Get status logger instance
      * @return Pointer to the owned CentralStatusLogger
      */
@@ -189,6 +195,10 @@ private:
     ControllerState current_state_{ControllerState::INIT};
     uint32_t state_start_time_{0};        // millis() when state started
     uint32_t state_counter_{0};           // General-purpose counter for states
+
+    // Boot recovery: State to restore after INIT completes (if PSM had persisted state)
+    ControllerState boot_restore_state_{ControllerState::IDLE};
+    bool boot_restore_pending_{false};
 
     // ========================================================================
     // pH Correction State

@@ -288,32 +288,20 @@ sensor:
 ################################################################################
 # Text Sensor: Controller State (00 - Kern-Status)
 #
-# Publishes the current FSM state to the web UI for monitoring and debugging.
-# Shows state names: INIT, CALIBRATION, READY, ERROR
+# Publishes the current unified controller FSM state to the web UI.
+# Shows state names: INIT, IDLE, SHUTDOWN, PAUSE, ERROR, PH_MEASURING,
+#                    PH_CALCULATING, PH_INJECTING, PH_MIXING, PH_CALIBRATING,
+#                    FEEDING, WATER_FILLING, WATER_EMPTYING
 ################################################################################
 text_sensor:
   - platform: template
     name: "00_01_Controller State"
     id: controller_state_text
-    # Text sensors don't have numerical state, just publish strings
-    # The controller will call publish_state() to update this
-
-  - platform: template
-    name: "00_02_PlantOS Logic State"
-    id: logic_state_text
-    # Shows current PlantOSLogic FSM state
-    # Updated automatically by PlantOSLogic on state transitions
-
-  - platform: template
-    name: "01_01_Safe Mode Status"
-    id: safe_mode_status
-    # Shows current safe mode status: ENABLED or DISABLED
-    # When enabled: automated routines are disabled (manual control still works)
+    # Lambda returns current controller state as string
     lambda: |-
-      return id(plant_calendar)->is_safe_mode() ? std::string("ENABLED") : std::string("DISABLED");
-    # Update every 5 seconds to show current status
-    update_interval: 5s
-
+      return id(unified_controller)->getStateAsString();
+    # Update every 500ms to show real-time state changes
+    update_interval: 500ms
 
 ################################################################################
 # Button: Controller Management and Manual Routines
@@ -323,7 +311,7 @@ text_sensor:
 button:
   # === 03 - System Control & Restart ===
   - platform: template
-    name: "03_01_Reset Controller to INIT"
+    name: "04_04_Set to INIT"
     on_press:
       # Lambda action calls the unified controller's resetToInit() method
       # This triggers an immediate transition to INIT state (clears errors, resets FSM)

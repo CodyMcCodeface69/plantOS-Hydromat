@@ -32,6 +32,7 @@ void PlantOSController::setup() {
     }
 
     // Check for persisted SHUTDOWN or PAUSE states from PSM
+    // These will be restored AFTER the INIT boot sequence completes
     if (psm_) {
         ESP_LOGI(TAG, "PSM configured - Checking for persisted state");
 
@@ -41,20 +42,26 @@ void PlantOSController::setup() {
             std::string eventID(event.eventID);
 
             if (eventID == "STATE_SHUTDOWN") {
-                ESP_LOGI(TAG, "Recovering SHUTDOWN state from power loss");
-                transitionTo(ControllerState::SHUTDOWN);
-                return;
+                ESP_LOGW(TAG, "RECOVERY: SHUTDOWN state found in PSM - will restore after INIT");
+                boot_restore_state_ = ControllerState::SHUTDOWN;
+                boot_restore_pending_ = true;
             } else if (eventID == "STATE_PAUSE") {
-                ESP_LOGI(TAG, "Recovering PAUSE state from power loss");
-                transitionTo(ControllerState::PAUSE);
-                return;
+                ESP_LOGW(TAG, "RECOVERY: PAUSE state found in PSM - will restore after INIT");
+                boot_restore_state_ = ControllerState::PAUSE;
+                boot_restore_pending_ = true;
+            } else {
+                // Some other operation was interrupted - log warning
+                ESP_LOGW(TAG, "RECOVERY: Interrupted operation found: %s (age: %lld sec)",
+                         eventID.c_str(), psm_->getEventAge());
+                ESP_LOGW(TAG, "Operation was likely interrupted by power loss - check if recovery needed");
             }
         }
     } else {
         ESP_LOGW(TAG, "PSM not configured - State persistence disabled");
     }
 
-    ESP_LOGI(TAG, "Controller initialized - Starting in INIT state");
+    // Always start in INIT state for boot sequence
+    ESP_LOGI(TAG, "Controller initialized - Starting INIT boot sequence");
     transitionTo(ControllerState::INIT);
 }
 
@@ -142,7 +149,25 @@ void PlantOSController::handleInit() {
 
     if (getStateElapsed() >= INIT_DURATION) {
         ESP_LOGI(TAG, "Boot sequence complete");
-        transitionTo(ControllerState::IDLE);
+
+        // Check if we need to restore a persisted state from PSM
+        if (boot_restore_pending_) {
+            boot_restore_pending_ = false;
+
+            if (boot_restore_state_ == ControllerState::SHUTDOWN) {
+                ESP_LOGW(TAG, "RECOVERY: Restoring SHUTDOWN state from power loss");
+                transitionTo(ControllerState::SHUTDOWN);
+            } else if (boot_restore_state_ == ControllerState::PAUSE) {
+                ESP_LOGW(TAG, "RECOVERY: Restoring PAUSE state from power loss");
+                transitionTo(ControllerState::PAUSE);
+            } else {
+                // Default to IDLE
+                transitionTo(ControllerState::IDLE);
+            }
+        } else {
+            // Normal boot - no persisted state to restore
+            transitionTo(ControllerState::IDLE);
+        }
     }
 }
 
@@ -252,11 +277,36 @@ void PlantOSController::handlePhMeasuring() {
             ph_readings_.push_back(ph);
             ESP_LOGI(TAG, "pH reading #%d: %.2f", ph_readings_.size(), ph);
 
-            // Check for critical pH (out of safe range)
+            // Check for critical pH (out of safe range 5.0-7.5)
             if (ph < 5.0f || ph > 7.5f) {
                 ESP_LOGE(TAG, "CRITICAL pH DETECTED: %.2f (safe range: 5.0-7.5)", ph);
-                // Log warning but continue measurement
-                // Critical alerts would be handled by StatusLogger (Phase 7)
+
+                // Log critical pH event to PSM for persistence
+                if (psm_) {
+                    // Only log once per measurement cycle to avoid spam
+                    if (ph_readings_.size() == 1) {
+                        psm_->logEvent("PH_CRITICAL", 2);  // 2 = ERROR status
+                        ESP_LOGW(TAG, "Critical pH event logged to PSM for recovery tracking");
+                    }
+                }
+
+                // Add alert to status logger
+                std::string alert_msg = "pH outside safe range: " + std::to_string(ph) + " (safe: 5.0-7.5)";
+                status_logger_.updateAlertStatus("PH_CRITICAL", alert_msg);
+            } else {
+                // pH back in safe range - clear critical event if it exists
+                if (psm_ && ph_readings_.size() == 1) {
+                    // Check if there's a PH_CRITICAL event and clear it
+                    if (psm_->hasEvent()) {
+                        esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+                        std::string eventID(event.eventID);
+                        if (eventID == "PH_CRITICAL") {
+                            psm_->clearEvent();
+                            status_logger_.clearAlert("PH_CRITICAL");
+                            ESP_LOGI(TAG, "pH returned to safe range - cleared PH_CRITICAL event");
+                        }
+                    }
+                }
             }
         } else {
             ESP_LOGW(TAG, "pH sensor has no value - waiting for reading");
@@ -271,6 +321,16 @@ void PlantOSController::handlePhMeasuring() {
     // Measurement period complete - calculate robust average
     if (ph_readings_.empty()) {
         ESP_LOGE(TAG, "No pH readings collected - aborting correction");
+
+        // Clear any PH_CRITICAL event since measurement failed
+        if (psm_ && psm_->hasEvent()) {
+            esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+            std::string eventID(event.eventID);
+            if (eventID == "PH_CRITICAL") {
+                psm_->clearEvent();
+            }
+        }
+
         transitionTo(ControllerState::ERROR);
         return;
     }
@@ -296,7 +356,12 @@ void PlantOSController::handlePhCalculating() {
     // Check if pH is within target range
     if (ph_current_ >= target_min && ph_current_ <= target_max) {
         ESP_LOGI(TAG, "pH within target range - no correction needed");
-        // Phase 7: Clear PSM event here (psm_->clearEvent())
+
+        // Clear PSM event - pH correction complete
+        if (psm_) {
+            psm_->clearEvent();
+        }
+
         transitionTo(ControllerState::IDLE);
         return;
     }
@@ -432,10 +497,10 @@ void PlantOSController::handleFeeding() {
         // All pumps complete
         ESP_LOGI(TAG, "Feeding sequence complete");
 
-        // Phase 7 TODO: Clear PSM event
-        // if (psm_) {
-        //     psm_->clearEvent();
-        // }
+        // Clear PSM event - feeding complete
+        if (psm_) {
+            psm_->clearEvent();
+        }
 
         transitionTo(ControllerState::IDLE);
         return;
@@ -451,10 +516,10 @@ void PlantOSController::handleFeeding() {
                 if (!approved) {
                     ESP_LOGE(TAG, "%s command rejected by SafetyGate!", pump_name);
 
-                    // Phase 7 TODO: Clear PSM event
-                    // if (psm_) {
-                    //     psm_->clearEvent();
-                    // }
+                    // Clear PSM event - feeding aborted due to safety rejection
+                    if (psm_) {
+                        psm_->clearEvent();
+                    }
 
                     // Abort feeding sequence
                     transitionTo(ControllerState::IDLE);
@@ -506,10 +571,10 @@ void PlantOSController::handleWaterFilling() {
             if (!approved) {
                 ESP_LOGE(TAG, "Water valve command rejected by SafetyGate!");
 
-                // Phase 7 TODO: Clear PSM event
-                // if (psm_) {
-                //     psm_->clearEvent();
-                // }
+                // Clear PSM event - water fill aborted due to safety rejection
+                if (psm_) {
+                    psm_->clearEvent();
+                }
 
                 transitionTo(ControllerState::IDLE);
                 return;
@@ -532,10 +597,10 @@ void PlantOSController::handleWaterFilling() {
 
     ESP_LOGI(TAG, "Water fill complete");
 
-    // Phase 7 TODO: Clear PSM event
-    // if (psm_) {
-    //     psm_->clearEvent();
-    // }
+    // Clear PSM event - water fill complete
+    if (psm_) {
+        psm_->clearEvent();
+    }
 
     transitionTo(ControllerState::IDLE);
 }
@@ -557,10 +622,10 @@ void PlantOSController::handleWaterEmptying() {
             if (!approved) {
                 ESP_LOGE(TAG, "Wastewater pump command rejected by SafetyGate!");
 
-                // Phase 7 TODO: Clear PSM event
-                // if (psm_) {
-                //     psm_->clearEvent();
-                // }
+                // Clear PSM event - water empty aborted due to safety rejection
+                if (psm_) {
+                    psm_->clearEvent();
+                }
 
                 transitionTo(ControllerState::IDLE);
                 return;
@@ -583,10 +648,10 @@ void PlantOSController::handleWaterEmptying() {
 
     ESP_LOGI(TAG, "Water empty complete");
 
-    // Phase 7 TODO: Clear PSM event
-    // if (psm_) {
-    //     psm_->clearEvent();
-    // }
+    // Clear PSM event - water empty complete
+    if (psm_) {
+        psm_->clearEvent();
+    }
 
     transitionTo(ControllerState::IDLE);
 }
@@ -700,6 +765,22 @@ void PlantOSController::resetToInit() {
 
 void PlantOSController::configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode) {
     status_logger_.configure(enableReports, reportIntervalMs, verboseMode);
+}
+
+std::string PlantOSController::getStateAsString() const {
+    // State name mapping for string representation
+    const char* state_names[] = {
+        "INIT", "IDLE", "SHUTDOWN", "PAUSE", "ERROR",
+        "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
+        "FEEDING", "WATER_FILLING", "WATER_EMPTYING"
+    };
+
+    int state_index = static_cast<int>(current_state_);
+    if (state_index >= 0 && state_index < 13) {
+        return std::string(state_names[state_index]);
+    }
+
+    return "UNKNOWN";
 }
 
 // ============================================================================

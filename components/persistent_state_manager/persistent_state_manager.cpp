@@ -70,6 +70,17 @@ void PersistentStateManager::logEvent(const char* id, int status) {
         current_time = millis() / 1000;  // Use uptime as fallback
     }
 
+    // Log what we're ABOUT to save (before overwriting)
+    if (event_exists_) {
+        ESP_LOGW(TAG, "===============================================");
+        ESP_LOGW(TAG, "PSM OVERWRITE DETECTED!");
+        ESP_LOGW(TAG, "  OLD Event: '%s' (status: %d)", current_event_.eventID, current_event_.status);
+        ESP_LOGW(TAG, "  NEW Event: '%s' (status: %d)", id, status);
+        ESP_LOGW(TAG, "===============================================");
+    } else {
+        ESP_LOGI(TAG, ">>> PSM: Writing NEW event '%s' (status: %d)", id, status);
+    }
+
     // Create new event log
     CriticalEventLog new_event(id, current_time, status);
     current_event_ = new_event;
@@ -81,6 +92,36 @@ void PersistentStateManager::logEvent(const char* id, int status) {
         ESP_LOGI(TAG, "  ID: %s", current_event_.eventID);
         ESP_LOGI(TAG, "  Status: %d", current_event_.status);
         ESP_LOGI(TAG, "  Timestamp: %lld", (long long)current_event_.timestampSec);
+
+        // CRITICAL: Commit to flash immediately
+        // pref_.save() only queues the write - sync() actually commits to NVS
+        ESP_LOGW(TAG, ">>> COMMITTING TO FLASH: Calling global_preferences->sync()");
+        if (global_preferences->sync()) {
+            ESP_LOGW(TAG, ">>> FLASH COMMIT SUCCESS");
+        } else {
+            ESP_LOGE(TAG, ">>> FLASH COMMIT FAILED!");
+        }
+
+        // Add delay to ensure NVS flash write completes
+        // Critical for STATE_SHUTDOWN and STATE_PAUSE persistence
+        if (strcmp(id, "STATE_SHUTDOWN") == 0 || strcmp(id, "STATE_PAUSE") == 0) {
+            ESP_LOGW(TAG, ">>> CRITICAL STATE: Adding 200ms delay for NVS flush");
+            delay(200);
+
+            // Verify what was actually written to NVS
+            CriticalEventLog verify_event;
+            if (pref_.load(&verify_event)) {
+                ESP_LOGW(TAG, ">>> NVS VERIFICATION READ: EventID='%s', Status=%d",
+                         verify_event.eventID, verify_event.status);
+
+                if (strcmp(verify_event.eventID, id) != 0) {
+                    ESP_LOGE(TAG, ">>> NVS CORRUPTION DETECTED!");
+                    ESP_LOGE(TAG, "    Expected: '%s', Got: '%s'", id, verify_event.eventID);
+                }
+            } else {
+                ESP_LOGE(TAG, ">>> NVS VERIFICATION FAILED: Could not read back!");
+            }
+        }
     } else {
         ESP_LOGE(TAG, "CRITICAL: Failed to save event to NVS!");
         ESP_LOGE(TAG, "Event: %s (status: %d)", id, status);
@@ -93,7 +134,13 @@ void PersistentStateManager::clearEvent() {
         return;
     }
 
-    ESP_LOGI(TAG, "Clearing event from NVS: %s", current_event_.eventID);
+    ESP_LOGW(TAG, "===============================================");
+    ESP_LOGW(TAG, "PSM CLEAR REQUESTED!");
+    ESP_LOGW(TAG, "  Clearing Event: '%s' (status: %d)", current_event_.eventID, current_event_.status);
+
+    // Print stack trace to see who called clear
+    ESP_LOGW(TAG, "  Called from: %s", __builtin_return_address(0) ? "controller" : "unknown");
+    ESP_LOGW(TAG, "===============================================");
 
     // Reset internal state
     event_exists_ = false;
@@ -103,7 +150,28 @@ void PersistentStateManager::clearEvent() {
     // ESPHome doesn't have a direct "delete" API, so we save zeros
     CriticalEventLog empty_event;
     if (pref_.save(&empty_event)) {
-        ESP_LOGI(TAG, "Event cleared successfully");
+        ESP_LOGI(TAG, "Event cleared successfully from NVS");
+
+        // CRITICAL: Commit to flash immediately
+        ESP_LOGW(TAG, ">>> COMMITTING CLEAR TO FLASH: Calling global_preferences->sync()");
+        if (global_preferences->sync()) {
+            ESP_LOGW(TAG, ">>> FLASH COMMIT SUCCESS");
+        } else {
+            ESP_LOGE(TAG, ">>> FLASH COMMIT FAILED!");
+        }
+
+        // Add delay to ensure NVS flash write completes
+        delay(100);
+
+        // Verify the clear
+        CriticalEventLog verify_event;
+        if (pref_.load(&verify_event)) {
+            if (verify_event.eventID[0] == '\0') {
+                ESP_LOGI(TAG, ">>> NVS CLEAR VERIFIED: Event successfully erased");
+            } else {
+                ESP_LOGE(TAG, ">>> NVS CLEAR FAILED: Still contains '%s'", verify_event.eventID);
+            }
+        }
     } else {
         ESP_LOGE(TAG, "Failed to clear event from NVS");
     }

@@ -32,9 +32,9 @@ tasks:
       - esphome clean {{.ENTRY_POINT}}
 
   snoop:
-    desc: Attach to device logs via serial port (USB).
+    desc: Attach to device logs via serial port (USB) with auto-reconnect.
     cmds:
-      - bash -c 'devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)); if [ ${#devices[@]} -eq 0 ]; then echo "No serial devices found. Please connect the device and try again."; exit 1; elif [ ${#devices[@]} -eq 1 ]; then device=${devices[0]}; echo "Using device{{":"}} $device"; else echo "Multiple serial devices found. Please select one{{":"}}"; select device in "${devices[@]}"; do if [ -n "$device" ]; then echo "Selected{{":"}} $device"; break; else echo "Invalid selection. Please try again."; fi; done; fi; esphome logs {{.ENTRY_POINT}} --device "$device"'
+      - bash -c 'trap "echo \"\nExiting...\"; exit 0" INT; devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)); if [ ${#devices[@]} -eq 0 ]; then echo "No serial devices found. Please connect the device and try again."; exit 1; elif [ ${#devices[@]} -eq 1 ]; then device=${devices[0]}; echo "Using device{{":"}} $device"; else echo "Multiple serial devices found. Please select one{{":"}}"; select device in "${devices[@]}"; do if [ -n "$device" ]; then echo "Selected{{":"}} $device"; break; else echo "Invalid selection. Please try again."; fi; done; fi; while true; do echo ""; echo "=============================================="; echo "Connecting to $device..."; echo "=============================================="; esphome logs {{.ENTRY_POINT}} --device "$device" || true; echo ""; echo "Connection lost. Retrying in 0.5 seconds..."; echo "Press Ctrl+C to exit."; sleep 0.5; done'
 
   push:
     desc: Push updated configuration to github.

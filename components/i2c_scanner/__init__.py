@@ -103,4 +103,4 @@ async def to_code(config):
     # Link status logger if provided
     if CONF_STATUS_LOGGER in config:
         logger = await cg.get_variable(config[CONF_STATUS_LOGGER])
-        cg.add(var.set_status_logger(logger.get_logger()))
+        cg.add(var.set_status_logger(logger.getStatusLogger()))

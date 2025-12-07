@@ -5,6 +5,19 @@ All notable changes to the PlantOS project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2025-12-08
+
+### Fixed
+  - **Central Status Logger**: Fixed IP address display - now shows actual WiFi IP instead of 0.0.0.0 via WiFi on_connect event handler
+  - **Central Status Logger**: Fixed I²C scan status - now correctly reports scan results instead of showing "not yet performed"
+    - Uncommented status logger reporting code in i2c_scanner component
+    - Wired i2c_scanner to unified_controller status logger
+  - **Central Status Logger**: Fixed pH sensor reading - now displays robust filtered sensor values (e.g., 48.12) instead of static 7.00
+    - Changed HAL pH sensor from production EZO sensor to filtered dummy sensor for testing
+
+### Changed
+  - **HAL Configuration**: Temporarily using filtered dummy sensor (`sensor_filtered_id`) instead of real pH sensor for development/testing
+
 ## [0.8.2] - 2025-12-08
 
 ### Description

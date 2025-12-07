@@ -45,7 +45,7 @@ wifi:
 
   # WiFi optimization for mesh networks (TP-Link Deco, etc.)
   # These settings improve compatibility with WiFi mesh systems
-  # Mesh settings: Deactivate Fast Roaming and Beamforming, Deactiate Mesh for plantOS client, Deactivate 5 GHz band 
+  # Mesh settings: Deactivate Fast Roaming and Beamforming, Deactiate Mesh for plantOS client, Deactivate 5 GHz band
   power_save_mode: none    # Disable power saving for better connectivity
   fast_connect: true       # Skip channel scanning for faster connection
 
@@ -58,6 +58,13 @@ wifi:
   # Reboot on connection failure after timeout
   # Helps recover from transient WiFi issues without manual intervention
   reboot_timeout: 2min
+
+  # Update status logger with IP address when WiFi connects
+  on_connect:
+    - lambda: |-
+        auto ip = wifi::global_wifi_component->get_ip_addresses()[0].str();
+        id(unified_controller)->getStatusLogger()->updateIP(ip);
+        ESP_LOGI("wifi", "IP address: %s", ip.c_str());
 
   # ==============================================================
   # FALLBACK ACCESS POINT (AP) FOR DEBUGGING
@@ -206,7 +213,10 @@ i2c_scanner:
   # Verbose mode: Enable detailed I²C scan logging to serial
   # true (default): Log detailed scan results every scan_interval
   # false: Silent mode - only report to central status logger
-  verbose: true
+  verbose: false
+
+  # Link to central status logger for system status reports
+  status_logger: unified_controller
 
   # Define critical devices for your PlantOS system
   # Uncomment and modify based on your hardware configuration
@@ -429,7 +439,7 @@ button:
 plantos_hal:
   id: hal
   system_led: system_led
-  ph_sensor: ph_sensor_real
+  ph_sensor: sensor_filtered_id  # Using filtered dummy sensor for testing
 
 ################################################################################
 # PlantOS Unified Controller (Layer 1) - Phase 8

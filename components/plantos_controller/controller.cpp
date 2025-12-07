@@ -31,31 +31,8 @@ void PlantOSController::setup() {
         ESP_LOGW(TAG, "SafetyGate not configured - Actuator control disabled");
     }
 
-    // Check for persisted SHUTDOWN or PAUSE states from PSM
-    // These will be restored AFTER the INIT boot sequence completes
     if (psm_) {
-        ESP_LOGI(TAG, "PSM configured - Checking for persisted state");
-
-        // Check if we were in SHUTDOWN or PAUSE state before power loss
-        if (psm_->hasEvent()) {
-            esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-            std::string eventID(event.eventID);
-
-            if (eventID == "STATE_SHUTDOWN") {
-                ESP_LOGW(TAG, "RECOVERY: SHUTDOWN state found in PSM - will restore after INIT");
-                boot_restore_state_ = ControllerState::SHUTDOWN;
-                boot_restore_pending_ = true;
-            } else if (eventID == "STATE_PAUSE") {
-                ESP_LOGW(TAG, "RECOVERY: PAUSE state found in PSM - will restore after INIT");
-                boot_restore_state_ = ControllerState::PAUSE;
-                boot_restore_pending_ = true;
-            } else {
-                // Some other operation was interrupted - log warning
-                ESP_LOGW(TAG, "RECOVERY: Interrupted operation found: %s (age: %lld sec)",
-                         eventID.c_str(), psm_->getEventAge());
-                ESP_LOGW(TAG, "Operation was likely interrupted by power loss - check if recovery needed");
-            }
-        }
+        ESP_LOGI(TAG, "PSM configured - State persistence enabled");
     } else {
         ESP_LOGW(TAG, "PSM not configured - State persistence disabled");
     }
@@ -159,7 +136,47 @@ void PlantOSController::handleInit() {
     // Boot sequence: Red → Yellow → Green (3 seconds)
     // LED behavior handles visual feedback
 
-    if (getStateElapsed() >= INIT_DURATION) {
+    uint32_t elapsed = getStateElapsed();
+
+    // On first entry (elapsed < 100ms): Check PSM for persisted states
+    // We check here (not in setup()) because PSM might initialize after controller
+    if (elapsed < 100 && !boot_restore_pending_) {
+        if (psm_) {
+            ESP_LOGI(TAG, "Checking PSM for persisted state...");
+
+            // Check if we were in SHUTDOWN or PAUSE state before power loss
+            if (psm_->hasEvent()) {
+                esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+                std::string eventID(event.eventID);
+
+                // Check if event ID is non-empty (not a cleared event)
+                if (!eventID.empty()) {
+                    if (eventID == "STATE_SHUTDOWN") {
+                        ESP_LOGW(TAG, "RECOVERY: SHUTDOWN state found in PSM (age: %lld sec) - will restore after INIT",
+                                 psm_->getEventAge());
+                        boot_restore_state_ = ControllerState::SHUTDOWN;
+                        boot_restore_pending_ = true;
+                    } else if (eventID == "STATE_PAUSE") {
+                        ESP_LOGW(TAG, "RECOVERY: PAUSE state found in PSM (age: %lld sec) - will restore after INIT",
+                                 psm_->getEventAge());
+                        boot_restore_state_ = ControllerState::PAUSE;
+                        boot_restore_pending_ = true;
+                    } else {
+                        // Some other operation was interrupted - log warning
+                        ESP_LOGW(TAG, "RECOVERY: Interrupted operation found: %s (status: %d, age: %lld sec)",
+                                 eventID.c_str(), event.status, psm_->getEventAge());
+                        ESP_LOGW(TAG, "Operation was likely interrupted by power loss - check if recovery needed");
+                    }
+                } else {
+                    ESP_LOGD(TAG, "PSM event is empty (cleared) - no restoration needed");
+                }
+            } else {
+                ESP_LOGI(TAG, "No PSM event found - clean boot");
+            }
+        }
+    }
+
+    if (elapsed >= INIT_DURATION) {
         ESP_LOGI(TAG, "Boot sequence complete");
 
         // Check if we need to restore a persisted state from PSM
@@ -187,6 +204,41 @@ void PlantOSController::handleIdle() {
     // Breathing green - waiting for commands
     // This is the default ready state
 
+    uint32_t elapsed = getStateElapsed();
+
+    // Periodically check PSM for SHUTDOWN or PAUSE states every 5 seconds
+    // This handles cases where:
+    // 1. State was set while system was running
+    // 2. State restoration from INIT failed due to timing issues
+    // 3. Component initialization order caused PSM to be unavailable during INIT
+    static uint32_t last_psm_check = 0;
+    uint32_t now = hal_->getSystemTime();
+
+    if (now - last_psm_check >= 5000) {  // Check every 5 seconds
+        last_psm_check = now;
+
+        if (psm_ && psm_->hasEvent()) {
+            esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+            std::string eventID(event.eventID);
+
+            ESP_LOGD(TAG, ">>> IDLE PSM CHECK: EventID='%s', Status=%d, Age=%lld sec",
+                     eventID.c_str(), event.status, psm_->getEventAge());
+
+            // Check for persistent states that should override IDLE
+            if (!eventID.empty()) {
+                if (eventID == "STATE_SHUTDOWN") {
+                    ESP_LOGW(TAG, ">>> PSM check: SHUTDOWN state detected - transitioning from IDLE");
+                    transitionTo(ControllerState::SHUTDOWN);
+                    return;
+                } else if (eventID == "STATE_PAUSE") {
+                    ESP_LOGW(TAG, ">>> PSM check: PAUSE state detected - transitioning from IDLE");
+                    transitionTo(ControllerState::PAUSE);
+                    return;
+                }
+            }
+        }
+    }
+
     // Future: Check for scheduled tasks, sensor thresholds, etc.
 }
 
@@ -204,7 +256,17 @@ void PlantOSController::handleShutdown() {
 
         // Persist SHUTDOWN state to NVS
         if (psm_) {
+            ESP_LOGW(TAG, ">>> SAVING TO PSM: STATE_SHUTDOWN (status=1)");
             psm_->logEvent("STATE_SHUTDOWN", 1);  // 1 = ENTERED_SHUTDOWN
+
+            // Verify it was saved
+            if (psm_->hasEvent()) {
+                auto event = psm_->getLastEvent();
+                ESP_LOGW(TAG, ">>> PSM VERIFICATION: EventID='%s', Status=%d",
+                         event.eventID, event.status);
+            }
+        } else {
+            ESP_LOGE(TAG, ">>> PSM NOT AVAILABLE - SHUTDOWN STATE NOT PERSISTED!");
         }
 
         // Update status logger
@@ -230,7 +292,17 @@ void PlantOSController::handlePause() {
 
         // Persist PAUSE state to NVS
         if (psm_) {
+            ESP_LOGW(TAG, ">>> SAVING TO PSM: STATE_PAUSE (status=1)");
             psm_->logEvent("STATE_PAUSE", 1);  // 1 = ENTERED_PAUSE
+
+            // Verify it was saved
+            if (psm_->hasEvent()) {
+                auto event = psm_->getLastEvent();
+                ESP_LOGW(TAG, ">>> PSM VERIFICATION: EventID='%s', Status=%d",
+                         event.eventID, event.status);
+            }
+        } else {
+            ESP_LOGE(TAG, ">>> PSM NOT AVAILABLE - PAUSE STATE NOT PERSISTED!");
         }
 
         return;

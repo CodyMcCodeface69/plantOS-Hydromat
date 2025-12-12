@@ -22,10 +22,14 @@ ActuatorSafetyGate = actuator_safety_gate_ns.class_('ActuatorSafetyGate')
 persistent_state_manager_ns = cg.esphome_ns.namespace('persistent_state_manager')
 PersistentStateManager = persistent_state_manager_ns.class_('PersistentStateManager')
 
+ezo_ph_uart_ns = cg.esphome_ns.namespace('ezo_ph_uart')
+EZOPHUARTComponent = ezo_ph_uart_ns.class_('EZOPHUARTComponent')
+
 # Configuration keys
 CONF_HAL = 'hal'
 CONF_SAFETY_GATE = 'safety_gate'
 CONF_PERSISTENCE = 'persistence'
+CONF_PH_SENSOR = 'ph_sensor'
 CONF_ENABLE_STATUS_REPORTS = 'enable_status_reports'
 CONF_STATUS_REPORT_INTERVAL = 'status_report_interval'
 CONF_VERBOSE_MODE = 'verbose_mode'
@@ -36,6 +40,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_HAL): cv.use_id(HAL),
     cv.Required(CONF_SAFETY_GATE): cv.use_id(ActuatorSafetyGate),
     cv.Optional(CONF_PERSISTENCE): cv.use_id(PersistentStateManager),
+    cv.Optional(CONF_PH_SENSOR): cv.use_id(EZOPHUARTComponent),
     cv.Optional(CONF_ENABLE_STATUS_REPORTS, default=True): cv.boolean,
     cv.Optional(CONF_STATUS_REPORT_INTERVAL, default="30s"): cv.positive_time_period_milliseconds,
     cv.Optional(CONF_VERBOSE_MODE, default=False): cv.boolean,
@@ -58,6 +63,11 @@ async def to_code(config):
     if CONF_PERSISTENCE in config:
         psm = await cg.get_variable(config[CONF_PERSISTENCE])
         cg.add(var.setPersistenceManager(psm))
+
+    # Inject pH Sensor dependency (optional, needed for calibration)
+    if CONF_PH_SENSOR in config:
+        ph_sensor = await cg.get_variable(config[CONF_PH_SENSOR])
+        cg.add(var.setPhSensor(ph_sensor))
 
     # Configure status logger settings
     cg.add(var.configureStatusLogger(

@@ -22,6 +22,13 @@ class PersistentStateManager;
 }
 }
 
+// Forward declaration - full definition in .cpp file to avoid circular dependencies
+namespace esphome {
+namespace ezo_ph_uart {
+class EZOPHUARTComponent;
+}
+}
+
 namespace plantos_controller {
 
 /**
@@ -94,6 +101,14 @@ public:
         psm_ = psm;
     }
 
+    /**
+     * Set pH Sensor Component
+     * OPTIONAL - Used for direct pH sensor calibration control
+     */
+    void setPhSensor(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor) {
+        ph_sensor_ = ph_sensor;
+    }
+
     // ========================================================================
     // Public API for External Control (ESPHome services, buttons, etc.)
     // ========================================================================
@@ -103,6 +118,13 @@ public:
      * Transitions to PH_MEASURING state
      */
     void startPhCorrection();
+
+    /**
+     * Start 3-point pH calibration sequence
+     * Transitions to PH_CALIBRATING state
+     * Calibration points: 4.00 (low), 7.00 (mid), 10.01 (high)
+     */
+    void startPhCalibration();
 
     /**
      * Start feeding sequence
@@ -184,6 +206,7 @@ private:
     plantos_hal::HAL* hal_{nullptr};
     esphome::actuator_safety_gate::ActuatorSafetyGate* safety_gate_{nullptr};
     esphome::persistent_state_manager::PersistentStateManager* psm_{nullptr};
+    esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_{nullptr};
 
     // Status logger (owned by controller, not injected)
     CentralStatusLogger status_logger_;
@@ -209,6 +232,26 @@ private:
     uint32_t ph_attempt_count_{0};        // Number of pH correction attempts
     uint32_t ph_dose_duration_ms_{0};     // Calculated acid dose duration
     static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
+
+    // ========================================================================
+    // pH Calibration State
+    // ========================================================================
+
+    enum class CalibrationStep {
+        IDLE,          // Not calibrating
+        MID_PROMPT,    // Prompting user to insert probe in pH 7.00
+        MID_WAIT,      // Waiting for mid-point calibration to complete
+        LOW_PROMPT,    // Prompting user to insert probe in pH 4.00
+        LOW_WAIT,      // Waiting for low-point calibration to complete
+        HIGH_PROMPT,   // Prompting user to insert probe in pH 10.01
+        HIGH_WAIT,     // Waiting for high-point calibration to complete
+        COMPLETE       // Calibration complete, transitioning to IDLE
+    };
+
+    CalibrationStep calib_step_{CalibrationStep::IDLE};
+    uint32_t calib_step_start_time_{0};          // Time when calibration step started
+    static constexpr uint32_t CALIB_PROMPT_DURATION = 10000;  // 10 seconds to show prompt
+    static constexpr uint32_t CALIB_WAIT_DURATION = 1000;     // 1 second wait for sensor response
 
     // ========================================================================
     // LED Behavior System

@@ -5,6 +5,33 @@ All notable changes to the PlantOS project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9] - 2025-12-12
+
+###  Added
+
+  - **New ezo_ph_uart component** for Atlas Scientific EZO pH sensor via UART protocol
+    - Native support for MikroElektronika EZO Carrier pH Click board
+    - Baud rate: 115200, 8N1 configuration
+    - Identical functionality to I2C version (calibration, temperature compensation, stability detection)
+    - Comprehensive documentation and comments throughout code
+
+###  Changed
+
+  - UART communication now default for EZO pH sensor (GPIO4 TX, GPIO5 RX)
+  - Disabled I2C-based ezo_ph component (commented out in plantOS.yaml)
+  - Updated external_components list to use ezo_ph_uart instead of ezo_ph
+
+###  Hardware Configuration
+
+  - Added UART bus configuration (115200 baud, 8N1)
+  - TX Pin: GPIO4 (ESP32-C6 → EZO RX)
+  - RX Pin: GPIO5 (ESP32-C6 → EZO TX)
+
+###  Migration Notes
+
+  - To revert to I2C mode: uncomment ezo_ph section, comment ezo_ph_uart, and update external_components
+  - Sensor must be in UART mode (default for EZO carrier boards)
+
 ## [0.8.3] - 2025-12-08
 
 ### Fixed

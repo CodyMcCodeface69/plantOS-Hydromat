@@ -141,7 +141,7 @@ external_components:
   # Points to local custom components directory
   # ESPHome will compile and link C++ code from here alongside generated code
   - source: components
-    components: [sensor_dummy, sensor_filter, ezo_ph,
+    components: [sensor_dummy, sensor_filter, ezo_ph_uart,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
                  i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo, plantos_hal,
                  plantos_controller]
@@ -172,6 +172,29 @@ i2c:
   scl: GPIO7  # Serial Clock Line (change if using different pins)
   scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
   frequency: 100kHz  # Standard mode - change to 400kHz for fast mode if needed
+
+################################################################################
+# UART Configuration
+#
+# Serial communication for EZO pH sensor via UART.
+# The EZO Carrier pH Click board uses UART protocol with ASCII commands.
+#
+# Hardware Configuration:
+# - TX (Transmit): GPIO4 - Connects to RX on EZO carrier board
+# - RX (Receive): GPIO5 - Connects to TX on EZO carrier board
+# - Baud Rate: 115200 (default for EZO carrier boards)
+# - Protocol: 8N1 (8 data bits, no parity, 1 stop bit)
+#
+# IMPORTANT: Ensure proper voltage levels (3.3V logic)
+################################################################################
+uart:
+  id: uart_bus
+  tx_pin: GPIO4  # ESP32-C6 TX -> EZO RX
+  rx_pin: GPIO5  # ESP32-C6 RX -> EZO TX
+  baud_rate: 115200  # Standard baud rate for EZO carrier boards
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
 
 ################################################################################
 # I²C Bus Scanner
@@ -393,6 +416,17 @@ button:
 
   # === 07 - pH & Measurement ===
   - platform: template
+    name: "07_01_Start pH Calibration"
+    on_press:
+      # Start 3-point pH calibration sequence
+      # Calibration points: 4.00 (low), 7.00 (mid), 10.01 (high)
+      # Follow serial log prompts to insert probe into each buffer solution
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Start pH Calibration button pressed");
+            id(unified_controller)->startPhCalibration();
+
+  - platform: template
     name: "07_02_Start pH Correction"
     on_press:
       # Start the full pH correction sequence
@@ -456,9 +490,10 @@ plantos_hal:
 ################################################################################
 plantos_controller:
   id: unified_controller
-  hal: hal                      # Hardware abstraction layer
-  safety_gate: actuator_safety  # Actuator control with safety enforcement
-  persistence: psm              # Persistent state manager for crash recovery
+  hal: hal                       # Hardware abstraction layer
+  safety_gate: actuator_safety   # Actuator control with safety enforcement
+  persistence: psm               # Persistent state manager for crash recovery
+  ph_sensor: ezo_ph_uart_component  # pH sensor for calibration control
 
   # Status Logger Configuration
   enable_status_reports: true   # Enable/disable periodic status reports (default: true)
@@ -566,11 +601,69 @@ actuator_safety_gate:
 # IMPORTANT: New EZO sensors ship in UART mode!
 # - Must send "I2C,97" command via UART first to switch to I2C mode at address 0x61
 # - Or use hardware jumper if available on carrier board
+#
+# NOTE: This I2C version is DISABLED in favor of UART version below.
 ################################################################################
-ezo_ph:
-  id: ezo_ph_component
-  i2c_id: i2c_bus
-  address: 0x61  # Default I2C address for EZO pH circuit (97 decimal)
+# ezo_ph:
+#   id: ezo_ph_component
+#   i2c_id: i2c_bus
+#   address: 0x61  # Default I2C address for EZO pH circuit (97 decimal)
+#   update_interval: 60s  # Read pH every 60 seconds (recommended for production)
+#
+#   # pH sensor configuration
+#   ph:
+#     name: "Nutrient Solution pH"
+#     id: ph_sensor_real
+#     accuracy_decimals: 2
+#     filters:
+#       # Sliding window moving average smooths out minor fluctuations
+#       - sliding_window_moving_average:
+#           window_size: 5     # Average last 5 readings
+#           send_every: 1      # Publish every reading (after averaging)
+#       # Lambda filter for range validation and outlier rejection
+#       - lambda: |-
+#           if (x < 0.0 || x > 14.0) {
+#             ESP_LOGW("ezo_ph", "pH value out of typical range: %.2f", x);
+#             return {};  // Reject outliers
+#           }
+#           return x;
+#
+#   # Optional: Temperature compensation for improved accuracy
+#   # Uncomment and link to your temperature sensor when available
+#   # temperature_compensation: water_temp_sensor
+
+################################################################################
+# EZO pH Sensor Component via UART (Atlas Scientific)
+#
+# Production pH sensor using UART communication with EZO Carrier pH Click board.
+# This is the native communication mode for the MikroElektronika EZO carrier board.
+#
+# Hardware Requirements:
+# - MikroElektronika EZO Carrier pH Click board
+# - Atlas Scientific EZO pH Circuit (installed on carrier)
+# - pH probe (included with EZO kit)
+# - UART connection to ESP32-C6 (TX=GPIO4, RX=GPIO5)
+# - 3.3V or 5V power supply (carrier has voltage regulator)
+#
+# Calibration:
+# - Use ESPHome API services to calibrate (see api section)
+# - Mid-point: pH 7.00 buffer solution (required first)
+# - Low-point: pH 4.00 buffer solution (optional)
+# - High-point: pH 10.00 buffer solution (optional)
+#
+# Temperature Compensation:
+# - Configure temperature_compensation parameter below
+# - Links to a temperature sensor for improved accuracy
+# - Improves accuracy from ±0.1 pH to ±0.02 pH
+#
+# UART Protocol Details:
+# - Baud Rate: 115200 (default for EZO carrier boards)
+# - ASCII text commands terminated with \r (carriage return)
+# - 300ms response delay required after each command
+################################################################################
+ezo_ph_uart:
+  id: ezo_ph_uart_component
+  uart_id: uart_bus
   update_interval: 60s  # Read pH every 60 seconds (recommended for production)
 
   # pH sensor configuration
@@ -586,7 +679,7 @@ ezo_ph:
       # Lambda filter for range validation and outlier rejection
       - lambda: |-
           if (x < 0.0 || x > 14.0) {
-            ESP_LOGW("ezo_ph", "pH value out of typical range: %.2f", x);
+            ESP_LOGW("ezo_ph_uart", "pH value out of typical range: %.2f", x);
             return {};  // Reject outliers
           }
           return x;
@@ -767,5 +860,25 @@ calendar_manager:
 # Template switches for manual control of the unified controller.
 ################################################################################
 switch:
+  # === pH Sensor Control ===
+  - platform: template
+    name: "07_03_Enable Continuous pH Reading"
+    id: continuous_ph_reading_switch
+    optimistic: true
+    turn_on_action:
+      # Enable continuous reading mode (C,1)
+      # Sensor outputs pH every second automatically
+      # WARNING: This interferes with normal polling operation
+      then:
+        - lambda: |-
+            ESP_LOGI("switch", "Enabling continuous pH reading mode");
+            id(ezo_ph_uart_component)->enable_continuous_reading();
+    turn_off_action:
+      # Disable continuous reading mode (C,0)
+      # Returns sensor to command mode (default)
+      then:
+        - lambda: |-
+            ESP_LOGI("switch", "Disabling continuous pH reading mode");
+            id(ezo_ph_uart_component)->disable_continuous_reading();
 
 

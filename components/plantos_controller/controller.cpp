@@ -2,6 +2,7 @@
 #include "esphome/components/plantos_hal/hal.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
+#include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 #include <algorithm> // for std::sort, std::min, std::max
 
 namespace plantos_controller {
@@ -545,11 +546,151 @@ void PlantOSController::handlePhMixing() {
 
 void PlantOSController::handlePhCalibrating() {
     // Yellow fast blink - pH sensor calibration
-    // This state is entered manually via service call
-    // For now, just a placeholder - actual calibration would use HAL
+    // 3-point calibration sequence: Mid (7.00) → Low (4.00) → High (10.01)
 
-    ESP_LOGD(TAG, "pH calibration mode - waiting for manual completion");
-    // User must manually exit this state
+    if (!ph_sensor_) {
+        ESP_LOGE(TAG, "pH sensor component not configured - cannot calibrate");
+        transitionTo(ControllerState::ERROR);
+        return;
+    }
+
+    // Check if sensor hardware is actually connected and responding
+    if (!ph_sensor_->is_sensor_ready()) {
+        ESP_LOGE(TAG, "pH sensor hardware not responding - calibration aborted");
+        ESP_LOGE(TAG, "Check UART connection (TX=GPIO4, RX=GPIO5) and power to sensor");
+        transitionTo(ControllerState::ERROR);
+        return;
+    }
+
+    uint32_t elapsed = esphome::millis() - calib_step_start_time_;
+
+    switch (calib_step_) {
+        case CalibrationStep::MID_PROMPT:
+            // Prompt user once at the beginning of this step
+            if (elapsed == 0 || elapsed < 100) {  // Only log at start
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG, "========== STEP 1/3: MID-POINT CALIBRATION ==========");
+                ESP_LOGI(TAG, "Insert pH probe into pH 7.00 buffer solution");
+                ESP_LOGI(TAG, "Wait for reading to stabilize...");
+                ESP_LOGI(TAG, "====================================================");
+            }
+
+            // Wait for prompt duration before starting calibration
+            if (elapsed >= CALIB_PROMPT_DURATION) {
+                ESP_LOGI(TAG, "Starting mid-point calibration at pH 7.00...");
+                if (!ph_sensor_->calibrate_mid(7.00f)) {
+                    ESP_LOGE(TAG, "Mid-point calibration FAILED - sensor not responding");
+                    ESP_LOGE(TAG, "Calibration sequence aborted");
+                    transitionTo(ControllerState::ERROR);
+                    return;
+                }
+                calib_step_ = CalibrationStep::MID_WAIT;
+                calib_step_start_time_ = esphome::millis();
+            }
+            break;
+
+        case CalibrationStep::MID_WAIT:
+            // Wait for calibration to complete
+            if (elapsed >= CALIB_WAIT_DURATION) {
+                ESP_LOGI(TAG, "Mid-point calibration complete!");
+                calib_step_ = CalibrationStep::LOW_PROMPT;
+                calib_step_start_time_ = esphome::millis();
+            }
+            break;
+
+        case CalibrationStep::LOW_PROMPT:
+            if (elapsed == 0 || elapsed < 100) {
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG, "========== STEP 2/3: LOW-POINT CALIBRATION ==========");
+                ESP_LOGI(TAG, "Remove probe, rinse with distilled water");
+                ESP_LOGI(TAG, "Insert pH probe into pH 4.00 buffer solution");
+                ESP_LOGI(TAG, "Wait for reading to stabilize...");
+                ESP_LOGI(TAG, "====================================================");
+            }
+
+            if (elapsed >= CALIB_PROMPT_DURATION) {
+                ESP_LOGI(TAG, "Starting low-point calibration at pH 4.00...");
+                if (!ph_sensor_->calibrate_low(4.00f)) {
+                    ESP_LOGE(TAG, "Low-point calibration FAILED - sensor not responding");
+                    ESP_LOGE(TAG, "Calibration sequence aborted");
+                    transitionTo(ControllerState::ERROR);
+                    return;
+                }
+                calib_step_ = CalibrationStep::LOW_WAIT;
+                calib_step_start_time_ = esphome::millis();
+            }
+            break;
+
+        case CalibrationStep::LOW_WAIT:
+            if (elapsed >= CALIB_WAIT_DURATION) {
+                ESP_LOGI(TAG, "Low-point calibration complete!");
+                calib_step_ = CalibrationStep::HIGH_PROMPT;
+                calib_step_start_time_ = esphome::millis();
+            }
+            break;
+
+        case CalibrationStep::HIGH_PROMPT:
+            if (elapsed == 0 || elapsed < 100) {
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG, "========== STEP 3/3: HIGH-POINT CALIBRATION =========");
+                ESP_LOGI(TAG, "Remove probe, rinse with distilled water");
+                ESP_LOGI(TAG, "Insert pH probe into pH 10.01 buffer solution");
+                ESP_LOGI(TAG, "Wait for reading to stabilize...");
+                ESP_LOGI(TAG, "====================================================");
+            }
+
+            if (elapsed >= CALIB_PROMPT_DURATION) {
+                ESP_LOGI(TAG, "Starting high-point calibration at pH 10.01...");
+                if (!ph_sensor_->calibrate_high(10.01f)) {
+                    ESP_LOGE(TAG, "High-point calibration FAILED - sensor not responding");
+                    ESP_LOGE(TAG, "Calibration sequence aborted");
+                    transitionTo(ControllerState::ERROR);
+                    return;
+                }
+                calib_step_ = CalibrationStep::HIGH_WAIT;
+                calib_step_start_time_ = esphome::millis();
+            }
+            break;
+
+        case CalibrationStep::HIGH_WAIT:
+            if (elapsed >= CALIB_WAIT_DURATION) {
+                ESP_LOGI(TAG, "High-point calibration complete!");
+                calib_step_ = CalibrationStep::COMPLETE;
+                calib_step_start_time_ = esphome::millis();
+            }
+            break;
+
+        case CalibrationStep::COMPLETE:
+            ESP_LOGI(TAG, "");
+            ESP_LOGI(TAG, "===============================================");
+            ESP_LOGI(TAG, "  3-POINT pH CALIBRATION COMPLETE!");
+            ESP_LOGI(TAG, "===============================================");
+            ESP_LOGI(TAG, "Remove probe from buffer solution");
+            ESP_LOGI(TAG, "Rinse with distilled water and return to tank");
+            ESP_LOGI(TAG, "System returning to IDLE state...");
+
+            // Query calibration status to verify
+            ph_sensor_->query_calibration_status();
+
+            // Clear PSM event - calibration complete
+            if (psm_) {
+                psm_->clearEvent();
+            }
+
+            // Reset calibration state
+            calib_step_ = CalibrationStep::IDLE;
+
+            // Return to IDLE
+            transitionTo(ControllerState::IDLE);
+            break;
+
+        case CalibrationStep::IDLE:
+        default:
+            // Should never reach here
+            ESP_LOGW(TAG, "Unexpected calibration step in PH_CALIBRATING state");
+            transitionTo(ControllerState::IDLE);
+            break;
+    }
 }
 
 void PlantOSController::handleFeeding() {
@@ -764,6 +905,44 @@ void PlantOSController::startPhCorrection() {
     }
 
     transitionTo(ControllerState::PH_MEASURING);
+}
+
+void PlantOSController::startPhCalibration() {
+    if (current_state_ != ControllerState::IDLE) {
+        ESP_LOGW(TAG, "Cannot start pH calibration - system not in IDLE state (state: %s)",
+                 getStateAsString().c_str());
+        return;
+    }
+
+    if (!ph_sensor_) {
+        ESP_LOGE(TAG, "Cannot start pH calibration - pH sensor component not configured");
+        return;
+    }
+
+    // Check if sensor hardware is actually connected and responding
+    if (!ph_sensor_->is_sensor_ready()) {
+        ESP_LOGE(TAG, "Cannot start pH calibration - sensor hardware not responding");
+        ESP_LOGE(TAG, "Check UART connection (TX=GPIO4, RX=GPIO5) and power to sensor");
+        ESP_LOGE(TAG, "Verify sensor shows up in Central Status Logger");
+        return;
+    }
+
+    ESP_LOGI(TAG, "===============================================");
+    ESP_LOGI(TAG, "  STARTING 3-POINT pH CALIBRATION SEQUENCE");
+    ESP_LOGI(TAG, "===============================================");
+    ESP_LOGI(TAG, "Calibration points: 4.00 (low), 7.00 (mid), 10.01 (high)");
+    ESP_LOGI(TAG, "Follow the prompts to insert probe into each solution");
+
+    // Reset calibration state
+    calib_step_ = CalibrationStep::MID_PROMPT;
+    calib_step_start_time_ = esphome::millis();
+
+    // Log event for crash recovery persistence
+    if (psm_) {
+        psm_->logEvent("PH_CALIBRATION", 0);  // 0 = STARTED
+    }
+
+    transitionTo(ControllerState::PH_CALIBRATING);
 }
 
 void PlantOSController::startFeeding() {

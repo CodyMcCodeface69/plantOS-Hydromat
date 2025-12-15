@@ -106,6 +106,36 @@ public:
      */
     virtual bool hasWaterLevel() const = 0;
 
+    /**
+     * Read light intensity from analog sensor
+     * @return Light intensity raw ADC value (0.0-1.0 normalized, or raw voltage)
+     */
+    virtual float readLightIntensity() = 0;
+
+    /**
+     * Check if light intensity sensor has valid reading
+     * @return true if light intensity value is available
+     */
+    virtual bool hasLightIntensity() const = 0;
+
+    /**
+     * Read temperature from DS18B20 sensor
+     * @return Temperature in degrees Celsius, or 0.0 if not available
+     */
+    virtual float readTemperature() = 0;
+
+    /**
+     * Check if temperature sensor has valid reading
+     * @return true if temperature value is available
+     */
+    virtual bool hasTemperature() const = 0;
+
+    /**
+     * Register callback for temperature value changes
+     * @param callback Function to call when temperature value updates
+     */
+    virtual void onTemperatureChange(std::function<void(float)> callback) = 0;
+
     // ============================================================================
     // USER FEEDBACK - Called by Controller (LED behaviors)
     // ============================================================================
@@ -158,6 +188,8 @@ public:
     // Dependency injection (called from Python __init__.py)
     void set_led(esphome::light::LightState* led);
     void set_ph_sensor(esphome::sensor::Sensor* ph_sensor);
+    void set_light_sensor(esphome::sensor::Sensor* light_sensor);
+    void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
 
     // HAL interface implementation
     void setPump(const std::string& pumpId, bool state) override;
@@ -173,6 +205,13 @@ public:
     float readWaterLevel() override;
     bool hasWaterLevel() const override;
 
+    float readLightIntensity() override;
+    bool hasLightIntensity() const override;
+
+    float readTemperature() override;
+    bool hasTemperature() const override;
+    void onTemperatureChange(std::function<void(float)> callback) override;
+
     void setSystemLED(float r, float g, float b, float brightness = 1.0f) override;
     void turnOffLED() override;
     bool isLEDOn() const override;
@@ -185,6 +224,8 @@ private:
     bool led_is_on_{false};
 
     esphome::sensor::Sensor* ph_sensor_{nullptr};
+    esphome::sensor::Sensor* light_sensor_{nullptr};
+    esphome::sensor::Sensor* temperature_sensor_{nullptr};
 
     // Actuator state tracking (for getPumpState/getValveState)
     std::map<std::string, bool> pump_states_;

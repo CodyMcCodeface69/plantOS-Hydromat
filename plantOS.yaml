@@ -146,6 +146,17 @@ external_components:
                  i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo, plantos_hal,
                  plantos_controller]
 
+  # ESP32-C6 ADC Fix: Use lboue's working implementation with adc_oneshot API
+  # Official ESPHome ADC has bugs on C6 (no ADC2 support causes compilation errors)
+  # This fork fixes the issue and works on GPIO0 (ADC1_CH0)
+  # Source: https://github.com/esphome/issues/issues/6038#issuecomment-2287359862
+  - source:
+      type: git
+      url: https://github.com/lboue/esphome
+      ref: adc_oneshot
+    components: [ adc ]
+    refresh: 0s
+
 ################################################################################
 # I²C Bus Configuration
 #
@@ -281,6 +292,18 @@ light:
     default_transition_length: 0s
 
 ################################################################################
+# 1-Wire Bus: For DS18B20 Temperature Sensor
+#
+# DS18B20 is a digital temperature sensor that uses the 1-Wire protocol.
+# Only requires a single data line plus ground (can parasitic power from data).
+# Requires 4.7kΩ pull-up resistor between data line and 3.3V.
+################################################################################
+one_wire:
+  - platform: gpio
+    pin: GPIO10
+    id: one_wire_bus
+
+################################################################################
 # Sensor Input: Dummy Sensor
 #
 # Development/testing sensor that generates predictable cycling values.
@@ -296,6 +319,55 @@ sensor:
     # Real sensors might use different intervals based on measurement
     # characteristics (e.g., soil moisture changes slowly, could poll every 60s)
     update_interval: 1s
+
+  # Light Intensity Sensor: KY-046 Analog Light Sensor
+  #
+  # Keyes KY-046 light sensor module connected to GPIO0 (ADC1_CH0)
+  # Outputs analog voltage proportional to light intensity
+  #
+  # HARDWARE: Wire KY-046 signal pin to GPIO0 (ADC1_CH0)
+  # NOTE: GPIO0 is a boot pin - keep it floating or HIGH during boot
+  #       The analog sensor output should not interfere with boot
+  #
+  # ESP32-C6 ADC Fix: Using lboue's fork with adc_oneshot API
+  # Official ESPHome has bugs with ESP32-C6 ADC (no ADC2 support)
+  # This fork currently works on GPIO0 only
+  - platform: adc
+    id: light_intensity_raw
+    name: "Light Intensity Raw"
+    pin: GPIO0              # ADC1_CH0 (currently only supported pin in fork)
+    update_interval: 5s     # Read light level every 5 seconds
+    accuracy_decimals: 2
+    # Note: attenuation parameter not supported in lboue's fork
+    # The fork may use a fixed attenuation (likely 11/12dB for 0-3.3V range)
+    filters:
+      # Convert raw voltage to percentage (0-100%)
+      # Multiply by 100/3.3 to convert voltage to percentage
+      - multiply: 30.30303    # 100/3.3 = 30.30303
+      - lambda: |-
+          // Clamp to 0-100% range
+          if (x < 0.0) return 0.0f;
+          if (x > 100.0) return 100.0f;
+          return x;
+
+  # Temperature Sensor: DS18B20 Digital Temperature Sensor
+  #
+  # DS18B20 is a 1-Wire digital temperature sensor providing accurate readings
+  # from -55°C to +125°C with ±0.5°C accuracy between -10°C and +85°C.
+  # Connected to GPIO10 via one_wire bus.
+  #
+  # HARDWARE: Requires 4.7kΩ pull-up resistor between data line (GPIO10) and 3.3V
+  # WIRING:
+  #   - Red wire (VCC) -> 3.3V
+  #   - Black wire (GND) -> GND
+  #   - Yellow wire (DATA) -> GPIO10 (with 4.7kΩ pull-up to 3.3V)
+  - platform: dallas_temp
+    one_wire_id: one_wire_bus
+    id: water_temperature
+    name: "Water Temperature"
+    update_interval: 10s     # Update temperature every 10 seconds
+    accuracy_decimals: 2     # Display 2 decimal places (e.g., 24.50°C)
+    resolution: 12           # 12-bit resolution (0.0625°C per bit, ~750ms conversion)
 
   # Sensor Filter: Robust Averaging with Outlier Rejection
   #
@@ -335,6 +407,21 @@ text_sensor:
       return id(unified_controller)->getStateAsString();
     # Update every 500ms to show real-time state changes
     update_interval: 500ms
+
+  - platform: template
+    name: "Light Intensity"
+    id: light_intensity_text
+    # Lambda returns current light intensity value from HAL
+    lambda: |-
+      if (id(hal)->hasLightIntensity()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f%%", id(hal)->readLightIntensity());
+        return {buf};
+      } else {
+        return {"N/A"};
+      }
+    # Update every 5 seconds to match sensor update interval
+    update_interval: 5s
 
 ################################################################################
 # Button: Controller Management and Manual Routines
@@ -474,6 +561,8 @@ plantos_hal:
   id: hal
   system_led: system_led
   ph_sensor: sensor_filtered_id  # Using filtered dummy sensor for testing
+  light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0)
+  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO10
 
 ################################################################################
 # PlantOS Unified Controller (Layer 1) - Phase 8

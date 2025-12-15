@@ -21,6 +21,16 @@ void ESPHomeHAL::set_ph_sensor(esphome::sensor::Sensor* ph_sensor) {
     ESP_LOGI(TAG, "pH sensor configured");
 }
 
+void ESPHomeHAL::set_light_sensor(esphome::sensor::Sensor* light_sensor) {
+    light_sensor_ = light_sensor;
+    ESP_LOGI(TAG, "Light sensor configured");
+}
+
+void ESPHomeHAL::set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor) {
+    temperature_sensor_ = temperature_sensor;
+    ESP_LOGI(TAG, "Temperature sensor configured");
+}
+
 // ============================================================================
 // COMPONENT LIFECYCLE
 // ============================================================================
@@ -34,6 +44,12 @@ void ESPHomeHAL::setup() {
     }
     if (!ph_sensor_) {
         ESP_LOGW(TAG, "pH sensor not configured - pH monitoring will be disabled");
+    }
+    if (!light_sensor_) {
+        ESP_LOGW(TAG, "Light sensor not configured - light intensity monitoring will be disabled");
+    }
+    if (!temperature_sensor_) {
+        ESP_LOGW(TAG, "Temperature sensor not configured - temperature monitoring will be disabled");
     }
 
     // Initialize actuator state tracking
@@ -134,6 +150,42 @@ float ESPHomeHAL::readWaterLevel() {
 bool ESPHomeHAL::hasWaterLevel() const {
     // TODO: Implement when water level sensor is available
     return false;
+}
+
+float ESPHomeHAL::readLightIntensity() {
+    if (!light_sensor_ || !light_sensor_->has_state()) {
+        return 0.0f;
+    }
+    return light_sensor_->state;
+}
+
+bool ESPHomeHAL::hasLightIntensity() const {
+    return light_sensor_ && light_sensor_->has_state();
+}
+
+float ESPHomeHAL::readTemperature() {
+    if (!temperature_sensor_ || !temperature_sensor_->has_state()) {
+        return 0.0f;
+    }
+    return temperature_sensor_->state;
+}
+
+bool ESPHomeHAL::hasTemperature() const {
+    return temperature_sensor_ && temperature_sensor_->has_state();
+}
+
+void ESPHomeHAL::onTemperatureChange(std::function<void(float)> callback) {
+    if (!temperature_sensor_) {
+        ESP_LOGW(TAG, "Cannot register temperature callback - sensor not configured");
+        return;
+    }
+
+    // Register ESPHome sensor callback
+    temperature_sensor_->add_on_state_callback([callback](float value) {
+        callback(value);
+    });
+
+    ESP_LOGD(TAG, "Temperature change callback registered");
 }
 
 // ============================================================================

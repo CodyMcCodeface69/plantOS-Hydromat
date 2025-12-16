@@ -18,6 +18,7 @@ EZOPHUARTComponent = ezo_ph_uart_ns.class_(
 CONF_EZO_PH_ID = "ezo_ph_uart_id"
 CONF_PH = "ph"
 CONF_TEMPERATURE_COMPENSATION = "temperature_compensation"
+CONF_VERBOSE = "verbose"
 
 # Configuration schema for YAML validation
 CONFIG_SCHEMA = (
@@ -32,6 +33,8 @@ CONFIG_SCHEMA = (
             ),
             # Temperature compensation sensor input (optional)
             cv.Optional(CONF_TEMPERATURE_COMPENSATION): cv.use_id(sensor.Sensor),
+            # Verbose logging for UART communication (optional)
+            cv.Optional(CONF_VERBOSE, default=False): cv.boolean,
         }
     )
     .extend(cv.polling_component_schema("60s"))  # Default: poll every 60 seconds
@@ -55,3 +58,7 @@ async def to_code(config):
     if CONF_TEMPERATURE_COMPENSATION in config:
         temp_sens = await cg.get_variable(config[CONF_TEMPERATURE_COMPENSATION])
         cg.add(var.set_temperature_compensation(temp_sens))
+
+    # Set verbose mode if configured
+    if config.get(CONF_VERBOSE, False):
+        cg.add(var.set_verbose(True))

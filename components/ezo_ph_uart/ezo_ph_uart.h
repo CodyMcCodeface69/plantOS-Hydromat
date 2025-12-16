@@ -82,6 +82,12 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
    */
   void set_temperature_compensation(sensor::Sensor *sensor) { this->temp_sensor_ = sensor; }
 
+  /**
+   * @brief Enable verbose logging of UART commands and responses
+   * @param verbose True to enable verbose logging, false to disable
+   */
+  void set_verbose(bool verbose) { this->verbose_ = verbose; }
+
   // ============================================================================
   // Calibration Methods (callable from ESPHome services)
   // ============================================================================
@@ -265,6 +271,7 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
   bool sensor_ready_{false};                 ///< True if sensor initialized successfully
   uint8_t error_count_{0};                   ///< Consecutive error counter for fault detection
   bool continuous_mode_active_{false};       ///< True if continuous reading mode is enabled
+  bool verbose_{false};                      ///< True if verbose UART logging is enabled
 
   // Stability detection buffer (rolling window for standard deviation)
   static constexpr size_t STABILITY_BUFFER_SIZE = 10;  ///< Number of readings to track

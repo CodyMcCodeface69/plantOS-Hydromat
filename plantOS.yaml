@@ -29,6 +29,10 @@ logger:
   # This must be explicitly configured or boot will hang
   hardware_uart: USB_SERIAL_JTAG
 
+  # Component-specific log level overrides
+  logs:
+    adc: NONE  # If you want to see only errors, you can change NONE to ERROR or WARN 
+
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security
   # This allows OTA updates and web interface access
@@ -310,15 +314,15 @@ one_wire:
 # In production, replace with actual plant sensors (moisture, light, etc.)
 ################################################################################
 sensor:
-  - id: sensor_dummy_id
-    platform: sensor_dummy
-    name: "Dummy Sensor"
+  # - id: sensor_dummy_id
+  #   platform: sensor_dummy
+  #   name: "Dummy Sensor"
 
-    # 1 second polling interval provides frequent updates for responsive
-    # controller behavior without overwhelming the ESP32 event loop.
-    # Real sensors might use different intervals based on measurement
-    # characteristics (e.g., soil moisture changes slowly, could poll every 60s)
-    update_interval: 1s
+  #   # 1 second polling interval provides frequent updates for responsive
+  #   # controller behavior without overwhelming the ESP32 event loop.
+  #   # Real sensors might use different intervals based on measurement
+  #   # characteristics (e.g., soil moisture changes slowly, could poll every 60s)
+  #   update_interval: 1s
 
   # Light Intensity Sensor: KY-046 Analog Light Sensor
   #
@@ -376,17 +380,19 @@ sensor:
   - id: sensor_filtered_id
     platform: sensor_filter
     name: "Filtered Sensor"
+    accuracy_decimals: 3  # Display 3 decimal places (e.g., 2.936)
 
     # sensor_source: The raw sensor to filter
-    sensor_source: sensor_dummy_id
+    sensor_source: ph_sensor_real
 
     # window_size: Number of readings to collect before calculating average
-    # 20 readings = good balance between responsiveness and filtering
-    window_size: 20
+    # 5 readings = faster first result (5 minutes with 60s update interval)
+    # Note: EZO pH sensor already has sliding_window_moving_average filter
+    window_size: 5
 
     # reject_percentage: Percentage to reject from each end (0.0 to 0.5)
     # 0.10 = reject 10% lowest + 10% highest = 20% total outlier rejection
-    # With 20 readings: rejects 2 lowest + 2 highest = averages middle 16 values
+    # With 5 readings: rejects 0.5 from each end (rounds to nearest)
     reject_percentage: 0.10
 
 
@@ -762,8 +768,8 @@ actuator_safety_gate:
 ezo_ph_uart:
   id: ezo_ph_uart_component
   uart_id: uart_bus
-  update_interval: 60s  # Read pH every 60 seconds (recommended for production)
-
+  update_interval: 5s  # Read pH every 60 seconds (recommended for production)
+  verbose: true  # Enable detailed UART communication logging
   # pH sensor configuration
   ph:
     name: "Nutrient Solution pH"

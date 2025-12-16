@@ -560,7 +560,12 @@ bool EZOPHUARTComponent::send_command_(const char *cmd) {
   char cmd_with_cr[RESPONSE_BUFFER_SIZE];
   snprintf(cmd_with_cr, sizeof(cmd_with_cr), "%s\r", cmd);
 
-  ESP_LOGV(TAG, "Sending UART command: %s", cmd);
+  // Log command based on verbose mode
+  if (this->verbose_) {
+    ESP_LOGI(TAG, "→ TX: %s", cmd);
+  } else {
+    ESP_LOGV(TAG, "Sending UART command: %s", cmd);
+  }
 
   // Write command to UART
   this->write_array(reinterpret_cast<const uint8_t *>(cmd_with_cr), strlen(cmd_with_cr));
@@ -647,10 +652,19 @@ bool EZOPHUARTComponent::read_response_(char *buffer, size_t len) {
       buffer[--pos] = '\0';
     }
 
-    ESP_LOGD(TAG, "Read actual response after echo: %s (length: %d)", buffer, pos);
+    if (this->verbose_) {
+      ESP_LOGI(TAG, "← RX (after echo): %s", buffer);
+    } else {
+      ESP_LOGD(TAG, "Read actual response after echo: %s (length: %d)", buffer, pos);
+    }
   }
 
-  ESP_LOGV(TAG, "Received UART response: %s (length: %d)", buffer, pos);
+  // Log response based on verbose mode
+  if (this->verbose_) {
+    ESP_LOGI(TAG, "← RX: %s", buffer);
+  } else {
+    ESP_LOGV(TAG, "Received UART response: %s (length: %d)", buffer, pos);
+  }
 
   return pos > 0;
 }

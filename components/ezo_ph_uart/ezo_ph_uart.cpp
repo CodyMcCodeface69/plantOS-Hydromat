@@ -24,6 +24,20 @@ void EZOPHUARTComponent::setup() {
   // Clear any pending data in UART buffer from power-up
   this->flush();
 
+  // CRITICAL: Disable verbose responses first
+  // This makes the sensor respond with just data instead of "*OK,data"
+  ESP_LOGI(TAG, "Configuring response format...");
+  if (this->send_command_("RESPONSE,0")) {
+    this->wait_for_response_();
+    char response[RESPONSE_BUFFER_SIZE];
+    if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+      ESP_LOGD(TAG, "Response format set to data-only mode: %s", response);
+    }
+    // Flush any remaining data
+    this->flush();
+    delay(100);  // Give sensor time to switch modes
+  }
+
   // Test UART communication with device info command
   if (!this->send_command_("i")) {
     ESP_LOGE(TAG, "Failed to send device info command");
@@ -48,19 +62,7 @@ void EZOPHUARTComponent::setup() {
   } else {
     this->wait_for_response_();
     if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
-      if (this->check_response_code_(response)) {
-        ESP_LOGD(TAG, "Continuous reading mode disabled");
-      }
-    }
-  }
-
-  // Enable verbose response codes for better error handling
-  if (this->send_command_("RESPONSE,1")) {
-    this->wait_for_response_();
-    if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
-      if (this->check_response_code_(response)) {
-        ESP_LOGD(TAG, "Verbose response codes enabled");
-      }
+      ESP_LOGD(TAG, "Continuous reading mode disabled: %s", response);
     }
   }
 
@@ -77,8 +79,56 @@ void EZOPHUARTComponent::update() {
   }
 
   // ========================================
-  // Step 1: Send temperature compensation if configured
+  // Continuous Reading Mode
   // ========================================
+  if (this->continuous_mode_active_) {
+    // In continuous mode, sensor automatically outputs pH every second
+    // We just read whatever is available in the buffer
+
+    // Check if data is available
+    if (!this->available()) {
+      ESP_LOGV(TAG, "Continuous mode: No data available yet");
+      return;
+    }
+
+    // Read the automatically sent pH value
+    char response[RESPONSE_BUFFER_SIZE];
+    if (!this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+      ESP_LOGV(TAG, "Continuous mode: Failed to read pH value");
+      return;
+    }
+
+    // Parse pH value
+    float ph_value;
+    if (!this->parse_ph_value_(response, ph_value)) {
+      ESP_LOGV(TAG, "Continuous mode: Failed to parse response: %s", response);
+      return;
+    }
+
+    // Validate pH range - (Commented out for testing continuous mode behavior)
+    // if (ph_value < PH_MIN || ph_value > PH_MAX || std::isnan(ph_value)) {
+    //   ESP_LOGW(TAG, "Continuous mode: pH value out of valid range: %.2f", ph_value);
+    //   return;
+    // }
+
+    // Success - update and publish
+    this->error_count_ = 0;
+    this->update_stability_buffer_(ph_value);
+
+    if (this->ph_sensor_ != nullptr) {
+      this->ph_sensor_->publish_state(ph_value);
+    }
+
+    // Log each reading prominently in continuous mode
+    ESP_LOGI(TAG, "📊 Continuous pH Reading: %.2f", ph_value);
+    return;
+  }
+
+  // ========================================
+  // Normal Polling Mode (below)
+  // ========================================
+
+  // Step 1: Send temperature compensation if configured
   if (this->temp_sensor_ != nullptr && this->temp_sensor_->has_state()) {
     float temp = this->temp_sensor_->state;
     char temp_cmd[20];
@@ -95,9 +145,7 @@ void EZOPHUARTComponent::update() {
     }
   }
 
-  // ========================================
   // Step 2: Request single pH reading
-  // ========================================
   if (!this->send_command_("R")) {
     ESP_LOGW(TAG, "Failed to send read command");
     this->error_count_++;
@@ -112,9 +160,7 @@ void EZOPHUARTComponent::update() {
   // Critical timing: EZO circuit needs 300ms to complete measurement
   this->wait_for_response_();
 
-  // ========================================
   // Step 3: Read and parse pH response
-  // ========================================
   char response[RESPONSE_BUFFER_SIZE];
   if (!this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
     ESP_LOGW(TAG, "Failed to read pH value from UART");
@@ -138,9 +184,7 @@ void EZOPHUARTComponent::update() {
     return;
   }
 
-  // ========================================
   // Step 4: Validate pH range
-  // ========================================
   if (ph_value < PH_MIN || ph_value > PH_MAX || std::isnan(ph_value)) {
     ESP_LOGW(TAG, "pH value out of valid range: %.2f", ph_value);
     this->error_count_++;
@@ -151,9 +195,7 @@ void EZOPHUARTComponent::update() {
     return;
   }
 
-  // ========================================
   // Step 5: Success - reset error counter and publish
-  // ========================================
   this->error_count_ = 0;
 
   // Update stability tracking buffer
@@ -349,41 +391,164 @@ bool EZOPHUARTComponent::is_stable() {
   return std_dev < STABILITY_THRESHOLD;
 }
 
+bool EZOPHUARTComponent::take_single_reading(float &value) {
+  if (!this->sensor_ready_) {
+    ESP_LOGW(TAG, "Cannot take reading - sensor not ready");
+    return false;
+  }
+
+  // Send temperature compensation if configured
+  if (this->temp_sensor_ != nullptr && this->temp_sensor_->has_state()) {
+    float temp = this->temp_sensor_->state;
+    char temp_cmd[20];
+    snprintf(temp_cmd, sizeof(temp_cmd), "T,%.1f", temp);
+
+    if (this->send_command_(temp_cmd)) {
+      this->wait_for_response_();
+      char response[RESPONSE_BUFFER_SIZE];
+      if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+        if (this->check_response_code_(response)) {
+          ESP_LOGV(TAG, "Temperature compensation set to %.1f°C", temp);
+        }
+      }
+    }
+  }
+
+  // Request single pH reading
+  if (!this->send_command_("R")) {
+    ESP_LOGW(TAG, "Failed to send read command");
+    return false;
+  }
+
+  // Wait for sensor to process measurement
+  this->wait_for_response_();
+
+  // Read and parse response
+  char response[RESPONSE_BUFFER_SIZE];
+  if (!this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+    ESP_LOGW(TAG, "Failed to read pH value from UART");
+    return false;
+  }
+
+  // Parse pH value
+  if (!this->parse_ph_value_(response, value)) {
+    ESP_LOGW(TAG, "Failed to parse pH value from response: %s", response);
+    return false;
+  }
+
+  // Validate range
+  if (value < PH_MIN || value > PH_MAX || std::isnan(value)) {
+    ESP_LOGW(TAG, "pH value out of valid range: %.2f", value);
+    return false;
+  }
+
+  // Update stability buffer
+  this->update_stability_buffer_(value);
+
+  ESP_LOGD(TAG, "Single pH reading: %.2f", value);
+  return true;
+}
+
+float EZOPHUARTComponent::get_last_reading() const {
+  if (this->stability_count_ == 0) {
+    return 0.0f;
+  }
+
+  // Get most recent reading (previous index in circular buffer)
+  size_t last_index = (this->stability_index_ == 0)
+                      ? (STABILITY_BUFFER_SIZE - 1)
+                      : (this->stability_index_ - 1);
+
+  return this->stability_buffer_[last_index];
+}
+
+float EZOPHUARTComponent::get_average_reading(size_t count) const {
+  if (this->stability_count_ == 0) {
+    return 0.0f;
+  }
+
+  // Limit count to available readings
+  size_t actual_count = std::min(count, this->stability_count_);
+  if (actual_count > STABILITY_BUFFER_SIZE) {
+    actual_count = STABILITY_BUFFER_SIZE;
+  }
+
+  // Calculate average of last N readings
+  float sum = 0.0f;
+  for (size_t i = 0; i < actual_count; i++) {
+    // Walk backwards from current index
+    size_t idx = (this->stability_index_ + STABILITY_BUFFER_SIZE - 1 - i) % STABILITY_BUFFER_SIZE;
+    sum += this->stability_buffer_[idx];
+  }
+
+  return sum / actual_count;
+}
+
 void EZOPHUARTComponent::enable_continuous_reading() {
-  ESP_LOGI(TAG, "Enabling continuous reading mode (1 reading/second)");
+  ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
+  ESP_LOGI(TAG, "  ENABLING CONTINUOUS pH READING MODE");
+  ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
+
+  // Flush any pending data before mode change
+  this->flush();
+  delay(50);
 
   if (this->send_command_("C,1")) {
     this->wait_for_response_();
     char response[RESPONSE_BUFFER_SIZE];
     if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
       if (this->check_response_code_(response)) {
-        ESP_LOGI(TAG, "Continuous reading mode ENABLED - sensor will output pH every second");
-        ESP_LOGW(TAG, "WARNING: Continuous mode will interfere with normal polling operation!");
+        this->continuous_mode_active_ = true;
+        ESP_LOGI(TAG, "✓ Continuous reading mode ENABLED");
+        ESP_LOGI(TAG, "  Sensor will automatically output pH every 1 second");
+        ESP_LOGI(TAG, "  Each reading will be logged with: 📊 Continuous pH Reading");
+        ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
       } else {
-        ESP_LOGE(TAG, "Failed to enable continuous reading: %s", response);
+        ESP_LOGE(TAG, "✗ Failed to enable continuous reading: %s", response);
+        ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
       }
     }
   } else {
-    ESP_LOGE(TAG, "Failed to send continuous reading enable command");
+    ESP_LOGE(TAG, "✗ Failed to send continuous reading enable command");
+    ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
   }
+
+  // Flush any remaining data after mode change
+  this->flush();
+  delay(50);
 }
 
 void EZOPHUARTComponent::disable_continuous_reading() {
-  ESP_LOGI(TAG, "Disabling continuous reading mode (command mode)");
+  ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
+  ESP_LOGI(TAG, "  DISABLING CONTINUOUS pH READING MODE");
+  ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
+
+  // Flush any pending data before mode change
+  this->flush();
+  delay(50);
 
   if (this->send_command_("C,0")) {
     this->wait_for_response_();
     char response[RESPONSE_BUFFER_SIZE];
     if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
       if (this->check_response_code_(response)) {
-        ESP_LOGI(TAG, "Continuous reading mode DISABLED - sensor will only respond to 'R' command");
+        this->continuous_mode_active_ = false;
+        ESP_LOGI(TAG, "✓ Continuous reading mode DISABLED");
+        ESP_LOGI(TAG, "  Sensor returned to command mode (polling only)");
+        ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
       } else {
-        ESP_LOGE(TAG, "Failed to disable continuous reading: %s", response);
+        ESP_LOGE(TAG, "✗ Failed to disable continuous reading: %s", response);
+        ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
       }
     }
   } else {
-    ESP_LOGE(TAG, "Failed to send continuous reading disable command");
+    ESP_LOGE(TAG, "✗ Failed to send continuous reading disable command");
+    ESP_LOGI(TAG, "═══════════════════════════════════════════════════════");
   }
+
+  // Flush any remaining data after mode change
+  this->flush();
+  delay(50);
 }
 
 // ============================================================================
@@ -444,6 +609,47 @@ bool EZOPHUARTComponent::read_response_(char *buffer, size_t len) {
     buffer[--pos] = '\0';
   }
 
+  // Check if response is just an echo of the command (single character only)
+  // Real responses should have commas and values (e.g., "C,1" or "7.45")
+  if (pos == 1 && (buffer[0] == 'R' || buffer[0] == 'C' || buffer[0] == 'T' || buffer[0] == 'i')) {
+    ESP_LOGW(TAG, "Detected command echo: '%s' - reading actual response...", buffer);
+
+    // Clear buffer and read again for the actual response
+    memset(buffer, 0, len);
+    pos = 0;
+    start_time = millis();
+
+    // Read the actual response after the echo
+    while (pos < len - 1 && (millis() - start_time) < timeout_ms) {
+      if (this->available()) {
+        uint8_t byte;
+        this->read_byte(&byte);
+
+        // Check for end of response
+        if (byte == '\r' || byte == '\n') {
+          if (pos > 0) {
+            break;
+          }
+          continue;
+        }
+
+        buffer[pos++] = byte;
+      } else {
+        delay(1);
+      }
+    }
+
+    // Null-terminate
+    buffer[pos] = '\0';
+
+    // Strip trailing whitespace
+    while (pos > 0 && (buffer[pos - 1] == ' ' || buffer[pos - 1] == '\t')) {
+      buffer[--pos] = '\0';
+    }
+
+    ESP_LOGD(TAG, "Read actual response after echo: %s (length: %d)", buffer, pos);
+  }
+
   ESP_LOGV(TAG, "Received UART response: %s (length: %d)", buffer, pos);
 
   return pos > 0;
@@ -454,25 +660,48 @@ bool EZOPHUARTComponent::parse_ph_value_(const char *response, float &value) {
     return false;
   }
 
-  // Skip response code if present (e.g., "*OK,6.54" or just "6.54")
-  const char *value_start = response;
-
-  // Check for verbose response codes
-  if (strncmp(response, "*OK", 3) == 0) {
-    // Find comma after *OK
-    value_start = strchr(response, ',');
-    if (value_start != nullptr) {
-      value_start++;  // Skip the comma
-    } else {
-      // No value after *OK (just confirmation, not a reading)
-      return false;
-    }
-  } else if (strncmp(response, "*ER", 3) == 0 || strncmp(response, "*OV", 3) == 0 ||
-             strncmp(response, "*UV", 3) == 0) {
-    // Error response - log and reject
-    ESP_LOGW(TAG, "EZO error response: %s", response);
+  // Reject command confirmation responses (these are not pH readings)
+  // C,0 or C,1 = continuous mode status
+  // T,xx.x = temperature compensation confirmation
+  // Cal,... = calibration responses
+  if (response[0] == 'C' && response[1] == ',') {
+    ESP_LOGD(TAG, "Ignoring continuous mode status response: %s", response);
     return false;
   }
+  if (response[0] == 'T' && response[1] == ',') {
+    ESP_LOGD(TAG, "Ignoring temperature compensation confirmation: %s", response);
+    return false;
+  }
+  if (strncmp(response, "Cal,", 4) == 0 || strncmp(response, "?Cal,", 5) == 0) {
+    ESP_LOGD(TAG, "Ignoring calibration response: %s", response);
+    return false;
+  }
+
+  // Handle both verbose and non-verbose response modes
+  // Verbose mode: "*OK,6.54" or "*ER"
+  // Non-verbose mode: "6.54"
+  const char *value_start = response;
+
+  // Check for verbose response codes (RESPONSE,1 mode)
+  if (response[0] == '*') {
+    if (strncmp(response, "*OK", 3) == 0) {
+      // Find comma after *OK
+      value_start = strchr(response, ',');
+      if (value_start != nullptr) {
+        value_start++;  // Skip the comma
+      } else {
+        // No value after *OK (just confirmation, not a reading)
+        ESP_LOGD(TAG, "Response is just confirmation with no pH value: %s", response);
+        return false;
+      }
+    } else if (strncmp(response, "*ER", 3) == 0 || strncmp(response, "*OV", 3) == 0 ||
+               strncmp(response, "*UV", 3) == 0) {
+      // Error response - log and reject
+      ESP_LOGW(TAG, "EZO error response: %s", response);
+      return false;
+    }
+  }
+  // In non-verbose mode (RESPONSE,0), response starts directly with the value
 
   // Parse floating-point value from ASCII
   char *endptr;
@@ -492,7 +721,10 @@ bool EZOPHUARTComponent::check_response_code_(const char *response) {
     return false;
   }
 
-  // Check for success response
+  // In non-verbose mode (RESPONSE,0), successful commands return just the data
+  // In verbose mode (RESPONSE,1), successful commands return "*OK" or "*OK,data"
+
+  // Check for success response (verbose mode)
   if (strncmp(response, "*OK", 3) == 0) {
     return true;
   }
@@ -518,8 +750,8 @@ bool EZOPHUARTComponent::check_response_code_(const char *response) {
     return false;
   }
 
-  // No recognized response code - might be just data (e.g., device info)
-  // This is acceptable for certain commands
+  // In non-verbose mode, any data response without error codes is considered success
+  // This includes: "6.54", "C,0", "?I,pH,1.0", etc.
   return true;
 }
 

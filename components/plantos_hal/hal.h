@@ -13,6 +13,9 @@ class LightState;
 namespace sensor {
 class Sensor;
 }
+namespace ezo_ph_uart {
+class EZOPHUARTComponent;
+}
 }  // namespace esphome
 
 namespace plantos_hal {
@@ -90,9 +93,47 @@ public:
     /**
      * Start pH sensor calibration at given point
      * @param calibrationPoint Calibration pH value (e.g., 4.0, 7.0, 10.0)
-     * @return true if calibration started successfully
+     * @param calibrationStep 0=mid, 1=low, 2=high
+     * @return true if calibration command succeeded
      */
-    virtual bool startPhCalibration(float calibrationPoint) = 0;
+    virtual bool startPhCalibration(float calibrationPoint, int calibrationStep) = 0;
+
+    /**
+     * Take a single pH reading immediately (blocking)
+     * @param value Output parameter for pH value
+     * @return true if reading was successful
+     */
+    virtual bool takeSinglePhReading(float &value) = 0;
+
+    /**
+     * Get the last pH reading from sensor
+     * @return Most recent pH value
+     */
+    virtual float getLastPhReading() = 0;
+
+    /**
+     * Request pH sensor to take a reading
+     * This triggers the sensor's update cycle
+     */
+    virtual void requestPhReading() = 0;
+
+    /**
+     * Get configured pH reading interval in milliseconds
+     * @return Reading interval in ms
+     */
+    virtual uint32_t get_ph_reading_interval() const = 0;
+
+    /**
+     * Get configured minimum pH threshold
+     * @return Minimum pH value
+     */
+    virtual float get_ph_min() const = 0;
+
+    /**
+     * Get configured maximum pH threshold
+     * @return Maximum pH value
+     */
+    virtual float get_ph_max() const = 0;
 
     /**
      * Read water level
@@ -188,8 +229,18 @@ public:
     // Dependency injection (called from Python __init__.py)
     void set_led(esphome::light::LightState* led);
     void set_ph_sensor(esphome::sensor::Sensor* ph_sensor);
+    void set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component);
     void set_light_sensor(esphome::sensor::Sensor* light_sensor);
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
+
+    // Configuration setters
+    void set_ph_reading_interval(uint32_t interval_ms) { ph_reading_interval_ms_ = interval_ms; }
+    void set_ph_range(float min_ph, float max_ph) { ph_min_ = min_ph; ph_max_ = max_ph; }
+
+    // Configuration getters
+    uint32_t get_ph_reading_interval() const { return ph_reading_interval_ms_; }
+    float get_ph_min() const { return ph_min_; }
+    float get_ph_max() const { return ph_max_; }
 
     // HAL interface implementation
     void setPump(const std::string& pumpId, bool state) override;
@@ -200,7 +251,10 @@ public:
     float readPH() override;
     bool hasPhValue() const override;
     void onPhChange(std::function<void(float)> callback) override;
-    bool startPhCalibration(float calibrationPoint) override;
+    bool startPhCalibration(float calibrationPoint, int calibrationStep) override;
+    bool takeSinglePhReading(float &value) override;
+    float getLastPhReading() override;
+    void requestPhReading() override;
 
     float readWaterLevel() override;
     bool hasWaterLevel() const override;
@@ -224,12 +278,18 @@ private:
     bool led_is_on_{false};
 
     esphome::sensor::Sensor* ph_sensor_{nullptr};
+    esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_{nullptr};
     esphome::sensor::Sensor* light_sensor_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
 
     // Actuator state tracking (for getPumpState/getValveState)
     std::map<std::string, bool> pump_states_;
     std::map<std::string, bool> valve_states_;
+
+    // Configuration parameters
+    uint32_t ph_reading_interval_ms_{7200000};  // Default: 2 hours
+    float ph_min_{5.5f};                         // Default: pH 5.5
+    float ph_max_{6.5f};                         // Default: pH 6.5
 
     // TODO: Add GPIO/PWM output components for pumps/valves (Phase 2)
 };

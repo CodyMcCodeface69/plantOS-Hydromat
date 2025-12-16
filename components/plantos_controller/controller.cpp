@@ -56,7 +56,34 @@ void PlantOSController::loop() {
     if (status_logger_.shouldPrintStatusReport()) {
         // Update status logger with current pH before printing
         if (hal_->hasPhValue()) {
-            status_logger_.updateStatus(readPH(), "");
+            status_logger_.updateStatus(hal_->readPH(), "");
+        }
+
+        // Update UART hardware status (EZO pH sensor)
+        if (ph_sensor_) {
+            std::vector<UARTDeviceInfo> uartDevices;
+            std::string status = "";
+
+            // Check if sensor is ready
+            bool isReady = ph_sensor_->is_sensor_ready();
+
+            // Add calibration status if available
+            // Note: Calibration query would require async call, so we just show ready status
+            if (isReady) {
+                status = "Ready";
+            } else {
+                status = "Not responding";
+            }
+
+            uartDevices.push_back(UARTDeviceInfo(
+                "EZO pH Sensor",
+                "TX=GPIO4, RX=GPIO5",
+                isReady,
+                true,  // critical
+                status
+            ));
+
+            status_logger_.updateUARTHardwareStatus(uartDevices);
         }
 
         // Update PSM event info in status logger
@@ -93,6 +120,10 @@ void PlantOSController::loop() {
 
         case ControllerState::ERROR:
             handleError();
+            break;
+
+        case ControllerState::PH_PROCESSING:
+            handlePhProcessing();
             break;
 
         case ControllerState::PH_MEASURING:
@@ -545,11 +576,12 @@ void PlantOSController::handlePhMixing() {
 }
 
 void PlantOSController::handlePhCalibrating() {
-    // Yellow fast blink - pH sensor calibration
+    // Yellow fast blink - pH sensor calibration with robust averaging
     // 3-point calibration sequence: Mid (7.00) → Low (4.00) → High (10.01)
+    // Each point waits for stable readings before proceeding
 
-    if (!ph_sensor_) {
-        ESP_LOGE(TAG, "pH sensor component not configured - cannot calibrate");
+    if (!ph_sensor_ || !hal_) {
+        ESP_LOGE(TAG, "pH sensor or HAL not configured - cannot calibrate");
         transitionTo(ControllerState::ERROR);
         return;
     }
@@ -557,122 +589,306 @@ void PlantOSController::handlePhCalibrating() {
     // Check if sensor hardware is actually connected and responding
     if (!ph_sensor_->is_sensor_ready()) {
         ESP_LOGE(TAG, "pH sensor hardware not responding - calibration aborted");
-        ESP_LOGE(TAG, "Check UART connection (TX=GPIO4, RX=GPIO5) and power to sensor");
+        ESP_LOGE(TAG, "Check UART connection and power to sensor");
         transitionTo(ControllerState::ERROR);
         return;
     }
 
-    uint32_t elapsed = esphome::millis() - calib_step_start_time_;
+    uint32_t now = esphome::millis();
+    uint32_t elapsed = now - calib_step_start_time_;
 
     switch (calib_step_) {
+        // ====================================================================
+        // MID-POINT CALIBRATION (pH 7.00)
+        // ====================================================================
         case CalibrationStep::MID_PROMPT:
-            // Prompt user once at the beginning of this step
-            if (elapsed == 0 || elapsed < 100) {  // Only log at start
+            if (elapsed < 100) {  // Log prompt once at start
                 ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "========== STEP 1/3: MID-POINT CALIBRATION ==========");
-                ESP_LOGI(TAG, "Insert pH probe into pH 7.00 buffer solution");
-                ESP_LOGI(TAG, "Wait for reading to stabilize...");
-                ESP_LOGI(TAG, "====================================================");
+                ESP_LOGI(TAG, "===========================================================");
+                ESP_LOGI(TAG, "  STEP 1/3: MID-POINT CALIBRATION (pH 7.00)");
+                ESP_LOGI(TAG, "===========================================================");
+                ESP_LOGI(TAG, "1. Insert pH probe into pH 7.00 buffer solution");
+                ESP_LOGI(TAG, "2. Waiting %d seconds for stability check...", CALIB_PROMPT_DURATION / 1000);
+                ESP_LOGI(TAG, "");
             }
 
-            // Wait for prompt duration before starting calibration
             if (elapsed >= CALIB_PROMPT_DURATION) {
-                ESP_LOGI(TAG, "Starting mid-point calibration at pH 7.00...");
-                if (!ph_sensor_->calibrate_mid(7.00f)) {
-                    ESP_LOGE(TAG, "Mid-point calibration FAILED - sensor not responding");
-                    ESP_LOGE(TAG, "Calibration sequence aborted");
-                    transitionTo(ControllerState::ERROR);
-                    return;
-                }
-                calib_step_ = CalibrationStep::MID_WAIT;
-                calib_step_start_time_ = esphome::millis();
+                ESP_LOGI(TAG, "Starting stability check for mid-point calibration...");
+                resetCalibrationBatch();
+                calib_step_ = CalibrationStep::MID_STABILIZING;
+                calib_step_start_time_ = now;
             }
             break;
 
-        case CalibrationStep::MID_WAIT:
-            // Wait for calibration to complete
-            if (elapsed >= CALIB_WAIT_DURATION) {
-                ESP_LOGI(TAG, "Mid-point calibration complete!");
+        case CalibrationStep::MID_STABILIZING:
+            // Take readings (20 per batch, 1/second, 5 batches with 30s wait between)
+            if (calib_readings_in_batch_ < CALIB_READINGS_PER_BATCH) {
+                // Time to take next reading?
+                if (now - calib_last_reading_time_ >= CALIB_READING_INTERVAL) {
+                    float ph_value;
+                    if (hal_->takeSinglePhReading(ph_value)) {
+                        calib_batch_sum_ += ph_value;
+                        calib_readings_in_batch_++;
+                        calib_last_reading_time_ = now;
+                        ESP_LOGD(TAG, "MID: Batch %d, Reading %d/%d: pH %.2f",
+                                calib_current_batch_ + 1, calib_readings_in_batch_,
+                                CALIB_READINGS_PER_BATCH, ph_value);
+                    } else {
+                        ESP_LOGW(TAG, "Failed to take pH reading - retrying");
+                    }
+                }
+            } else {
+                // Batch complete - calculate average
+                float batch_avg = calib_batch_sum_ / CALIB_READINGS_PER_BATCH;
+                calib_batch_averages_[calib_current_batch_] = batch_avg;
+                ESP_LOGI(TAG, "MID: Batch %d complete - Average: pH %.2f",
+                        calib_current_batch_ + 1, batch_avg);
+
+                calib_current_batch_++;
+
+                if (calib_current_batch_ >= CALIB_TOTAL_BATCHES) {
+                    // All batches complete - check stability
+                    if (checkCalibrationStability()) {
+                        ESP_LOGI(TAG, "MID: Readings are STABLE - proceeding to calibration");
+                        calib_step_ = CalibrationStep::MID_CALIBRATE;
+                        calib_step_start_time_ = now;
+                    } else {
+                        ESP_LOGW(TAG, "MID: Readings NOT stable - restarting stability check");
+                        resetCalibrationBatch();
+                    }
+                } else {
+                    // Wait 30 seconds before next batch
+                    ESP_LOGI(TAG, "MID: Waiting %d seconds before next batch...", CALIB_BATCH_WAIT / 1000);
+                    calib_batch_complete_time_ = now;
+                    calib_readings_in_batch_ = 0;  // Reset for next batch
+                    calib_batch_sum_ = 0.0f;
+                }
+            }
+
+            // Handle wait between batches
+            if (calib_readings_in_batch_ == 0 && calib_current_batch_ > 0 &&
+                calib_current_batch_ < CALIB_TOTAL_BATCHES) {
+                if (now - calib_batch_complete_time_ < CALIB_BATCH_WAIT) {
+                    // Still waiting
+                    return;
+                }
+            }
+            break;
+
+        case CalibrationStep::MID_CALIBRATE:
+            ESP_LOGI(TAG, "Sending mid-point calibration command at pH 7.00...");
+            if (!hal_->startPhCalibration(7.00f, 0)) {  // 0 = mid
+                ESP_LOGE(TAG, "MID: Calibration command FAILED");
+                transitionTo(ControllerState::ERROR);
+                return;
+            }
+            calib_step_ = CalibrationStep::MID_COMPLETE;
+            calib_step_start_time_ = now;
+            break;
+
+        case CalibrationStep::MID_COMPLETE:
+            if (elapsed >= 1000) {  // Wait 1s for command to complete
+                ESP_LOGI(TAG, "MID: Mid-point calibration complete!");
                 calib_step_ = CalibrationStep::LOW_PROMPT;
-                calib_step_start_time_ = esphome::millis();
+                calib_step_start_time_ = now;
             }
             break;
 
+        // ====================================================================
+        // LOW-POINT CALIBRATION (pH 4.00)
+        // ====================================================================
         case CalibrationStep::LOW_PROMPT:
-            if (elapsed == 0 || elapsed < 100) {
+            if (elapsed < 100) {
                 ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "========== STEP 2/3: LOW-POINT CALIBRATION ==========");
-                ESP_LOGI(TAG, "Remove probe, rinse with distilled water");
-                ESP_LOGI(TAG, "Insert pH probe into pH 4.00 buffer solution");
-                ESP_LOGI(TAG, "Wait for reading to stabilize...");
-                ESP_LOGI(TAG, "====================================================");
+                ESP_LOGI(TAG, "===========================================================");
+                ESP_LOGI(TAG, "  STEP 2/3: LOW-POINT CALIBRATION (pH 4.00)");
+                ESP_LOGI(TAG, "===========================================================");
+                ESP_LOGI(TAG, "1. Remove probe and rinse with distilled water");
+                ESP_LOGI(TAG, "2. Insert pH probe into pH 4.00 buffer solution");
+                ESP_LOGI(TAG, "3. Waiting %d seconds for stability check...", CALIB_PROMPT_DURATION / 1000);
+                ESP_LOGI(TAG, "");
             }
 
             if (elapsed >= CALIB_PROMPT_DURATION) {
-                ESP_LOGI(TAG, "Starting low-point calibration at pH 4.00...");
-                if (!ph_sensor_->calibrate_low(4.00f)) {
-                    ESP_LOGE(TAG, "Low-point calibration FAILED - sensor not responding");
-                    ESP_LOGE(TAG, "Calibration sequence aborted");
-                    transitionTo(ControllerState::ERROR);
-                    return;
-                }
-                calib_step_ = CalibrationStep::LOW_WAIT;
-                calib_step_start_time_ = esphome::millis();
+                ESP_LOGI(TAG, "Starting stability check for low-point calibration...");
+                resetCalibrationBatch();
+                calib_step_ = CalibrationStep::LOW_STABILIZING;
+                calib_step_start_time_ = now;
             }
             break;
 
-        case CalibrationStep::LOW_WAIT:
-            if (elapsed >= CALIB_WAIT_DURATION) {
-                ESP_LOGI(TAG, "Low-point calibration complete!");
+        case CalibrationStep::LOW_STABILIZING:
+            // Same logic as MID_STABILIZING
+            if (calib_readings_in_batch_ < CALIB_READINGS_PER_BATCH) {
+                if (now - calib_last_reading_time_ >= CALIB_READING_INTERVAL) {
+                    float ph_value;
+                    if (hal_->takeSinglePhReading(ph_value)) {
+                        calib_batch_sum_ += ph_value;
+                        calib_readings_in_batch_++;
+                        calib_last_reading_time_ = now;
+                        ESP_LOGD(TAG, "LOW: Batch %d, Reading %d/%d: pH %.2f",
+                                calib_current_batch_ + 1, calib_readings_in_batch_,
+                                CALIB_READINGS_PER_BATCH, ph_value);
+                    }
+                }
+            } else {
+                float batch_avg = calib_batch_sum_ / CALIB_READINGS_PER_BATCH;
+                calib_batch_averages_[calib_current_batch_] = batch_avg;
+                ESP_LOGI(TAG, "LOW: Batch %d complete - Average: pH %.2f",
+                        calib_current_batch_ + 1, batch_avg);
+
+                calib_current_batch_++;
+
+                if (calib_current_batch_ >= CALIB_TOTAL_BATCHES) {
+                    if (checkCalibrationStability()) {
+                        ESP_LOGI(TAG, "LOW: Readings are STABLE - proceeding to calibration");
+                        calib_step_ = CalibrationStep::LOW_CALIBRATE;
+                        calib_step_start_time_ = now;
+                    } else {
+                        ESP_LOGW(TAG, "LOW: Readings NOT stable - restarting stability check");
+                        resetCalibrationBatch();
+                    }
+                } else {
+                    ESP_LOGI(TAG, "LOW: Waiting %d seconds before next batch...", CALIB_BATCH_WAIT / 1000);
+                    calib_batch_complete_time_ = now;
+                    calib_readings_in_batch_ = 0;
+                    calib_batch_sum_ = 0.0f;
+                }
+            }
+
+            if (calib_readings_in_batch_ == 0 && calib_current_batch_ > 0 &&
+                calib_current_batch_ < CALIB_TOTAL_BATCHES) {
+                if (now - calib_batch_complete_time_ < CALIB_BATCH_WAIT) {
+                    return;
+                }
+            }
+            break;
+
+        case CalibrationStep::LOW_CALIBRATE:
+            ESP_LOGI(TAG, "Sending low-point calibration command at pH 4.00...");
+            if (!hal_->startPhCalibration(4.00f, 1)) {  // 1 = low
+                ESP_LOGE(TAG, "LOW: Calibration command FAILED");
+                transitionTo(ControllerState::ERROR);
+                return;
+            }
+            calib_step_ = CalibrationStep::LOW_COMPLETE;
+            calib_step_start_time_ = now;
+            break;
+
+        case CalibrationStep::LOW_COMPLETE:
+            if (elapsed >= 1000) {
+                ESP_LOGI(TAG, "LOW: Low-point calibration complete!");
                 calib_step_ = CalibrationStep::HIGH_PROMPT;
-                calib_step_start_time_ = esphome::millis();
+                calib_step_start_time_ = now;
             }
             break;
 
+        // ====================================================================
+        // HIGH-POINT CALIBRATION (pH 10.01)
+        // ====================================================================
         case CalibrationStep::HIGH_PROMPT:
-            if (elapsed == 0 || elapsed < 100) {
+            if (elapsed < 100) {
                 ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "========== STEP 3/3: HIGH-POINT CALIBRATION =========");
-                ESP_LOGI(TAG, "Remove probe, rinse with distilled water");
-                ESP_LOGI(TAG, "Insert pH probe into pH 10.01 buffer solution");
-                ESP_LOGI(TAG, "Wait for reading to stabilize...");
-                ESP_LOGI(TAG, "====================================================");
+                ESP_LOGI(TAG, "===========================================================");
+                ESP_LOGI(TAG, "  STEP 3/3: HIGH-POINT CALIBRATION (pH 10.01)");
+                ESP_LOGI(TAG, "===========================================================");
+                ESP_LOGI(TAG, "1. Remove probe and rinse with distilled water");
+                ESP_LOGI(TAG, "2. Insert pH probe into pH 10.01 buffer solution");
+                ESP_LOGI(TAG, "3. Waiting %d seconds for stability check...", CALIB_PROMPT_DURATION / 1000);
+                ESP_LOGI(TAG, "");
             }
 
             if (elapsed >= CALIB_PROMPT_DURATION) {
-                ESP_LOGI(TAG, "Starting high-point calibration at pH 10.01...");
-                if (!ph_sensor_->calibrate_high(10.01f)) {
-                    ESP_LOGE(TAG, "High-point calibration FAILED - sensor not responding");
-                    ESP_LOGE(TAG, "Calibration sequence aborted");
-                    transitionTo(ControllerState::ERROR);
+                ESP_LOGI(TAG, "Starting stability check for high-point calibration...");
+                resetCalibrationBatch();
+                calib_step_ = CalibrationStep::HIGH_STABILIZING;
+                calib_step_start_time_ = now;
+            }
+            break;
+
+        case CalibrationStep::HIGH_STABILIZING:
+            // Same logic as MID_STABILIZING and LOW_STABILIZING
+            if (calib_readings_in_batch_ < CALIB_READINGS_PER_BATCH) {
+                if (now - calib_last_reading_time_ >= CALIB_READING_INTERVAL) {
+                    float ph_value;
+                    if (hal_->takeSinglePhReading(ph_value)) {
+                        calib_batch_sum_ += ph_value;
+                        calib_readings_in_batch_++;
+                        calib_last_reading_time_ = now;
+                        ESP_LOGD(TAG, "HIGH: Batch %d, Reading %d/%d: pH %.2f",
+                                calib_current_batch_ + 1, calib_readings_in_batch_,
+                                CALIB_READINGS_PER_BATCH, ph_value);
+                    }
+                }
+            } else {
+                float batch_avg = calib_batch_sum_ / CALIB_READINGS_PER_BATCH;
+                calib_batch_averages_[calib_current_batch_] = batch_avg;
+                ESP_LOGI(TAG, "HIGH: Batch %d complete - Average: pH %.2f",
+                        calib_current_batch_ + 1, batch_avg);
+
+                calib_current_batch_++;
+
+                if (calib_current_batch_ >= CALIB_TOTAL_BATCHES) {
+                    if (checkCalibrationStability()) {
+                        ESP_LOGI(TAG, "HIGH: Readings are STABLE - proceeding to calibration");
+                        calib_step_ = CalibrationStep::HIGH_CALIBRATE;
+                        calib_step_start_time_ = now;
+                    } else {
+                        ESP_LOGW(TAG, "HIGH: Readings NOT stable - restarting stability check");
+                        resetCalibrationBatch();
+                    }
+                } else {
+                    ESP_LOGI(TAG, "HIGH: Waiting %d seconds before next batch...", CALIB_BATCH_WAIT / 1000);
+                    calib_batch_complete_time_ = now;
+                    calib_readings_in_batch_ = 0;
+                    calib_batch_sum_ = 0.0f;
+                }
+            }
+
+            if (calib_readings_in_batch_ == 0 && calib_current_batch_ > 0 &&
+                calib_current_batch_ < CALIB_TOTAL_BATCHES) {
+                if (now - calib_batch_complete_time_ < CALIB_BATCH_WAIT) {
                     return;
                 }
-                calib_step_ = CalibrationStep::HIGH_WAIT;
-                calib_step_start_time_ = esphome::millis();
             }
             break;
 
-        case CalibrationStep::HIGH_WAIT:
-            if (elapsed >= CALIB_WAIT_DURATION) {
-                ESP_LOGI(TAG, "High-point calibration complete!");
+        case CalibrationStep::HIGH_CALIBRATE:
+            ESP_LOGI(TAG, "Sending high-point calibration command at pH 10.01...");
+            if (!hal_->startPhCalibration(10.01f, 2)) {  // 2 = high
+                ESP_LOGE(TAG, "HIGH: Calibration command FAILED");
+                transitionTo(ControllerState::ERROR);
+                return;
+            }
+            calib_step_ = CalibrationStep::HIGH_COMPLETE;
+            calib_step_start_time_ = now;
+            break;
+
+        case CalibrationStep::HIGH_COMPLETE:
+            if (elapsed >= 1000) {
+                ESP_LOGI(TAG, "HIGH: High-point calibration complete!");
                 calib_step_ = CalibrationStep::COMPLETE;
-                calib_step_start_time_ = esphome::millis();
+                calib_step_start_time_ = now;
             }
             break;
 
+        // ====================================================================
+        // CALIBRATION COMPLETE
+        // ====================================================================
         case CalibrationStep::COMPLETE:
             ESP_LOGI(TAG, "");
-            ESP_LOGI(TAG, "===============================================");
+            ESP_LOGI(TAG, "===========================================================");
             ESP_LOGI(TAG, "  3-POINT pH CALIBRATION COMPLETE!");
-            ESP_LOGI(TAG, "===============================================");
+            ESP_LOGI(TAG, "===========================================================");
             ESP_LOGI(TAG, "Remove probe from buffer solution");
             ESP_LOGI(TAG, "Rinse with distilled water and return to tank");
             ESP_LOGI(TAG, "System returning to IDLE state...");
+            ESP_LOGI(TAG, "");
 
             // Query calibration status to verify
             ph_sensor_->query_calibration_status();
 
-            // Clear PSM event - calibration complete
+            // Clear PSM event
             if (psm_) {
                 psm_->clearEvent();
             }
@@ -686,8 +902,7 @@ void PlantOSController::handlePhCalibrating() {
 
         case CalibrationStep::IDLE:
         default:
-            // Should never reach here
-            ESP_LOGW(TAG, "Unexpected calibration step in PH_CALIBRATING state");
+            ESP_LOGW(TAG, "Unexpected calibration step");
             transitionTo(ControllerState::IDLE);
             break;
     }
@@ -882,6 +1097,130 @@ void PlantOSController::handleWaterEmptying() {
 }
 
 // ============================================================================
+// pH Processing State Handler
+// ============================================================================
+
+void PlantOSController::handlePhProcessing() {
+    // Yellow pulse - Processing periodic pH reading to decide if correction needed
+    // Called every 2 hours (configurable in HAL) to check if pH is in range
+
+    if (!hal_) {
+        ESP_LOGE(TAG, "HAL not configured - cannot process pH");
+        transitionTo(ControllerState::ERROR);
+        return;
+    }
+
+    // Read current pH value
+    float ph_value = hal_->readPH();
+
+    if (!hal_->hasPhValue()) {
+        ESP_LOGW(TAG, "No pH value available - returning to IDLE");
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // Get pH range from HAL configuration
+    float ph_min = hal_->get_ph_min();
+    float ph_max = hal_->get_ph_max();
+
+    ESP_LOGI(TAG, "========================================================");
+    ESP_LOGI(TAG, "  PERIODIC pH CHECK");
+    ESP_LOGI(TAG, "========================================================");
+    ESP_LOGI(TAG, "Current pH: %.2f", ph_value);
+    ESP_LOGI(TAG, "Target range: %.2f - %.2f", ph_min, ph_max);
+
+    // Check if pH is within range
+    if (ph_value >= ph_min && ph_value <= ph_max) {
+        ESP_LOGI(TAG, "pH is within range - no correction needed");
+        ESP_LOGI(TAG, "Returning to IDLE");
+        ESP_LOGI(TAG, "========================================================");
+        transitionTo(ControllerState::IDLE);
+    } else if (ph_value > ph_max) {
+        ESP_LOGW(TAG, "pH is TOO HIGH (%.2f > %.2f)", ph_value, ph_max);
+        ESP_LOGI(TAG, "Starting pH correction sequence");
+        ESP_LOGI(TAG, "========================================================");
+
+        // Reset pH correction state
+        ph_attempt_count_ = 0;
+        ph_readings_.clear();
+        ph_current_ = 0.0f;
+        ph_dose_duration_ms_ = 0;
+
+        // Log event for crash recovery
+        if (psm_) {
+            psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+        }
+
+        transitionTo(ControllerState::PH_MEASURING);
+    } else {
+        ESP_LOGW(TAG, "pH is TOO LOW (%.2f < %.2f)", ph_value, ph_min);
+        ESP_LOGW(TAG, "WARNING: pH correction only supports LOWERING pH (adding acid)");
+        ESP_LOGW(TAG, "Manual intervention required to raise pH");
+        ESP_LOGI(TAG, "========================================================");
+        transitionTo(ControllerState::IDLE);
+    }
+}
+
+// ============================================================================
+// Calibration Helper Methods
+// ============================================================================
+
+void PlantOSController::resetCalibrationBatch() {
+    // Reset all calibration batch tracking variables
+    ESP_LOGD(TAG, "Resetting calibration batch tracking");
+
+    for (size_t i = 0; i < CALIB_TOTAL_BATCHES; i++) {
+        calib_batch_averages_[i] = 0.0f;
+    }
+
+    calib_current_batch_ = 0;
+    calib_readings_in_batch_ = 0;
+    calib_batch_sum_ = 0.0f;
+    calib_last_reading_time_ = 0;
+    calib_batch_complete_time_ = 0;
+}
+
+bool PlantOSController::checkCalibrationStability() {
+    // Check if last 3 batches are within 0.1 pH difference
+    // Requires at least 3 batches to check
+
+    if (calib_current_batch_ < 3) {
+        ESP_LOGW(TAG, "Not enough batches to check stability (need 3, have %d)",
+                 calib_current_batch_);
+        return false;
+    }
+
+    // Get last 3 batch averages
+    float batch1 = calib_batch_averages_[calib_current_batch_ - 3];
+    float batch2 = calib_batch_averages_[calib_current_batch_ - 2];
+    float batch3 = calib_batch_averages_[calib_current_batch_ - 1];
+
+    // Calculate max difference between any two batches
+    float diff_1_2 = std::abs(batch1 - batch2);
+    float diff_2_3 = std::abs(batch2 - batch3);
+    float diff_1_3 = std::abs(batch1 - batch3);
+
+    float max_diff = std::max({diff_1_2, diff_2_3, diff_1_3});
+
+    ESP_LOGI(TAG, "Stability check:");
+    ESP_LOGI(TAG, "  Batch %d: pH %.2f", calib_current_batch_ - 2, batch1);
+    ESP_LOGI(TAG, "  Batch %d: pH %.2f", calib_current_batch_ - 1, batch2);
+    ESP_LOGI(TAG, "  Batch %d: pH %.2f", calib_current_batch_, batch3);
+    ESP_LOGI(TAG, "  Max difference: %.3f pH (threshold: %.1f)",
+             max_diff, CALIB_STABILITY_THRESHOLD);
+
+    bool is_stable = max_diff <= CALIB_STABILITY_THRESHOLD;
+
+    if (is_stable) {
+        ESP_LOGI(TAG, "  Result: STABLE (difference within threshold)");
+    } else {
+        ESP_LOGW(TAG, "  Result: NOT STABLE (difference exceeds threshold)");
+    }
+
+    return is_stable;
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -1034,12 +1373,12 @@ std::string PlantOSController::getStateAsString() const {
     // State name mapping for string representation
     const char* state_names[] = {
         "INIT", "IDLE", "SHUTDOWN", "PAUSE", "ERROR",
-        "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
+        "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
         "FEEDING", "WATER_FILLING", "WATER_EMPTYING"
     };
 
     int state_index = static_cast<int>(current_state_);
-    if (state_index >= 0 && state_index < 13) {
+    if (state_index >= 0 && state_index < 14) {
         return std::string(state_names[state_index]);
     }
 
@@ -1058,7 +1397,7 @@ void PlantOSController::transitionTo(ControllerState newState) {
     // State name mapping for readable logging
     const char* state_names[] = {
         "INIT", "IDLE", "SHUTDOWN", "PAUSE", "ERROR",
-        "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
+        "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
         "FEEDING", "WATER_FILLING", "WATER_EMPTYING"
     };
 

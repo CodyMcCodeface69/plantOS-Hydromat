@@ -5,6 +5,69 @@ All notable changes to the PlantOS project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 🌟 [0.9.1] - 2025-12-15
+
+### 🚀 Added
+
+* **Automated pH Monitoring and Regulation**
+    * Implementation of a **HAL component** for the EZO pH sensor (`ezo_ph_uart_component`).
+    * **Adjustable monitoring intervals** (`ph_reading_interval`).
+    * **Configurable pH thresholds** (`ph_min`, `ph_max`) for automatic acid dosing.
+
+### 🔧 Changed
+
+* **Enhanced pH Calibration System**
+    * Improved stability check: Wait time of **3–5 minutes per calibration point** to ensure accurate measurements.
+    * Calibration is now initiated **via the Web UI** and guides the user through the steps.
+* **HAL Configuration Expansion**
+    * The Hardware Abstraction Layer (HAL) has been expanded to include the new pH component.
+* **Controller FSM (Finite State Machine) Expansion**
+    * States for automated pH monitoring and regulation have been added. 
+
+### 📝 Migration Notes
+
+To activate the new automated pH monitoring, the following steps are required in your `plantOS.yaml`:
+
+1.  **Add the pH component to the HAL configuration:**
+    ```yaml
+    plantos_hal:
+      # ADD this line:
+      ph_sensor_component: ezo_ph_uart_component
+    ```
+2.  **Optional configuration of monitoring parameters:**
+    ```yaml
+      # OPTIONALLY configure pH monitoring:
+      ph_reading_interval: 2h    # or your preferred interval
+      ph_min: 5.5                # or your target minimum
+      ph_max: 6.5                # or your target maximum
+    ```
+3.  **Rebuild and flash the firmware:**
+    ```bash
+    task build
+    task flash
+    ```
+4.  **Recalibrate pH sensor (highly recommended after update):**
+    * Navigate to the **Web UI**.
+    * Click on **"Start pH Calibration"**.
+    * Follow the prompts in the **serial logs** for each buffer solution and wait for the stability check to complete. 
+
+---
+
+### 👥 Contributors
+
+* Enhanced pH calibration system
+* Automated pH monitoring implementation
+* HAL configuration expansion
+* Controller FSM state additions
+
+### ⏭️ Future Enhancements (Planned for 0.9.2)
+
+* Respect maintenance/pause modes in automatic pH monitoring.
+* Add **"Skip Stability Check"** option for faster calibration (testing only).
+* Support for **base dosing** (raising pH).
+* Calibration history and drift detection.
+* Web UI display of next scheduled pH check.
+
 ## [0.9] - 2025-12-12
 
 ###  Added

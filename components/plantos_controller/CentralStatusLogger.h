@@ -35,6 +35,20 @@ struct I2CDeviceInfo {
 };
 
 /**
+ * UART Device Info structure for hardware status tracking
+ */
+struct UARTDeviceInfo {
+    std::string name;        // Device name (e.g., "EZO pH Sensor")
+    std::string port;        // UART port (e.g., "UART1", "TX=GPIO4, RX=GPIO5")
+    bool ready;              // Whether device is ready and responding
+    bool critical;           // Whether device is critical for operation
+    std::string status;      // Additional status info (e.g., "Calibrated", "Not responding")
+
+    UARTDeviceInfo(const std::string& n, const std::string& p, bool r, bool c, const std::string& s = "")
+        : name(n), port(p), ready(r), critical(c), status(s) {}
+};
+
+/**
  * CentralStatusLogger - Unified logging and status display system
  *
  * This class manages all critical system variables and provides
@@ -120,6 +134,12 @@ public:
     void updateI2CHardwareStatus(const std::vector<I2CDeviceInfo>& devices);
 
     /**
+     * Update UART hardware status
+     * @param devices Vector of UARTDeviceInfo structures with device status
+     */
+    void updateUARTHardwareStatus(const std::vector<UARTDeviceInfo>& devices);
+
+    /**
      * Set 420 mode for easter egg logging
      * @param enabled Whether 420 mode is enabled
      */
@@ -198,6 +218,10 @@ private:
     // I²C Hardware status
     std::vector<I2CDeviceInfo> i2cDevices;
     bool i2cScanPerformed;
+
+    // UART Hardware status
+    std::vector<UARTDeviceInfo> uartDevices;
+    bool uartStatusUpdated;
 
     // Easter egg mode
     bool mode420_;

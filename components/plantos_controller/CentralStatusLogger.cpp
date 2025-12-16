@@ -18,6 +18,7 @@ CentralStatusLogger::CentralStatusLogger()
       reportInterval_(30000),
       verboseMode_(false),
       i2cScanPerformed(false),
+      uartStatusUpdated(false),
       mode420_(true) {
 }
 
@@ -139,6 +140,11 @@ void CentralStatusLogger::updateI2CHardwareStatus(const std::vector<I2CDeviceInf
     i2cScanPerformed = true;
 }
 
+void CentralStatusLogger::updateUARTHardwareStatus(const std::vector<UARTDeviceInfo>& devices) {
+    uartDevices = devices;
+    uartStatusUpdated = true;
+}
+
 void CentralStatusLogger::logStatus() {
     // Check if status reports are enabled
     if (!enableReports_) {
@@ -190,11 +196,14 @@ void CentralStatusLogger::logStatus() {
 
     ESP_LOGI(TAG, "");
 
-    // Hardware Status (I²C Devices)
+    // Hardware Status (I²C and UART Devices)
     ESP_LOGI(TAG, "--- HARDWARE STATUS ---");
+
+    // I²C Devices
     if (i2cScanPerformed) {
+        ESP_LOGI(TAG, "  I²C Devices:");
         if (i2cDevices.empty()) {
-            ESP_LOGW(TAG, "  No I²C devices found");
+            ESP_LOGW(TAG, "    No I²C devices found");
         } else {
             // Separate devices into found and missing critical
             std::vector<I2CDeviceInfo> foundDevices;
@@ -212,7 +221,7 @@ void CentralStatusLogger::logStatus() {
             if (!foundDevices.empty()) {
                 for (const auto& device : foundDevices) {
                     // ANSI Green: \033[32m, Reset: \033[0m
-                    ESP_LOGI(TAG, "  \033[32m✓ 0x%02X: %s\033[0m", device.address, device.name.c_str());
+                    ESP_LOGI(TAG, "    \033[32m✓ 0x%02X: %s\033[0m", device.address, device.name.c_str());
                 }
             }
 
@@ -220,21 +229,73 @@ void CentralStatusLogger::logStatus() {
             if (!missingCritical.empty()) {
                 for (const auto& device : missingCritical) {
                     // ANSI Red: \033[31m, Reset: \033[0m
-                    ESP_LOGE(TAG, "  \033[31m✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
+                    ESP_LOGE(TAG, "    \033[31m✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
                 }
             }
 
-            ESP_LOGI(TAG, "  Total devices: %d found", foundDevices.size());
+            ESP_LOGI(TAG, "    Total: %d found", foundDevices.size());
         }
     } else {
-        ESP_LOGI(TAG, "  I²C scan not yet performed");
+        ESP_LOGI(TAG, "  I²C: Scan not yet performed");
+    }
+
+    // UART Devices
+    if (uartStatusUpdated) {
+        ESP_LOGI(TAG, "  UART Devices:");
+        if (uartDevices.empty()) {
+            ESP_LOGW(TAG, "    No UART devices configured");
+        } else {
+            // Separate devices into ready and not ready
+            std::vector<UARTDeviceInfo> readyDevices;
+            std::vector<UARTDeviceInfo> notReadyCritical;
+
+            for (const auto& device : uartDevices) {
+                if (device.ready) {
+                    readyDevices.push_back(device);
+                } else if (device.critical) {
+                    notReadyCritical.push_back(device);
+                }
+            }
+
+            // Display ready devices in green
+            if (!readyDevices.empty()) {
+                for (const auto& device : readyDevices) {
+                    // ANSI Green: \033[32m, Reset: \033[0m
+                    if (device.status.empty()) {
+                        ESP_LOGI(TAG, "    \033[32m✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
+                    } else {
+                        ESP_LOGI(TAG, "    \033[32m✓ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
+                    }
+                }
+            }
+
+            // Display not ready critical devices in red
+            if (!notReadyCritical.empty()) {
+                for (const auto& device : notReadyCritical) {
+                    // ANSI Red: \033[31m, Reset: \033[0m
+                    if (device.status.empty()) {
+                        ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
+                    } else {
+                        ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
+                    }
+                }
+            }
+
+            ESP_LOGI(TAG, "    Total: %d ready", readyDevices.size());
+        }
+    } else {
+        ESP_LOGI(TAG, "  UART: Status not yet updated");
     }
 
     ESP_LOGI(TAG, "");
 
     // Sensor Data
     ESP_LOGI(TAG, "--- SENSOR DATA ---");
-    ESP_LOGI(TAG, "  Filtered pH: %.2f", filteredPH);
+    if (filteredPH > 0.0f) {
+        ESP_LOGI(TAG, "  pH: %.2f", filteredPH);
+    } else {
+        ESP_LOGW(TAG, "  pH: No reading available");
+    }
 
     ESP_LOGI(TAG, "");
 

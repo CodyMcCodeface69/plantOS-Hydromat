@@ -43,6 +43,7 @@ enum class ControllerState {
     SHUTDOWN,          // System shutdown - all actuators OFF, calendar disabled (Solid Yellow)
     PAUSE,             // System paused - actuators maintain state, calendar disabled (Solid Orange)
     ERROR,             // Error condition (Fast Red Flash)
+    PH_PROCESSING,     // Processing pH reading to decide if correction needed (Yellow Pulse)
     PH_MEASURING,      // pH stabilization phase (Yellow Pulse)
     PH_CALCULATING,    // Determining pH adjustment (Yellow Fast Blink)
     PH_INJECTING,      // Acid dosing in progress (Cyan Pulse)
@@ -234,24 +235,53 @@ private:
     static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
 
     // ========================================================================
-    // pH Calibration State
+    // pH Calibration State - Enhanced with robust averaging
     // ========================================================================
+    // Each calibration point requires stable readings before proceeding
+    // Stability check: 5 batches × 20 readings (1/s), wait 30s between batches
+    // Then verify last 3 batches are within 0.1 pH difference
 
     enum class CalibrationStep {
-        IDLE,          // Not calibrating
-        MID_PROMPT,    // Prompting user to insert probe in pH 7.00
-        MID_WAIT,      // Waiting for mid-point calibration to complete
-        LOW_PROMPT,    // Prompting user to insert probe in pH 4.00
-        LOW_WAIT,      // Waiting for low-point calibration to complete
-        HIGH_PROMPT,   // Prompting user to insert probe in pH 10.01
-        HIGH_WAIT,     // Waiting for high-point calibration to complete
-        COMPLETE       // Calibration complete, transitioning to IDLE
+        IDLE,              // Not calibrating
+
+        // Mid-point calibration (pH 7.00)
+        MID_PROMPT,        // Prompt user to insert probe in pH 7.00 buffer
+        MID_STABILIZING,   // Taking readings and checking for stability
+        MID_CALIBRATE,     // Stable - send calibration command
+        MID_COMPLETE,      // Mid-point complete
+
+        // Low-point calibration (pH 4.00)
+        LOW_PROMPT,        // Prompt user to insert probe in pH 4.00 buffer
+        LOW_STABILIZING,   // Taking readings and checking for stability
+        LOW_CALIBRATE,     // Stable - send calibration command
+        LOW_COMPLETE,      // Low-point complete
+
+        // High-point calibration (pH 10.01)
+        HIGH_PROMPT,       // Prompt user to insert probe in pH 10.01 buffer
+        HIGH_STABILIZING,  // Taking readings and checking for stability
+        HIGH_CALIBRATE,    // Stable - send calibration command
+        HIGH_COMPLETE,     // High-point complete
+
+        COMPLETE           // All calibration points complete
     };
 
     CalibrationStep calib_step_{CalibrationStep::IDLE};
     uint32_t calib_step_start_time_{0};          // Time when calibration step started
     static constexpr uint32_t CALIB_PROMPT_DURATION = 10000;  // 10 seconds to show prompt
-    static constexpr uint32_t CALIB_WAIT_DURATION = 1000;     // 1 second wait for sensor response
+
+    // Robust averaging for calibration stability check
+    static constexpr size_t CALIB_READINGS_PER_BATCH = 20;  // 20 readings per batch
+    static constexpr size_t CALIB_TOTAL_BATCHES = 5;        // 5 batches total
+    static constexpr uint32_t CALIB_READING_INTERVAL = 1000; // 1 second between readings
+    static constexpr uint32_t CALIB_BATCH_WAIT = 30000;      // 30 seconds between batches
+    static constexpr float CALIB_STABILITY_THRESHOLD = 0.1f; // ±0.1 pH difference
+
+    float calib_batch_averages_[CALIB_TOTAL_BATCHES];       // Average of each batch
+    size_t calib_current_batch_{0};                         // Current batch index
+    size_t calib_readings_in_batch_{0};                     // Readings collected in current batch
+    float calib_batch_sum_{0.0f};                           // Sum of readings in current batch
+    uint32_t calib_last_reading_time_{0};                   // Time of last reading
+    uint32_t calib_batch_complete_time_{0};                 // Time when batch completed
 
     // ========================================================================
     // LED Behavior System
@@ -268,6 +298,7 @@ private:
     void handleShutdown();
     void handlePause();
     void handleError();
+    void handlePhProcessing();
     void handlePhMeasuring();
     void handlePhCalculating();
     void handlePhInjecting();
@@ -276,6 +307,10 @@ private:
     void handleFeeding();
     void handleWaterFilling();
     void handleWaterEmptying();
+
+    // Helper methods for calibration
+    void resetCalibrationBatch();
+    bool checkCalibrationStability();
 
     // ========================================================================
     // State Transition

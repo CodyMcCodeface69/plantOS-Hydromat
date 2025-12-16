@@ -147,6 +147,30 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
   bool is_sensor_ready() const { return sensor_ready_; }
 
   /**
+   * @brief Take a single pH reading immediately (blocking)
+   * @param value Output parameter for pH value
+   * @return true if reading was successful
+   *
+   * WARNING: This method blocks for ~300ms while waiting for the sensor to respond.
+   * Only use this for calibration sequences where blocking is acceptable.
+   * For normal operation, use the update() polling mechanism instead.
+   */
+  bool take_single_reading(float &value);
+
+  /**
+   * @brief Get the last pH reading from the stability buffer
+   * @return Most recent pH value, or 0.0 if no readings available
+   */
+  float get_last_reading() const;
+
+  /**
+   * @brief Calculate average of last N readings in stability buffer
+   * @param count Number of readings to average (max STABILITY_BUFFER_SIZE)
+   * @return Average pH value, or 0.0 if insufficient data
+   */
+  float get_average_reading(size_t count) const;
+
+  /**
    * @brief Enable continuous reading mode
    *
    * In continuous mode, the sensor automatically outputs readings every second
@@ -240,6 +264,7 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
   // State tracking
   bool sensor_ready_{false};                 ///< True if sensor initialized successfully
   uint8_t error_count_{0};                   ///< Consecutive error counter for fault detection
+  bool continuous_mode_active_{false};       ///< True if continuous reading mode is enabled
 
   // Stability detection buffer (rolling window for standard deviation)
   static constexpr size_t STABILITY_BUFFER_SIZE = 10;  ///< Number of readings to track

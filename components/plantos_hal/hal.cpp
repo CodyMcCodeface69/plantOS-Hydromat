@@ -2,6 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 
 namespace plantos_hal {
 
@@ -19,6 +20,11 @@ void ESPHomeHAL::set_led(esphome::light::LightState* led) {
 void ESPHomeHAL::set_ph_sensor(esphome::sensor::Sensor* ph_sensor) {
     ph_sensor_ = ph_sensor;
     ESP_LOGI(TAG, "pH sensor configured");
+}
+
+void ESPHomeHAL::set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component) {
+    ph_sensor_component_ = ph_sensor_component;
+    ESP_LOGI(TAG, "pH sensor component configured for calibration and direct readings");
 }
 
 void ESPHomeHAL::set_light_sensor(esphome::sensor::Sensor* light_sensor) {
@@ -44,6 +50,9 @@ void ESPHomeHAL::setup() {
     }
     if (!ph_sensor_) {
         ESP_LOGW(TAG, "pH sensor not configured - pH monitoring will be disabled");
+    }
+    if (!ph_sensor_component_) {
+        ESP_LOGW(TAG, "pH sensor component not configured - calibration and direct readings will be disabled");
     }
     if (!light_sensor_) {
         ESP_LOGW(TAG, "Light sensor not configured - light intensity monitoring will be disabled");
@@ -130,15 +139,53 @@ void ESPHomeHAL::onPhChange(std::function<void(float)> callback) {
     ESP_LOGD(TAG, "pH change callback registered");
 }
 
-bool ESPHomeHAL::startPhCalibration(float calibrationPoint) {
-    ESP_LOGI(TAG, "pH calibration requested at point: %.2f", calibrationPoint);
+bool ESPHomeHAL::startPhCalibration(float calibrationPoint, int calibrationStep) {
+    ESP_LOGI(TAG, "pH calibration requested at point: %.2f (step %d)", calibrationPoint, calibrationStep);
 
-    // TODO: Implement pH sensor calibration
-    // This will depend on the specific pH sensor component (e.g., ezo_ph)
-    // For now, return false (not implemented)
+    if (!ph_sensor_component_) {
+        ESP_LOGE(TAG, "pH sensor component not configured - cannot calibrate");
+        return false;
+    }
 
-    ESP_LOGW(TAG, "pH calibration not yet implemented in HAL");
-    return false;
+    // Call appropriate calibration method based on step
+    switch (calibrationStep) {
+        case 0:  // Mid-point calibration
+            return ph_sensor_component_->calibrate_mid(calibrationPoint);
+        case 1:  // Low-point calibration
+            return ph_sensor_component_->calibrate_low(calibrationPoint);
+        case 2:  // High-point calibration
+            return ph_sensor_component_->calibrate_high(calibrationPoint);
+        default:
+            ESP_LOGE(TAG, "Invalid calibration step: %d", calibrationStep);
+            return false;
+    }
+}
+
+bool ESPHomeHAL::takeSinglePhReading(float &value) {
+    if (!ph_sensor_component_) {
+        ESP_LOGW(TAG, "pH sensor component not configured - cannot take reading");
+        return false;
+    }
+
+    return ph_sensor_component_->take_single_reading(value);
+}
+
+float ESPHomeHAL::getLastPhReading() {
+    if (!ph_sensor_component_) {
+        return 0.0f;
+    }
+
+    return ph_sensor_component_->get_last_reading();
+}
+
+void ESPHomeHAL::requestPhReading() {
+    if (!ph_sensor_component_) {
+        ESP_LOGW(TAG, "pH sensor component not configured - cannot request reading");
+        return;
+    }
+
+    // Trigger the sensor's update cycle
+    ph_sensor_component_->update();
 }
 
 float ESPHomeHAL::readWaterLevel() {

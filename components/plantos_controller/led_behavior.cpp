@@ -28,6 +28,7 @@ enum class ControllerState {
     SHUTDOWN,
     PAUSE,
     ERROR,
+    PH_PROCESSING,
     PH_MEASURING,
     PH_CALCULATING,
     PH_INJECTING,
@@ -116,6 +117,11 @@ void LedBehaviorSystem::transitionToBehavior(ControllerState newState) {
         case ControllerState::ERROR:
             newBehavior = std::make_unique<ErrorFlashBehavior>();
             ESP_LOGI(TAG, "LED: Error Flash (Red)");
+            break;
+
+        case ControllerState::PH_PROCESSING:
+            newBehavior = std::make_unique<YellowPulseBehavior>();
+            ESP_LOGI(TAG, "LED: Yellow Pulse (pH Processing)");
             break;
 
         case ControllerState::PH_MEASURING:

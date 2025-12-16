@@ -202,7 +202,7 @@ uart:
   id: uart_bus
   tx_pin: GPIO4  # ESP32-C6 TX -> EZO RX
   rx_pin: GPIO5  # ESP32-C6 RX -> EZO TX
-  baud_rate: 115200  # Standard baud rate for EZO carrier boards
+  baud_rate: 9600  # Standard baud rate for EZO carrier boards
   data_bits: 8
   parity: NONE
   stop_bits: 1
@@ -560,9 +560,18 @@ button:
 plantos_hal:
   id: hal
   system_led: system_led
-  ph_sensor: sensor_filtered_id  # Using filtered dummy sensor for testing
+  ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
+  ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
   light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0)
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO10
+
+  # pH Reading Configuration
+  ph_reading_interval: 2h     # How often to check pH (default: 2 hours)
+  ph_min: 5.5                  # Lower pH threshold (default: 5.5)
+  ph_max: 6.5                  # Upper pH threshold (default: 6.5)
+                               # If pH is outside this range, controller will
+                               # transition to PH_PROCESSING state and decide
+                               # whether to start pH correction
 
 ################################################################################
 # PlantOS Unified Controller (Layer 1) - Phase 8

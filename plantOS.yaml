@@ -1219,138 +1219,117 @@ switch:
   # === 10 - Actuator Control (Manual Toggle Switches via Safety Gate) ===
   # These switches toggle actuators through the safety gate for monitored control
   # Safety gate will auto-shutoff if max duration exceeded
-  # Note: optimistic=true prevents auto-sync when test buttons change state
+  # Note: optimistic=true, switches show intended state (not actual hardware state)
   - platform: template
     id: mag_valve_switch
     name: "10_01_Magnetic Valve"
     optimistic: true
+    restore_mode: ALWAYS_OFF
     turn_on_action:
       - lambda: |-
-          ESP_LOGI("switch", "Magnetic Valve: Manual toggle ON");
           if (!id(actuator_safety)->executeCommand("WaterValve", true, 0)) {
-            ESP_LOGW("switch", "Magnetic Valve: ON command rejected - reverting switch");
-            id(mag_valve_switch).turn_off();
+            ESP_LOGW("switch", "Magnetic Valve: ON command REJECTED by safety gate");
           }
     turn_off_action:
       - lambda: |-
-          ESP_LOGI("switch", "Magnetic Valve: Manual toggle OFF");
           if (!id(actuator_safety)->executeCommand("WaterValve", false)) {
-            ESP_LOGW("switch", "Magnetic Valve: OFF command rejected - reverting switch");
-            id(mag_valve_switch).turn_on();
+            ESP_LOGW("switch", "Magnetic Valve: OFF command REJECTED by safety gate");
           }
 
   - platform: template
     id: pump_ph_switch
     name: "10_02_pH Pump"
     optimistic: true
+    restore_mode: ALWAYS_OFF
     turn_on_action:
       - lambda: |-
-          ESP_LOGI("switch", "pH Pump: Manual toggle ON");
           if (!id(actuator_safety)->executeCommand("AcidPump", true, 0)) {
-            ESP_LOGW("switch", "pH Pump: ON command rejected - reverting switch");
-            id(pump_ph_switch).turn_off();
+            ESP_LOGW("switch", "pH Pump: ON command REJECTED by safety gate");
           }
     turn_off_action:
       - lambda: |-
-          ESP_LOGI("switch", "pH Pump: Manual toggle OFF");
           if (!id(actuator_safety)->executeCommand("AcidPump", false)) {
-            ESP_LOGW("switch", "pH Pump: OFF command rejected - reverting switch");
-            id(pump_ph_switch).turn_on();
+            ESP_LOGW("switch", "pH Pump: OFF command REJECTED by safety gate");
           }
 
   - platform: template
     id: pump_grow_switch
     name: "10_03_Grow Pump"
     optimistic: true
+    restore_mode: ALWAYS_OFF
     turn_on_action:
       - lambda: |-
-          ESP_LOGI("switch", "Grow Pump: Manual toggle ON");
           if (!id(actuator_safety)->executeCommand("NutrientPumpA", true, 0)) {
-            ESP_LOGW("switch", "Grow Pump: ON command rejected - reverting switch");
-            id(pump_grow_switch).turn_off();
+            ESP_LOGW("switch", "Grow Pump: ON command REJECTED by safety gate");
           }
     turn_off_action:
       - lambda: |-
-          ESP_LOGI("switch", "Grow Pump: Manual toggle OFF");
           if (!id(actuator_safety)->executeCommand("NutrientPumpA", false)) {
-            ESP_LOGW("switch", "Grow Pump: OFF command rejected - reverting switch");
-            id(pump_grow_switch).turn_on();
+            ESP_LOGW("switch", "Grow Pump: OFF command REJECTED by safety gate");
           }
 
   - platform: template
     id: pump_micro_switch
     name: "10_04_Micro Pump"
     optimistic: true
+    restore_mode: ALWAYS_OFF
     turn_on_action:
       - lambda: |-
-          ESP_LOGI("switch", "Micro Pump: Manual toggle ON");
           if (!id(actuator_safety)->executeCommand("NutrientPumpB", true, 0)) {
-            ESP_LOGW("switch", "Micro Pump: ON command rejected - reverting switch");
-            id(pump_micro_switch).turn_off();
+            ESP_LOGW("switch", "Micro Pump: ON command REJECTED by safety gate");
           }
     turn_off_action:
       - lambda: |-
-          ESP_LOGI("switch", "Micro Pump: Manual toggle OFF");
           if (!id(actuator_safety)->executeCommand("NutrientPumpB", false)) {
-            ESP_LOGW("switch", "Micro Pump: OFF command rejected - reverting switch");
-            id(pump_micro_switch).turn_on();
+            ESP_LOGW("switch", "Micro Pump: OFF command REJECTED by safety gate");
           }
 
   - platform: template
     id: pump_bloom_switch
     name: "10_05_Bloom Pump"
     optimistic: true
+    restore_mode: ALWAYS_OFF
     turn_on_action:
       - lambda: |-
-          ESP_LOGI("switch", "Bloom Pump: Manual toggle ON");
           if (!id(actuator_safety)->executeCommand("NutrientPumpC", true, 0)) {
-            ESP_LOGW("switch", "Bloom Pump: ON command rejected - reverting switch");
-            id(pump_bloom_switch).turn_off();
+            ESP_LOGW("switch", "Bloom Pump: ON command REJECTED by safety gate");
           }
     turn_off_action:
       - lambda: |-
-          ESP_LOGI("switch", "Bloom Pump: Manual toggle OFF");
           if (!id(actuator_safety)->executeCommand("NutrientPumpC", false)) {
-            ESP_LOGW("switch", "Bloom Pump: OFF command rejected - reverting switch");
-            id(pump_bloom_switch).turn_on();
+            ESP_LOGW("switch", "Bloom Pump: OFF command REJECTED by safety gate");
           }
 
   - platform: template
     id: pump_wastewater_switch
     name: "10_06_Wastewater Pump"
     optimistic: true
+    restore_mode: ALWAYS_OFF
     turn_on_action:
       - lambda: |-
-          ESP_LOGI("switch", "Wastewater Pump: Manual toggle ON");
           if (!id(actuator_safety)->executeCommand("WastewaterPump", true, 0)) {
-            ESP_LOGW("switch", "Wastewater Pump: ON command rejected - reverting switch");
-            id(pump_wastewater_switch).turn_off();
+            ESP_LOGW("switch", "Wastewater Pump: ON command REJECTED by safety gate");
           }
     turn_off_action:
       - lambda: |-
-          ESP_LOGI("switch", "Wastewater Pump: Manual toggle OFF");
           if (!id(actuator_safety)->executeCommand("WastewaterPump", false)) {
-            ESP_LOGW("switch", "Wastewater Pump: OFF command rejected - reverting switch");
-            id(pump_wastewater_switch).turn_on();
+            ESP_LOGW("switch", "Wastewater Pump: OFF command REJECTED by safety gate");
           }
 
   - platform: template
     id: pump_air_switch
     name: "10_07_Air Pump"
     optimistic: true
+    restore_mode: ALWAYS_OFF
     turn_on_action:
       - lambda: |-
-          ESP_LOGI("switch", "Air Pump: Manual toggle ON");
           if (!id(actuator_safety)->executeCommand("AirPump", true, 0)) {
-            ESP_LOGW("switch", "Air Pump: ON command rejected - reverting switch");
-            id(pump_air_switch).turn_off();
+            ESP_LOGW("switch", "Air Pump: ON command REJECTED by safety gate");
           }
     turn_off_action:
       - lambda: |-
-          ESP_LOGI("switch", "Air Pump: Manual toggle OFF");
           if (!id(actuator_safety)->executeCommand("AirPump", false)) {
-            ESP_LOGW("switch", "Air Pump: OFF command rejected - reverting switch");
-            id(pump_air_switch).turn_on();
+            ESP_LOGW("switch", "Air Pump: OFF command REJECTED by safety gate");
           }
 
   # === pH Sensor Control ===

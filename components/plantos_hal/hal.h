@@ -13,6 +13,9 @@ class LightState;
 namespace sensor {
 class Sensor;
 }
+namespace switch_ {
+class Switch;
+}
 namespace ezo_ph_uart {
 class EZOPHUARTComponent;
 }
@@ -177,6 +180,13 @@ public:
      */
     virtual void onTemperatureChange(std::function<void(float)> callback) = 0;
 
+    /**
+     * Send temperature compensation to pH sensor
+     * @param temperature Temperature in degrees Celsius
+     * @return true if compensation was successfully sent
+     */
+    virtual bool sendPhTemperatureCompensation(float temperature) = 0;
+
     // ============================================================================
     // USER FEEDBACK - Called by Controller (LED behaviors)
     // ============================================================================
@@ -233,6 +243,15 @@ public:
     void set_light_sensor(esphome::sensor::Sensor* light_sensor);
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
 
+    // Actuator switch setters (Phase 2: Hardware Control)
+    void set_mag_valve_switch(esphome::switch_::Switch* sw);
+    void set_pump_ph_switch(esphome::switch_::Switch* sw);
+    void set_pump_grow_switch(esphome::switch_::Switch* sw);
+    void set_pump_micro_switch(esphome::switch_::Switch* sw);
+    void set_pump_bloom_switch(esphome::switch_::Switch* sw);
+    void set_pump_wastewater_switch(esphome::switch_::Switch* sw);
+    void set_pump_air_switch(esphome::switch_::Switch* sw);
+
     // Configuration setters
     void set_ph_reading_interval(uint32_t interval_ms) { ph_reading_interval_ms_ = interval_ms; }
     void set_ph_range(float min_ph, float max_ph) { ph_min_ = min_ph; ph_max_ = max_ph; }
@@ -265,6 +284,7 @@ public:
     float readTemperature() override;
     bool hasTemperature() const override;
     void onTemperatureChange(std::function<void(float)> callback) override;
+    bool sendPhTemperatureCompensation(float temperature) override;
 
     void setSystemLED(float r, float g, float b, float brightness = 1.0f) override;
     void turnOffLED() override;
@@ -282,6 +302,15 @@ private:
     esphome::sensor::Sensor* light_sensor_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
 
+    // Actuator switches (Phase 2: Hardware Control - All 7 actuators)
+    esphome::switch_::Switch* mag_valve_switch_{nullptr};
+    esphome::switch_::Switch* pump_ph_switch_{nullptr};
+    esphome::switch_::Switch* pump_grow_switch_{nullptr};
+    esphome::switch_::Switch* pump_micro_switch_{nullptr};
+    esphome::switch_::Switch* pump_bloom_switch_{nullptr};
+    esphome::switch_::Switch* pump_wastewater_switch_{nullptr};
+    esphome::switch_::Switch* pump_air_switch_{nullptr};
+
     // Actuator state tracking (for getPumpState/getValveState)
     std::map<std::string, bool> pump_states_;
     std::map<std::string, bool> valve_states_;
@@ -290,8 +319,6 @@ private:
     uint32_t ph_reading_interval_ms_{7200000};  // Default: 2 hours
     float ph_min_{5.5f};                         // Default: pH 5.5
     float ph_max_{6.5f};                         // Default: pH 6.5
-
-    // TODO: Add GPIO/PWM output components for pumps/valves (Phase 2)
 };
 
 } // namespace plantos_hal

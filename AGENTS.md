@@ -8,10 +8,43 @@ PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and contro
 
 ### Key Statistics
 - **Total Lines of Code**: ~10,000
-- **Custom Components**: 15 (unified from original 16 via FSM consolidation)
+- **Custom Components**: 18 (15 core + 3 utility)
 - **Programming Languages**: C++ (implementation), Python (ESPHome integration), YAML (configuration), Nix (environment)
 - **Main Configuration**: 942 lines (plantOS.yaml)
 - **Architecture**: 3-layer HAL (Controller → SafetyGate → HAL)
+- **Project Status**: 85% Complete - Architecture & Sensors Working
+- **Current Phase**: MVP Finalization
+
+### Project Status (2025-12-23)
+
+**Current Branch**: `hydro` (Hydromat Mk.1)
+
+**✅ What's Working**:
+- 3-layer HAL architecture fully implemented
+- Unified controller FSM with 12 states + LED behavior system
+- EZO pH UART sensor (working, commits 8009973, 7d9d358)
+- DS18B20 temperature sensor with compensation
+- ActuatorSafetyGate with debouncing, duration limits, soft-start/stop
+- Persistent State Manager (crash recovery via NVS)
+- Web interface with manual control buttons
+- pH correction, feeding, water management sequences (logic complete)
+
+**❌ Critical Blockers** (preventing hardware testing):
+1. **GPIO Actuator Wiring** - HAL has stub implementations, no GPIO pins assigned (4-6 hours)
+2. **Water Level Sensors** - 2x XKC-Y23-V not configured (3-4 hours)
+3. **pH Dosing Calibration** - Placeholder formula needs real-world data (6-10 hours)
+
+**MVP Timeline**: 1-2 weeks to completion (19-30 hours remaining)
+
+**Next Steps**:
+1. Configure GPIO pins for 7 actuators (GPIO11-17)
+2. Configure water level sensors (GPIO18-19)
+3. Calibrate pH dosing formula
+4. End-to-end testing
+
+**Reference Documents**:
+- `TODO.md` - Task list organized by phase (MVP → More Features → More Chambers)
+- `.claude/plans/snazzy-yawning-rocket.md` - Detailed implementation plan
 
 ## Development Environment
 
@@ -105,9 +138,9 @@ PlantOS uses a 3-layer HAL (Hardware Abstraction Layer) architecture for clean s
 
 **Sensor Reading Path:**
 ```
-I2C Bus (pH Sensor)
+UART (EZO pH Sensor at 115200 baud)
   → Sensor Filter (outlier rejection)
-    → HAL (readPH)
+    → HAL (readPH with temperature compensation)
       → Unified Controller (state machine decisions)
 ```
 
@@ -437,15 +470,16 @@ struct DailySchedule {
 
 ### Layer 4: Sensor and I/O Components
 
-#### ezo_ph
+#### ezo_ph_uart
 
-**Purpose**: Production pH sensor (Atlas Scientific EZO circuit)
-**Location**: `components/ezo_ph/`
-**LOC**: ~350
+**Purpose**: Production pH sensor (Atlas Scientific EZO circuit via UART)
+**Location**: `components/ezo_ph_uart/`
+**LOC**: ~400
+**Status**: ✅ WORKING (commits 8009973, 7d9d358)
 
-**I2C Protocol**: ASCII text commands (not binary registers)
+**UART Protocol**: ASCII text commands at 115200 baud
 **Critical Timing**: 300ms delay after write before reading
-**I2C Address**: 0x61 (configurable)
+**GPIO Pins**: TX=GPIO20, RX=GPIO21 (configurable)
 
 **Features:**
 - Temperature compensation
@@ -464,12 +498,61 @@ void calibrate_high(float ph_value);  // pH 10.00 buffer
 **Usage:**
 ```yaml
 sensor:
-  - platform: ezo_ph
-    id: raw_ph_sensor
-    name: "Raw pH"
-    i2c_id: i2c_bus
-    address: 0x61
-    update_interval: 5s
+  - platform: ezo_ph_uart
+    id: ezo_ph_uart_component
+    name: "Raw pH (UART)"
+    tx_pin: GPIO20
+    rx_pin: GPIO21
+    update_interval: 60s
+```
+
+**Note**: Legacy I2C version (`components/ezo_ph/`) exists but is not used. UART version is preferred for reliability.
+
+---
+
+#### DS18B20 Temperature Sensor
+
+**Purpose**: Water temperature monitoring for pH compensation
+**Platform**: ESPHome built-in `dallas_temp`
+**Status**: ✅ CONFIGURED
+**GPIO**: GPIO10 (1-Wire bus)
+
+**Features:**
+- Waterproof sensor probe
+- ±0.5°C accuracy
+- Temperature compensation sent to pH sensor via HAL
+- Critical for pH accuracy (pH varies ±0.003 per °C)
+
+**Usage:**
+```yaml
+dallas:
+  - pin: GPIO10
+
+sensor:
+  - platform: dallas_temp
+    id: water_temperature
+    name: "Water Temperature"
+    accuracy_decimals: 1
+```
+
+---
+
+#### Light Sensor (KY-046)
+
+**Purpose**: Ambient light monitoring
+**Platform**: ESPHome built-in ADC
+**Status**: ✅ CONFIGURED
+**GPIO**: GPIO0 (ADC1_CH0)
+
+**Usage:**
+```yaml
+sensor:
+  - platform: adc
+    pin: GPIO0
+    id: light_intensity_raw
+    name: "Light Intensity"
+    update_interval: 10s
+    attenuation: auto
 ```
 
 #### sensor_filter
@@ -979,17 +1062,92 @@ task snoop            # Attach to logs only (no build/flash)
 3. Verify no blocking `delay()` calls in custom code
 4. Check for stack overflow (increase stack size if needed)
 
-## Future Enhancement Possibilities
+## Next Steps to MVP Completion
 
-Based on the current architecture, potential enhancements include:
+**Current Status**: 85% complete - only 3 critical blockers remaining
 
-1. **Additional Sensors**: Temperature, EC/TDS, water level, dissolved oxygen
-2. **Advanced pH Control**: PID control algorithm for precise correction
-3. **Remote Monitoring**: MQTT integration for cloud dashboard
-4. **Automated Schedules**: Time-based routine triggers (cron-like)
-5. **Data Logging**: InfluxDB/Grafana integration for historical data
-6. **Mobile App**: Dedicated control interface with push notifications
-7. **Multi-Tank Support**: Expand to multiple grow chambers
-8. **Machine Learning**: Predictive maintenance and optimization
-9. **Camera Integration**: ESP32-CAM for visual monitoring
-10. **Nutrient Profiles**: Pre-configured schedules for different plant types
+### Critical Blockers (19-30 hours to MVP)
+
+#### 1. GPIO Actuator Configuration (4-6 hours) ⚠️ BLOCKING
+**Problem**: HAL has stub implementations, no GPIO pins assigned
+
+**Required Changes**:
+- Add 7 GPIO output components (GPIO11-17) to `plantOS.yaml`
+- Add 7 switch components wrapping outputs
+- Update `components/plantos_hal/hal.cpp` to control real GPIOs
+- Add dependency injection in `hal.h` and `__init__.py`
+
+**Actuators**:
+- GPIO11: AcidPump (pH down)
+- GPIO12: NutrientPumpA (grow)
+- GPIO13: NutrientPumpB (bloom)
+- GPIO14: NutrientPumpC (micro)
+- GPIO15: WaterValve (fresh water solenoid)
+- GPIO16: WastewaterPump (drainage)
+- GPIO17: AirPump (mixing/aeration)
+
+**Hardware Note**: Use external relay board with 12V/24V supply (ESP32 can't source enough current)
+
+#### 2. Water Level Sensors (3-4 hours) ⚠️ CRITICAL
+**Hardware**: 2x XKC-Y23-V 5V capacitive level sensors
+
+**Required Changes**:
+- Configure binary sensors on GPIO18 (high) and GPIO19 (low)
+- Add voltage dividers (5V → 3.3V) or level shifters
+- Update WATER_FILLING/EMPTYING handlers to check levels and abort
+- Add level status to CentralStatusLogger
+
+**Safety**: Prevent overflow (abort fill on HIGH) and dry pump (abort empty on LOW)
+
+#### 3. pH Dosing Calibration (6-10 hours)
+**Current**: Placeholder formula `duration_ms = ph_diff * 10.0f * 1000.0f`
+
+**Required**:
+- Measure reservoir volume and acid concentration
+- Run 5+ calibration tests at different pH levels
+- Create dosing formula (lookup table or regression)
+- Update `calculate_acid_duration()` in `controller.cpp`
+- Validate accuracy (±0.1 pH)
+- Document in `CALIBRATION.md`
+
+### MVP Success Criteria
+
+Once the 3 blockers above are complete:
+
+- [ ] All 7 actuators respond to web UI
+- [ ] pH correction runs end-to-end automatically
+- [ ] Feeding runs with all 3 nutrient pumps
+- [ ] Water fill/empty aborts safely on level sensors
+- [ ] Temperature compensation works
+- [ ] PSM recovers after power loss
+- [ ] SafetyGate enforces duration limits
+- [ ] 24-hour unattended operation
+- [ ] 48-hour pH stability (5.5-6.5)
+
+### After MVP: Phase 2 (More Features)
+
+See `TODO.md` for Phase 2 and Phase 3 roadmaps:
+
+**Phase 2 - More Features** (40-68 hours):
+- 120-day grow schedule
+- Automated triggers (time/sensor-based)
+- Light control (sunrise/sunset simulation)
+- Air pump scheduling
+- CSV data logging
+- Cloud upload (MQTT/InfluxDB)
+- TDS/EC sensor integration
+
+**Phase 3 - More Chambers** (50-78 hours):
+- Dual controller architecture
+- Second chamber hardware (14 actuators + sensors)
+- Independent schedules (main: flowering, mother: vegetative)
+- Web UI for multi-chamber control
+
+**Reference Documents**:
+- `TODO.md` - Complete task list with 3-phase organization
+- `.claude/plans/snazzy-yawning-rocket.md` - Detailed implementation plan with effort estimates
+
+---
+
+**Last Updated**: 2025-12-23
+**Project Version**: 0.9 (MVP Finalization in Progress)

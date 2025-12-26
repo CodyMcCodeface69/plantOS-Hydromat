@@ -17,7 +17,8 @@
       "Bash(git checkout:*)",
       "Bash(esphome clean:*)",
       "Bash(esphome run:*)",
-      "Bash(timeout 30 task run:*)"
+      "Bash(timeout 30 task run:*)",
+      "Bash(git -C /home/cody/plantOS-testlab log --oneline -10)"
     ],
     "deny": [],
     "ask": []

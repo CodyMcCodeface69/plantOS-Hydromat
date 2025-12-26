@@ -193,6 +193,17 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
    */
   void disable_continuous_reading();
 
+  /**
+   * @brief Send temperature compensation to EZO pH sensor
+   * @param temperature Temperature in degrees Celsius
+   * @return true if command was sent successfully
+   *
+   * Sends the T,<temp> command to the EZO pH circuit to improve accuracy.
+   * Temperature compensation adjusts pH readings based on the Nernst equation.
+   * This method can be called explicitly before critical pH measurements.
+   */
+  bool send_temperature_compensation(float temperature);
+
  protected:
   // ============================================================================
   // UART Communication Helpers

@@ -312,6 +312,12 @@ private:
     void resetCalibrationBatch();
     bool checkCalibrationStability();
 
+    /**
+     * Send current water temperature compensation to pH sensor
+     * Called before critical pH readings (measuring, calibration, feeding)
+     */
+    void sendTemperatureCompensation();
+
     // ========================================================================
     // State Transition
     // ========================================================================

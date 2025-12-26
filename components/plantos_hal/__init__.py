@@ -17,6 +17,9 @@ plantos_hal_ns = cg.esphome_ns.namespace('plantos_hal')
 HAL = plantos_hal_ns.class_('HAL')
 ESPHomeHAL = plantos_hal_ns.class_('ESPHomeHAL', HAL, cg.Component)
 
+# Import switch component for actuator control
+from esphome.components import switch
+
 # Configuration keys
 CONF_SYSTEM_LED = 'system_led'
 CONF_PH_SENSOR = 'ph_sensor'
@@ -26,6 +29,15 @@ CONF_TEMPERATURE_SENSOR = 'temperature_sensor'
 CONF_PH_READING_INTERVAL = 'ph_reading_interval'
 CONF_PH_MIN = 'ph_min'
 CONF_PH_MAX = 'ph_max'
+
+# Actuator switch keys (Phase 2 - All 7 actuators)
+CONF_MAG_VALVE_SWITCH = 'mag_valve_switch'
+CONF_PUMP_PH_SWITCH = 'pump_ph_switch'
+CONF_PUMP_GROW_SWITCH = 'pump_grow_switch'
+CONF_PUMP_MICRO_SWITCH = 'pump_micro_switch'
+CONF_PUMP_BLOOM_SWITCH = 'pump_bloom_switch'
+CONF_PUMP_WASTEWATER_SWITCH = 'pump_wastewater_switch'
+CONF_PUMP_AIR_SWITCH = 'pump_air_switch'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -38,7 +50,15 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_PH_READING_INTERVAL, default='2h'): cv.positive_time_period_milliseconds,
     cv.Optional(CONF_PH_MIN, default=5.5): cv.float_range(min=0.0, max=14.0),
     cv.Optional(CONF_PH_MAX, default=6.5): cv.float_range(min=0.0, max=14.0),
-    # TODO: Add GPIO/PWM outputs for pumps/valves in Phase 2
+
+    # Actuator switches (Phase 2: Hardware Control - All 7 actuators)
+    cv.Optional(CONF_MAG_VALVE_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_PUMP_PH_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_PUMP_GROW_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_PUMP_MICRO_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_PUMP_BLOOM_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_PUMP_WASTEWATER_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_PUMP_AIR_SWITCH): cv.use_id(switch.Switch),
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -80,8 +100,31 @@ async def to_code(config):
     # Set pH range configuration
     cg.add(var.set_ph_range(config[CONF_PH_MIN], config[CONF_PH_MAX]))
 
-    # TODO: Inject GPIO/PWM outputs for pumps/valves (Phase 2)
-    # Example:
-    # if CONF_ACID_PUMP in config:
-    #     acid_pump = await cg.get_variable(config[CONF_ACID_PUMP])
-    #     cg.add(var.set_acid_pump(acid_pump))
+    # Inject actuator switches (Phase 2: Hardware Control)
+    if CONF_MAG_VALVE_SWITCH in config:
+        mag_valve_sw = await cg.get_variable(config[CONF_MAG_VALVE_SWITCH])
+        cg.add(var.set_mag_valve_switch(mag_valve_sw))
+
+    if CONF_PUMP_PH_SWITCH in config:
+        pump_ph_sw = await cg.get_variable(config[CONF_PUMP_PH_SWITCH])
+        cg.add(var.set_pump_ph_switch(pump_ph_sw))
+
+    if CONF_PUMP_GROW_SWITCH in config:
+        pump_grow_sw = await cg.get_variable(config[CONF_PUMP_GROW_SWITCH])
+        cg.add(var.set_pump_grow_switch(pump_grow_sw))
+
+    if CONF_PUMP_MICRO_SWITCH in config:
+        pump_micro_sw = await cg.get_variable(config[CONF_PUMP_MICRO_SWITCH])
+        cg.add(var.set_pump_micro_switch(pump_micro_sw))
+
+    if CONF_PUMP_BLOOM_SWITCH in config:
+        pump_bloom_sw = await cg.get_variable(config[CONF_PUMP_BLOOM_SWITCH])
+        cg.add(var.set_pump_bloom_switch(pump_bloom_sw))
+
+    if CONF_PUMP_WASTEWATER_SWITCH in config:
+        pump_wastewater_sw = await cg.get_variable(config[CONF_PUMP_WASTEWATER_SWITCH])
+        cg.add(var.set_pump_wastewater_switch(pump_wastewater_sw))
+
+    if CONF_PUMP_AIR_SWITCH in config:
+        pump_air_sw = await cg.get_variable(config[CONF_PUMP_AIR_SWITCH])
+        cg.add(var.set_pump_air_switch(pump_air_sw))

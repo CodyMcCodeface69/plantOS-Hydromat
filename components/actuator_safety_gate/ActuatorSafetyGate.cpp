@@ -13,12 +13,29 @@ ActuatorSafetyGate::ActuatorSafetyGate() {
 void ActuatorSafetyGate::setup() {
     ESP_LOGI(TAG, "ActuatorSafetyGate initialized");
     ESP_LOGI(TAG, "Safety features: Debouncing, Duration Limits, Runtime Tracking, Soft-Start/Soft-Stop");
+    ESP_LOGI(TAG, "Safety gate status: ENABLED (default)");
 
     // Verify HAL dependency (Phase 2)
     if (!hal_) {
         ESP_LOGW(TAG, "HAL not configured - actuator commands will be logged but not executed");
     } else {
         ESP_LOGI(TAG, "HAL configured - actuators will be controlled via hardware abstraction layer");
+    }
+}
+
+void ActuatorSafetyGate::setEnabled(bool enabled) {
+    enabled_ = enabled;
+    if (enabled) {
+        ESP_LOGI(TAG, "================================================================================");
+        ESP_LOGI(TAG, "Safety Gate: ENABLED");
+        ESP_LOGI(TAG, "Duration limits and auto-shutoff are now ACTIVE");
+        ESP_LOGI(TAG, "================================================================================");
+    } else {
+        ESP_LOGW(TAG, "================================================================================");
+        ESP_LOGW(TAG, "Safety Gate: DISABLED");
+        ESP_LOGW(TAG, "WARNING: Duration limits and auto-shutoff are now INACTIVE");
+        ESP_LOGW(TAG, "Manual oversight required to prevent runaway actuators!");
+        ESP_LOGW(TAG, "================================================================================");
     }
 }
 
@@ -46,10 +63,10 @@ bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
     }
 
     // ========================================================================
-    // SAFETY CHECK 2: MAXIMUM DURATION ENFORCEMENT
+    // SAFETY CHECK 2: MAXIMUM DURATION ENFORCEMENT (only if enabled)
     // ========================================================================
     // Only check duration limits for ON commands with specified duration
-    if (targetState == true && maxDurationSeconds > 0) {
+    if (enabled_ && targetState == true && maxDurationSeconds > 0) {
         // Convert to milliseconds for internal tracking
         uint32_t requestedDurationMs = maxDurationSeconds * 1000;
 
@@ -161,6 +178,11 @@ void ActuatorSafetyGate::loop() {
         // Update ramping state and duty cycle for this actuator
         updateRamping(id, state, currentTime);
 
+        // Skip duration monitoring if safety gate is disabled
+        if (!enabled_) {
+            continue;
+        }
+
         // Check if actuator is ON and has a max duration configured
         if (state.lastRequestedState == true &&
             state.turnOnTime > 0 &&
@@ -173,9 +195,31 @@ void ActuatorSafetyGate::loop() {
                 uint32_t runtimeSeconds = runtime / 1000;
                 uint32_t maxSeconds = state.maxDuration / 1000;
 
-                ESP_LOGW(TAG, "DURATION VIOLATION: %s has been ON for %u seconds (limit: %u seconds)",
-                         id.c_str(), runtimeSeconds, maxSeconds);
-                ESP_LOGW(TAG, "  -> Manual intervention required or automatic shutoff should be triggered!");
+                // Only log once per violation to prevent spam
+                if (!state.violationLogged) {
+                    ESP_LOGE(TAG, "================================================================================");
+                    ESP_LOGE(TAG, "CRITICAL: DURATION VIOLATION DETECTED!");
+                    ESP_LOGE(TAG, "Actuator: %s has been ON for %u seconds (limit: %u seconds)",
+                             id.c_str(), runtimeSeconds, maxSeconds);
+                    ESP_LOGE(TAG, "Action: Forcing automatic shutoff NOW!");
+                    ESP_LOGE(TAG, "================================================================================");
+                    state.violationLogged = true;
+                }
+
+                // FORCE SHUTOFF: Turn off the actuator immediately
+                // Bypass debouncing by directly updating state and executing hardware command
+                state.lastRequestedState = false;
+                state.turnOnTime = 0;
+                state.rampState = RAMP_OFF;
+                state.currentDutyCycle = 0.0f;
+
+                // Execute hardware shutoff via HAL
+                executeHardwareCommand(id, false);
+            }
+        } else {
+            // Reset violation flag when actuator is turned off
+            if (!state.lastRequestedState) {
+                state.violationLogged = false;
             }
         }
     }

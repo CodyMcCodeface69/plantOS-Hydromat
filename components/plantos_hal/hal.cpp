@@ -2,6 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 
 namespace plantos_hal {
@@ -35,6 +36,45 @@ void ESPHomeHAL::set_light_sensor(esphome::sensor::Sensor* light_sensor) {
 void ESPHomeHAL::set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor) {
     temperature_sensor_ = temperature_sensor;
     ESP_LOGI(TAG, "Temperature sensor configured");
+}
+
+// ============================================================================
+// ACTUATOR SWITCH SETTERS (Phase 2: Hardware Control)
+// ============================================================================
+
+void ESPHomeHAL::set_mag_valve_switch(esphome::switch_::Switch* sw) {
+    mag_valve_switch_ = sw;
+    ESP_LOGI(TAG, "Magnetic valve switch configured (GPIO18)");
+}
+
+void ESPHomeHAL::set_pump_ph_switch(esphome::switch_::Switch* sw) {
+    pump_ph_switch_ = sw;
+    ESP_LOGI(TAG, "pH pump switch configured (GPIO19)");
+}
+
+void ESPHomeHAL::set_pump_grow_switch(esphome::switch_::Switch* sw) {
+    pump_grow_switch_ = sw;
+    ESP_LOGI(TAG, "Grow pump switch configured (GPIO20)");
+}
+
+void ESPHomeHAL::set_pump_micro_switch(esphome::switch_::Switch* sw) {
+    pump_micro_switch_ = sw;
+    ESP_LOGI(TAG, "Micro pump switch configured (GPIO21)");
+}
+
+void ESPHomeHAL::set_pump_bloom_switch(esphome::switch_::Switch* sw) {
+    pump_bloom_switch_ = sw;
+    ESP_LOGI(TAG, "Bloom pump switch configured (GPIO22)");
+}
+
+void ESPHomeHAL::set_pump_wastewater_switch(esphome::switch_::Switch* sw) {
+    pump_wastewater_switch_ = sw;
+    ESP_LOGI(TAG, "Wastewater pump switch configured (GPIO23)");
+}
+
+void ESPHomeHAL::set_pump_air_switch(esphome::switch_::Switch* sw) {
+    pump_air_switch_ = sw;
+    ESP_LOGI(TAG, "Air pump switch configured (GPIO11)");
 }
 
 // ============================================================================
@@ -81,14 +121,82 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
     // Update internal state tracking
     pump_states_[pumpId] = state;
 
-    // TODO: Wire to actual GPIO/PWM outputs after SafetyGate integration
-    // For now, this is a stub implementation for Phase 1
-    // In Phase 2, we'll connect to actual hardware outputs
-
-    // Example future implementation:
-    // if (pumpId == "AcidPump" && acid_pump_output_) {
-    //     acid_pump_output_->set_state(state);
-    // }
+    // Route to appropriate hardware switch based on pump ID
+    if (pumpId == "AcidPump") {
+        // pH pump (acid dosing) on GPIO19
+        if (pump_ph_switch_) {
+            if (state) {
+                pump_ph_switch_->turn_on();
+            } else {
+                pump_ph_switch_->turn_off();
+            }
+        } else {
+            ESP_LOGW(TAG, "pH pump switch not configured - cannot control AcidPump");
+        }
+    }
+    else if (pumpId == "NutrientPumpA") {
+        // Grow pump on GPIO20
+        if (pump_grow_switch_) {
+            if (state) {
+                pump_grow_switch_->turn_on();
+            } else {
+                pump_grow_switch_->turn_off();
+            }
+        } else {
+            ESP_LOGW(TAG, "Grow pump switch not configured - cannot control NutrientPumpA");
+        }
+    }
+    else if (pumpId == "NutrientPumpB") {
+        // Micro pump on GPIO21
+        if (pump_micro_switch_) {
+            if (state) {
+                pump_micro_switch_->turn_on();
+            } else {
+                pump_micro_switch_->turn_off();
+            }
+        } else {
+            ESP_LOGW(TAG, "Micro pump switch not configured - cannot control NutrientPumpB");
+        }
+    }
+    else if (pumpId == "NutrientPumpC") {
+        // Bloom pump on GPIO22
+        if (pump_bloom_switch_) {
+            if (state) {
+                pump_bloom_switch_->turn_on();
+            } else {
+                pump_bloom_switch_->turn_off();
+            }
+        } else {
+            ESP_LOGW(TAG, "Bloom pump switch not configured - cannot control NutrientPumpC");
+        }
+    }
+    else if (pumpId == "WastewaterPump") {
+        // Wastewater pump on GPIO23
+        if (pump_wastewater_switch_) {
+            if (state) {
+                pump_wastewater_switch_->turn_on();
+            } else {
+                pump_wastewater_switch_->turn_off();
+            }
+        } else {
+            ESP_LOGW(TAG, "Wastewater pump switch not configured - cannot control WastewaterPump");
+        }
+    }
+    else if (pumpId == "AirPump") {
+        // Air pump on GPIO11
+        if (pump_air_switch_) {
+            if (state) {
+                pump_air_switch_->turn_on();
+            } else {
+                pump_air_switch_->turn_off();
+            }
+        } else {
+            ESP_LOGW(TAG, "Air pump switch not configured - cannot control AirPump");
+        }
+    }
+    else {
+        ESP_LOGW(TAG, "Unknown pump ID: %s", pumpId.c_str());
+    }
 }
 
 void ESPHomeHAL::setValve(const std::string& valveId, bool state) {
@@ -97,7 +205,22 @@ void ESPHomeHAL::setValve(const std::string& valveId, bool state) {
     // Update internal state tracking
     valve_states_[valveId] = state;
 
-    // TODO: Wire to actual GPIO outputs after SafetyGate integration
+    // Route to appropriate hardware switch based on valve ID
+    if (valveId == "WaterValve") {
+        // Magnetic valve (fresh water inlet) on GPIO18
+        if (mag_valve_switch_) {
+            if (state) {
+                mag_valve_switch_->turn_on();
+            } else {
+                mag_valve_switch_->turn_off();
+            }
+        } else {
+            ESP_LOGW(TAG, "Magnetic valve switch not configured - cannot control WaterValve");
+        }
+    }
+    else {
+        ESP_LOGW(TAG, "Unknown valve ID: %s", valveId.c_str());
+    }
 }
 
 bool ESPHomeHAL::getPumpState(const std::string& pumpId) const {
@@ -233,6 +356,16 @@ void ESPHomeHAL::onTemperatureChange(std::function<void(float)> callback) {
     });
 
     ESP_LOGD(TAG, "Temperature change callback registered");
+}
+
+bool ESPHomeHAL::sendPhTemperatureCompensation(float temperature) {
+    if (!ph_sensor_component_) {
+        ESP_LOGW(TAG, "pH sensor component not configured - cannot send temperature compensation");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Sending temperature compensation to pH sensor: %.1f°C", temperature);
+    return ph_sensor_component_->send_temperature_compensation(temperature);
 }
 
 // ============================================================================

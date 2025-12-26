@@ -105,11 +105,11 @@ void EZOPHUARTComponent::update() {
       return;
     }
 
-    // Validate pH range - (Commented out for testing continuous mode behavior)
-    // if (ph_value < PH_MIN || ph_value > PH_MAX || std::isnan(ph_value)) {
-    //   ESP_LOGW(TAG, "Continuous mode: pH value out of valid range: %.2f", ph_value);
-    //   return;
-    // }
+   // Validate pH range - (Commented out for testing continuous mode behavior)
+    if (ph_value < PH_MIN || ph_value > PH_MAX || std::isnan(ph_value)) {
+      ESP_LOGW(TAG, "Continuous mode: pH value out of valid range: %.2f", ph_value);
+      return;
+    }
 
     // Success - update and publish
     this->error_count_ = 0;
@@ -549,6 +549,34 @@ void EZOPHUARTComponent::disable_continuous_reading() {
   // Flush any remaining data after mode change
   this->flush();
   delay(50);
+}
+
+bool EZOPHUARTComponent::send_temperature_compensation(float temperature) {
+  char cmd[20];
+  snprintf(cmd, sizeof(cmd), "T,%.1f", temperature);
+
+  ESP_LOGI(TAG, "Sending temperature compensation: %.1f°C", temperature);
+
+  if (!this->send_command_(cmd)) {
+    ESP_LOGE(TAG, "Failed to send temperature compensation command");
+    return false;
+  }
+
+  this->wait_for_response_();
+
+  char response[RESPONSE_BUFFER_SIZE];
+  if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+    if (this->check_response_code_(response)) {
+      ESP_LOGI(TAG, "Temperature compensation set to %.1f°C", temperature);
+      return true;
+    } else {
+      ESP_LOGE(TAG, "Temperature compensation failed: %s", response);
+      return false;
+    }
+  }
+
+  ESP_LOGE(TAG, "No response from sensor during temperature compensation");
+  return false;
 }
 
 // ============================================================================

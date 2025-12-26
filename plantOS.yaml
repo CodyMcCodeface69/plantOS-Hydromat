@@ -7,6 +7,18 @@
 
 esphome:
   name: plantos
+  on_boot:
+    # Configure actuator safety gate max durations on boot
+    # All actuators limited to 10 seconds maximum runtime
+    priority: -100  # Run after all components are initialized
+    then:
+      - lambda: |-
+          ESP_LOGI("esphome", "Configuring actuator safety gate max durations (10s limit)");
+          id(actuator_safety)->setMaxDuration("WaterValve", 10);
+          id(actuator_safety)->setMaxDuration("AcidPump", 10);
+          id(actuator_safety)->setMaxDuration("NutrientPumpA", 10);
+          id(actuator_safety)->setMaxDuration("NutrientPumpB", 10);
+          id(actuator_safety)->setMaxDuration("NutrientPumpC", 10);
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -39,13 +51,13 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-  # Static IP configuration for consistent web UI access
-  # Uncomment if you want a fixed IP address
-  # manual_ip:
-  #   static_ip: 192.168.0.201
-  #   gateway: 192.168.0.1
-  #   subnet: 255.255.255.0
-  #   dns1: 192.168.0.1
+ # Static IP configuration for consistent web UI access
+ # Uncomment if you want a fixed IP address
+  manual_ip:
+    static_ip: 192.168.0.201
+    gateway: 192.168.0.1
+    subnet: 255.255.255.0
+    dns1: 192.168.0.1
 
   # WiFi optimization for mesh networks (TP-Link Deco, etc.)
   # These settings improve compatibility with WiFi mesh systems
@@ -296,6 +308,47 @@ light:
     default_transition_length: 0s
 
 ################################################################################
+# GPIO Outputs: Actuator Control via Logic Level MOSFETs
+#
+# Five actuators controlled by 3.3V logic level MOSFETs:
+# - GPIO18: Magnetic Valve (fresh water inlet)
+# - GPIO19: pH Pump (acid dosing for pH down)
+# - GPIO20: Grow Pump (grow phase nutrients)
+# - GPIO21: Micro Pump (micronutrients)
+# - GPIO22: Bloom Pump (bloom phase nutrients)
+#
+# All outputs are active HIGH (3.3V = ON/OPEN, 0V = OFF/CLOSED)
+################################################################################
+output:
+  - platform: gpio
+    id: mag_valve_output
+    pin: GPIO18
+
+  - platform: gpio
+    id: pump_ph_output
+    pin: GPIO19
+
+  - platform: gpio
+    id: pump_grow_output
+    pin: GPIO20
+
+  - platform: gpio
+    id: pump_micro_output
+    pin: GPIO21
+
+  - platform: gpio
+    id: pump_bloom_output
+    pin: GPIO22
+
+  - platform: gpio
+    id: pump_wastewater_output
+    pin: GPIO23
+
+  - platform: gpio
+    id: pump_air_output
+    pin: GPIO11
+
+################################################################################
 # 1-Wire Bus: For DS18B20 Temperature Sensor
 #
 # DS18B20 is a digital temperature sensor that uses the 1-Wire protocol.
@@ -528,6 +581,85 @@ button:
         - lambda: |-
             id(unified_controller)->startPhCorrection();
 
+  - platform: template
+    name: "07_04_pH Kalibrierung pH 7 (Mitte)"
+    on_press:
+      # Calibrate pH sensor at mid-point (pH 7.00)
+      # Place probe in pH 7.00 buffer solution before pressing
+      then:
+        - logger.log: "Starting pH 7 (mid-point) calibration - ensure probe is in pH 7.00 buffer"
+        - lambda: |-
+            if (id(ezo_ph_uart_component)->calibrate_mid(7.00)) {
+              ESP_LOGI("button", "pH 7.00 mid-point calibration successful");
+            } else {
+              ESP_LOGE("button", "pH 7.00 mid-point calibration failed");
+            }
+
+  - platform: template
+    name: "07_05_pH Kalibrierung pH 4 (Unten)"
+    on_press:
+      # Calibrate pH sensor at low-point (pH 4.00)
+      # Place probe in pH 4.00 buffer solution before pressing
+      then:
+        - logger.log: "Starting pH 4 (low-point) calibration - ensure probe is in pH 4.00 buffer"
+        - lambda: |-
+            if (id(ezo_ph_uart_component)->calibrate_low(4.00)) {
+              ESP_LOGI("button", "pH 4.00 low-point calibration successful");
+            } else {
+              ESP_LOGE("button", "pH 4.00 low-point calibration failed");
+            }
+
+  - platform: template
+    name: "07_06_pH Kalibrierung pH 10 (Oben)"
+    on_press:
+      # Calibrate pH sensor at high-point (pH 10.01)
+      # Place probe in pH 10.01 buffer solution before pressing
+      then:
+        - logger.log: "Starting pH 10 (high-point) calibration - ensure probe is in pH 10.01 buffer"
+        - lambda: |-
+            if (id(ezo_ph_uart_component)->calibrate_high(10.01)) {
+              ESP_LOGI("button", "pH 10.01 high-point calibration successful");
+            } else {
+              ESP_LOGE("button", "pH 10.01 high-point calibration failed");
+            }
+
+  # === 07 - pH Temperature Compensation ===
+  - platform: template
+    name: "07_07_Temperature Compensation (Auto)"
+    on_press:
+      # Read current water temperature and send to EZO pH sensor
+      # This ensures pH readings are compensated for current temperature
+      then:
+        - logger.log: "Reading current water temperature for pH compensation"
+        - lambda: |-
+            if (id(hal)->hasTemperature()) {
+              float temp = id(hal)->readTemperature();
+              ESP_LOGI("button", "Sending temperature compensation: %.1f°C", temp);
+              if (id(hal)->sendPhTemperatureCompensation(temp)) {
+                ESP_LOGI("button", "Temperature compensation successful");
+              } else {
+                ESP_LOGE("button", "Temperature compensation failed");
+              }
+            } else {
+              ESP_LOGE("button", "Temperature sensor not available");
+            }
+
+  - platform: template
+    name: "07_08_Temperature Compensation (Manual)"
+    on_press:
+      # Manual temperature compensation for testing or when temp sensor fails
+      # Default: 19.5°C (typical hydroponic solution temperature)
+      then:
+        - logger.log: "Sending manual temperature compensation (19.5°C)"
+        - lambda: |-
+            float manual_temp = 19.5;  // Default temperature
+            ESP_LOGI("button", "Sending manual temperature compensation: %.1f°C", manual_temp);
+            if (id(hal)->sendPhTemperatureCompensation(manual_temp)) {
+              ESP_LOGI("button", "Manual temperature compensation successful");
+            } else {
+              ESP_LOGE("button", "Manual temperature compensation failed");
+            }
+
   # === 08 - Primary Routines (Feeding) ===
   - platform: template
     name: "08_01_Start Feeding"
@@ -557,11 +689,107 @@ button:
         - lambda: |-
             id(unified_controller)->startEmptyTank();
 
+  # === 10 - Actuator Testing (3-Second Auto-Off) ===
+  - platform: template
+    name: "10_01_Test Magnetic Valve (3s)"
+    on_press:
+      # Turn ON magnetic valve for 3 seconds, then auto turn OFF
+      # Maps to "WaterValve" actuator ID
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Testing Magnetic Valve for 3 seconds");
+            if (id(actuator_safety)->executeCommand("WaterValve", true, 10)) {
+              ESP_LOGI("button", "Magnetic Valve ON - will auto turn OFF after 3s");
+            } else {
+              ESP_LOGW("button", "Magnetic Valve test command rejected");
+            }
+        - delay: 3s
+        - lambda: |-
+            if (id(actuator_safety)->executeCommand("WaterValve", false)) {
+              ESP_LOGI("button", "Magnetic Valve auto-OFF after 3s");
+            }
+
+  - platform: template
+    name: "10_02_Test pH Pump (3s)"
+    on_press:
+      # Turn ON pH pump for 3 seconds, then auto turn OFF
+      # Maps to "AcidPump" actuator ID
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Testing pH Pump for 3 seconds");
+            if (id(actuator_safety)->executeCommand("AcidPump", true, 10)) {
+              ESP_LOGI("button", "pH Pump ON - will auto turn OFF after 3s");
+            } else {
+              ESP_LOGW("button", "pH Pump test command rejected");
+            }
+        - delay: 3s
+        - lambda: |-
+            if (id(actuator_safety)->executeCommand("AcidPump", false)) {
+              ESP_LOGI("button", "pH Pump auto-OFF after 3s");
+            }
+
+  - platform: template
+    name: "10_03_Test Grow Pump (3s)"
+    on_press:
+      # Turn ON grow pump for 3 seconds, then auto turn OFF
+      # Maps to "NutrientPumpA" actuator ID
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Testing Grow Pump for 3 seconds");
+            if (id(actuator_safety)->executeCommand("NutrientPumpA", true, 10)) {
+              ESP_LOGI("button", "Grow Pump ON - will auto turn OFF after 3s");
+            } else {
+              ESP_LOGW("button", "Grow Pump test command rejected");
+            }
+        - delay: 3s
+        - lambda: |-
+            if (id(actuator_safety)->executeCommand("NutrientPumpA", false)) {
+              ESP_LOGI("button", "Grow Pump auto-OFF after 3s");
+            }
+
+  - platform: template
+    name: "10_04_Test Micro Pump (3s)"
+    on_press:
+      # Turn ON micro pump for 3 seconds, then auto turn OFF
+      # Maps to "NutrientPumpB" actuator ID
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Testing Micro Pump for 3 seconds");
+            if (id(actuator_safety)->executeCommand("NutrientPumpB", true, 10)) {
+              ESP_LOGI("button", "Micro Pump ON - will auto turn OFF after 3s");
+            } else {
+              ESP_LOGW("button", "Micro Pump test command rejected");
+            }
+        - delay: 3s
+        - lambda: |-
+            if (id(actuator_safety)->executeCommand("NutrientPumpB", false)) {
+              ESP_LOGI("button", "Micro Pump auto-OFF after 3s");
+            }
+
+  - platform: template
+    name: "10_05_Test Bloom Pump (3s)"
+    on_press:
+      # Turn ON bloom pump for 3 seconds, then auto turn OFF
+      # Maps to "NutrientPumpC" actuator ID
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Testing Bloom Pump for 3 seconds");
+            if (id(actuator_safety)->executeCommand("NutrientPumpC", true, 10)) {
+              ESP_LOGI("button", "Bloom Pump ON - will auto turn OFF after 3s");
+            } else {
+              ESP_LOGW("button", "Bloom Pump test command rejected");
+            }
+        - delay: 3s
+        - lambda: |-
+            if (id(actuator_safety)->executeCommand("NutrientPumpC", false)) {
+              ESP_LOGI("button", "Bloom Pump auto-OFF after 3s");
+            }
+
 ################################################################################
 # PlantOS HAL (Hardware Abstraction Layer) - Layer 3
 #
 # Provides platform-agnostic hardware interface for the unified Controller.
-# Phase 1 implementation - testing compilation only.
+# Phase 2 implementation - hardware actuators connected.
 ################################################################################
 plantos_hal:
   id: hal
@@ -570,6 +798,15 @@ plantos_hal:
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
   light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0)
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO10
+
+  # Actuator Switches (Phase 2: Hardware Control - All 7 actuators)
+  mag_valve_switch: mag_valve_switch        # GPIO18 - Magnetic valve (fresh water inlet)
+  pump_ph_switch: pump_ph_switch            # GPIO19 - pH pump (acid dosing)
+  pump_grow_switch: pump_grow_switch        # GPIO20 - Grow pump (grow nutrients)
+  pump_micro_switch: pump_micro_switch      # GPIO21 - Micro pump (micronutrients)
+  pump_bloom_switch: pump_bloom_switch      # GPIO22 - Bloom pump (bloom nutrients)
+  pump_wastewater_switch: pump_wastewater_switch  # GPIO23 - Wastewater pump (drainage)
+  pump_air_switch: pump_air_switch          # GPIO11 - Air pump (mixing/aeration)
 
   # pH Reading Configuration
   ph_reading_interval: 2h     # How often to check pH (default: 2 hours)
@@ -964,6 +1201,158 @@ calendar_manager:
 # Template switches for manual control of the unified controller.
 ################################################################################
 switch:
+  # === 02 - Safety Gate Control ===
+  - platform: template
+    id: safety_gate_enabled
+    name: "02_01_Enable Actuator Safety Gate"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON  # Safety gate enabled by default
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Actuator Safety Gate ENABLED");
+          id(actuator_safety)->setEnabled(true);
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGW("switch", "Actuator Safety Gate DISABLED - manual control mode");
+          id(actuator_safety)->setEnabled(false);
+
+  # === 10 - Actuator Control (Manual Toggle Switches via Safety Gate) ===
+  # These switches toggle actuators through the safety gate for monitored control
+  # Safety gate will auto-shutoff if max duration exceeded
+  # Note: optimistic=true prevents auto-sync when test buttons change state
+  - platform: template
+    id: mag_valve_switch
+    name: "10_01_Magnetic Valve"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Magnetic Valve: Manual toggle ON");
+          if (!id(actuator_safety)->executeCommand("WaterValve", true, 0)) {
+            ESP_LOGW("switch", "Magnetic Valve: ON command rejected - reverting switch");
+            id(mag_valve_switch).turn_off();
+          }
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Magnetic Valve: Manual toggle OFF");
+          if (!id(actuator_safety)->executeCommand("WaterValve", false)) {
+            ESP_LOGW("switch", "Magnetic Valve: OFF command rejected - reverting switch");
+            id(mag_valve_switch).turn_on();
+          }
+
+  - platform: template
+    id: pump_ph_switch
+    name: "10_02_pH Pump"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "pH Pump: Manual toggle ON");
+          if (!id(actuator_safety)->executeCommand("AcidPump", true, 0)) {
+            ESP_LOGW("switch", "pH Pump: ON command rejected - reverting switch");
+            id(pump_ph_switch).turn_off();
+          }
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "pH Pump: Manual toggle OFF");
+          if (!id(actuator_safety)->executeCommand("AcidPump", false)) {
+            ESP_LOGW("switch", "pH Pump: OFF command rejected - reverting switch");
+            id(pump_ph_switch).turn_on();
+          }
+
+  - platform: template
+    id: pump_grow_switch
+    name: "10_03_Grow Pump"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Grow Pump: Manual toggle ON");
+          if (!id(actuator_safety)->executeCommand("NutrientPumpA", true, 0)) {
+            ESP_LOGW("switch", "Grow Pump: ON command rejected - reverting switch");
+            id(pump_grow_switch).turn_off();
+          }
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Grow Pump: Manual toggle OFF");
+          if (!id(actuator_safety)->executeCommand("NutrientPumpA", false)) {
+            ESP_LOGW("switch", "Grow Pump: OFF command rejected - reverting switch");
+            id(pump_grow_switch).turn_on();
+          }
+
+  - platform: template
+    id: pump_micro_switch
+    name: "10_04_Micro Pump"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Micro Pump: Manual toggle ON");
+          if (!id(actuator_safety)->executeCommand("NutrientPumpB", true, 0)) {
+            ESP_LOGW("switch", "Micro Pump: ON command rejected - reverting switch");
+            id(pump_micro_switch).turn_off();
+          }
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Micro Pump: Manual toggle OFF");
+          if (!id(actuator_safety)->executeCommand("NutrientPumpB", false)) {
+            ESP_LOGW("switch", "Micro Pump: OFF command rejected - reverting switch");
+            id(pump_micro_switch).turn_on();
+          }
+
+  - platform: template
+    id: pump_bloom_switch
+    name: "10_05_Bloom Pump"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Bloom Pump: Manual toggle ON");
+          if (!id(actuator_safety)->executeCommand("NutrientPumpC", true, 0)) {
+            ESP_LOGW("switch", "Bloom Pump: ON command rejected - reverting switch");
+            id(pump_bloom_switch).turn_off();
+          }
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Bloom Pump: Manual toggle OFF");
+          if (!id(actuator_safety)->executeCommand("NutrientPumpC", false)) {
+            ESP_LOGW("switch", "Bloom Pump: OFF command rejected - reverting switch");
+            id(pump_bloom_switch).turn_on();
+          }
+
+  - platform: template
+    id: pump_wastewater_switch
+    name: "10_06_Wastewater Pump"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Wastewater Pump: Manual toggle ON");
+          if (!id(actuator_safety)->executeCommand("WastewaterPump", true, 0)) {
+            ESP_LOGW("switch", "Wastewater Pump: ON command rejected - reverting switch");
+            id(pump_wastewater_switch).turn_off();
+          }
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Wastewater Pump: Manual toggle OFF");
+          if (!id(actuator_safety)->executeCommand("WastewaterPump", false)) {
+            ESP_LOGW("switch", "Wastewater Pump: OFF command rejected - reverting switch");
+            id(pump_wastewater_switch).turn_on();
+          }
+
+  - platform: template
+    id: pump_air_switch
+    name: "10_07_Air Pump"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Air Pump: Manual toggle ON");
+          if (!id(actuator_safety)->executeCommand("AirPump", true, 0)) {
+            ESP_LOGW("switch", "Air Pump: ON command rejected - reverting switch");
+            id(pump_air_switch).turn_off();
+          }
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Air Pump: Manual toggle OFF");
+          if (!id(actuator_safety)->executeCommand("AirPump", false)) {
+            ESP_LOGW("switch", "Air Pump: OFF command rejected - reverting switch");
+            id(pump_air_switch).turn_on();
+          }
+
   # === pH Sensor Control ===
   - platform: template
     name: "07_03_Enable Continuous pH Reading"

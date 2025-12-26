@@ -39,6 +39,9 @@ struct ActuatorState {
     uint32_t rampStartTime;       // Timestamp when current ramp started (millis())
     float currentDutyCycle;       // Current PWM duty cycle (0.0 = off, 1.0 = full on)
 
+    // Duration violation tracking
+    bool violationLogged;         // True if duration violation has been logged (prevents spam)
+
     ActuatorState()
         : lastRequestedState(false),
           lastCommandTime(0),
@@ -47,7 +50,8 @@ struct ActuatorState {
           rampDuration(0),
           rampState(RAMP_OFF),
           rampStartTime(0),
-          currentDutyCycle(0.0f) {}
+          currentDutyCycle(0.0f),
+          violationLogged(false) {}
 };
 
 /**
@@ -308,6 +312,31 @@ public:
      */
     RampState getRampState(const char* actuatorID) const;
 
+    // ========================================================================
+    // SAFETY GATE ENABLE/DISABLE
+    // ========================================================================
+
+    /**
+     * Enable or disable the safety gate
+     *
+     * @param enabled true to enable safety checks, false to disable
+     *
+     * When disabled, the safety gate will still execute commands and track
+     * state, but will NOT enforce duration limits or auto-shutoff.
+     * This is useful for maintenance, testing, or pump flushing operations.
+     *
+     * WARNING: Disabling safety gate removes all protection against runaway
+     * actuators. Only disable when you have manual oversight.
+     */
+    void setEnabled(bool enabled);
+
+    /**
+     * Check if safety gate is currently enabled
+     *
+     * @return true if safety checks are active, false if disabled
+     */
+    bool isEnabled() const { return enabled_; }
+
 private:
     // ========================================================================
     // DEPENDENCIES (Phase 2: HAL Integration)
@@ -315,6 +344,13 @@ private:
 
     // Hardware Abstraction Layer for actuator control
     plantos_hal::HAL* hal_{nullptr};
+
+    // ========================================================================
+    // SAFETY GATE STATE
+    // ========================================================================
+
+    // Safety gate enabled/disabled flag (enabled by default)
+    bool enabled_{true};
 
     // ========================================================================
     // STATE TRACKING

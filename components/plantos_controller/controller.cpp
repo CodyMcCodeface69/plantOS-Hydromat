@@ -380,6 +380,10 @@ void PlantOSController::handlePhMeasuring() {
         turnOffAllPumps();
         ESP_LOGI(TAG, "pH measuring: All pumps OFF for 5-minute stabilization");
         ph_readings_.clear(); // Reset readings buffer
+
+        // Send temperature compensation before starting pH measurements
+        sendTemperatureCompensation();
+
         return;
     }
 
@@ -614,6 +618,10 @@ void PlantOSController::handlePhCalibrating() {
 
             if (elapsed >= CALIB_PROMPT_DURATION) {
                 ESP_LOGI(TAG, "Starting stability check for mid-point calibration...");
+
+                // Send temperature compensation before calibration readings
+                sendTemperatureCompensation();
+
                 resetCalibrationBatch();
                 calib_step_ = CalibrationStep::MID_STABILIZING;
                 calib_step_start_time_ = now;
@@ -711,6 +719,10 @@ void PlantOSController::handlePhCalibrating() {
 
             if (elapsed >= CALIB_PROMPT_DURATION) {
                 ESP_LOGI(TAG, "Starting stability check for low-point calibration...");
+
+                // Send temperature compensation before calibration readings
+                sendTemperatureCompensation();
+
                 resetCalibrationBatch();
                 calib_step_ = CalibrationStep::LOW_STABILIZING;
                 calib_step_start_time_ = now;
@@ -800,6 +812,10 @@ void PlantOSController::handlePhCalibrating() {
 
             if (elapsed >= CALIB_PROMPT_DURATION) {
                 ESP_LOGI(TAG, "Starting stability check for high-point calibration...");
+
+                // Send temperature compensation before calibration readings
+                sendTemperatureCompensation();
+
                 resetCalibrationBatch();
                 calib_step_ = CalibrationStep::HIGH_STABILIZING;
                 calib_step_start_time_ = now;
@@ -913,6 +929,12 @@ void PlantOSController::handleFeeding() {
     // Sequential nutrient pump activation: A → B → C
 
     uint32_t elapsed = getStateElapsed();
+
+    // On first entry to feeding state: send temperature compensation
+    // This ensures pH sensor is properly compensated if pH is checked during/after feeding
+    if (state_counter_ == 0 && elapsed < 100) {
+        sendTemperatureCompensation();
+    }
 
     // Phase 7 TODO: Get durations from CalendarManager
     // For now, use hardcoded example durations (in milliseconds)
@@ -1218,6 +1240,22 @@ bool PlantOSController::checkCalibrationStability() {
     }
 
     return is_stable;
+}
+
+void PlantOSController::sendTemperatureCompensation() {
+    if (!hal_->hasTemperature()) {
+        ESP_LOGW(TAG, "Temperature sensor not available - skipping compensation");
+        return;
+    }
+
+    float temp = hal_->readTemperature();
+    ESP_LOGI(TAG, "Sending temperature compensation: %.1f°C", temp);
+
+    if (hal_->sendPhTemperatureCompensation(temp)) {
+        ESP_LOGD(TAG, "Temperature compensation successful");
+    } else {
+        ESP_LOGW(TAG, "Temperature compensation failed");
+    }
 }
 
 // ============================================================================

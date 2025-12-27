@@ -35,15 +35,18 @@ esp32:
 logger:
   # DEBUG level enables detailed component logging for development
   # This helps diagnose FSM state transitions and sensor callbacks
+  # DEBUGNOLED mode: DEBUG level + light component filtered to INFO
+  # This suppresses LED brightness/color change messages while keeping all other debug info
   # In production, consider INFO or WARN to reduce log noise
-  level: INFO
+  level: DEBUG
   # ESP32-C6 uses built-in USB Serial/JTAG controller for logging
   # This must be explicitly configured or boot will hang
   hardware_uart: USB_SERIAL_JTAG
 
   # Component-specific log level overrides
   logs:
-    adc: NONE  # If you want to see only errors, you can change NONE to ERROR or WARN 
+    adc: NONE    # Suppress ADC component messages
+    light: INFO  # DEBUGNOLED: Suppress LED brightness/color debug messages 
 
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security
@@ -1352,5 +1355,55 @@ switch:
         - lambda: |-
             ESP_LOGI("switch", "Disabling continuous pH reading mode");
             id(ezo_ph_uart_component)->disable_continuous_reading();
+
+################################################################################
+# GPIO Status Logger (DEBUG Mode)
+#
+# Periodically logs GPIO pin status for all used pins in the system.
+# Shows InputEn, OutputEn, and current level for each GPIO.
+# Only active in DEBUG logger mode.
+################################################################################
+interval:
+  - interval: 30s
+    then:
+      - lambda: |-
+          // GPIO Status Logger - Simple level reading
+          // Note: ESP-IDF doesn't provide easy public API for reading input/output enable
+          // so we only log the current GPIO level (0=LOW, 1=HIGH)
+
+          auto log_gpio = [](int pin, const char* name) {
+            int level = gpio_get_level((gpio_num_t)pin);
+            ESP_LOGD("gpio_status", "GPIO[%d] %-20s| Level: %d", pin, name, level);
+          };
+
+          ESP_LOGD("gpio_status", "");
+          ESP_LOGD("gpio_status", "=== GPIO Status Report ===");
+
+          // Sensors
+          log_gpio(0, "Light Sensor (ADC)");
+          log_gpio(4, "EZO pH UART TX");
+          log_gpio(5, "EZO pH UART RX");
+
+          // I2C Bus
+          log_gpio(6, "I2C SDA");
+          log_gpio(7, "I2C SCL");
+
+          // System LED
+          log_gpio(8, "System LED (WS2812)");
+
+          // Temperature Sensor
+          log_gpio(10, "Water Temp (1-Wire)");
+
+          // Actuators (Active HIGH outputs)
+          log_gpio(11, "Air Pump");
+          log_gpio(18, "Water Valve (Mag)");
+          log_gpio(19, "Acid Pump (pH)");
+          log_gpio(20, "Nutrient Pump (Grow)");
+          log_gpio(21, "Nutrient Pump (Micro)");
+          log_gpio(22, "Nutrient Pump (Bloom)");
+          log_gpio(23, "Wastewater Pump");
+
+          ESP_LOGD("gpio_status", "=========================");
+          ESP_LOGD("gpio_status", "");
 
 

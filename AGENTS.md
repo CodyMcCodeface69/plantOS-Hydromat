@@ -29,16 +29,16 @@ PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and contro
 - Web interface with manual control buttons
 - pH correction, feeding, water management sequences (logic complete)
 
-**❌ Critical Blockers** (preventing hardware testing):
-1. **GPIO Actuator Wiring** - HAL has stub implementations, no GPIO pins assigned (4-6 hours)
-2. **Water Level Sensors** - 2x XKC-Y23-V not configured (3-4 hours)
-3. **pH Dosing Calibration** - Placeholder formula needs real-world data (6-10 hours)
+**Critical Blockers** (preventing hardware testing):
+1. ✅ **GPIO Actuator Wiring** - COMPLETE: All 7 actuators configured (GPIO11, 18-23), HAL fully wired
+2. ⚠️ **Water Level Sensors** - 2x XKC-Y23-V not configured; needs GPIO10-11 (requires relocating temp sensor & air pump) (3-4 hours)
+3. ⚠️ **pH Dosing Calibration** - Placeholder formula needs real-world data (6-10 hours)
 
 **MVP Timeline**: 1-2 weeks to completion (19-30 hours remaining)
 
 **Next Steps**:
-1. Configure GPIO pins for 7 actuators (GPIO11-17)
-2. Configure water level sensors (GPIO18-19)
+1. Relocate DS18B20 temp sensor (GPIO10 → GPIO12) and AirPump (GPIO11 → GPIO13)
+2. Configure water level sensors on GPIO10-11 (XKC-Y23-V with voltage dividers)
 3. Calibrate pH dosing formula
 4. End-to-end testing
 
@@ -1068,23 +1068,27 @@ task snoop            # Attach to logs only (no build/flash)
 
 ### Critical Blockers (19-30 hours to MVP)
 
-#### 1. GPIO Actuator Configuration (4-6 hours) ⚠️ BLOCKING
-**Problem**: HAL has stub implementations, no GPIO pins assigned
+#### 1. GPIO Actuator Configuration ✅ COMPLETE
+**Status**: All 7 actuators configured and HAL wired up
 
-**Required Changes**:
-- Add 7 GPIO output components (GPIO11-17) to `plantOS.yaml`
-- Add 7 switch components wrapping outputs
-- Update `components/plantos_hal/hal.cpp` to control real GPIOs
-- Add dependency injection in `hal.h` and `__init__.py`
+**Completed Configuration**:
+- ✅ 7 GPIO output components added to `plantOS.yaml`
+- ✅ 7 switch components wrapping outputs
+- ✅ HAL dependency injection complete (`hal.h` and `__init__.py`)
+- ✅ All actuators controllable via web UI and SafetyGate
 
-**Actuators**:
-- GPIO11: AcidPump (pH down)
-- GPIO12: NutrientPumpA (grow)
-- GPIO13: NutrientPumpB (bloom)
-- GPIO14: NutrientPumpC (micro)
-- GPIO15: WaterValve (fresh water solenoid)
-- GPIO16: WastewaterPump (drainage)
-- GPIO17: AirPump (mixing/aeration)
+**Actuators** (as configured in plantOS.yaml):
+- GPIO11: AirPump (mixing/aeration) - **To be moved to GPIO12-17 for water level sensors**
+- GPIO18: WaterValve (fresh water solenoid)
+- GPIO19: AcidPump (pH down dosing)
+- GPIO20: NutrientPumpA (grow phase nutrients)
+- GPIO21: NutrientPumpB (micronutrients)
+- GPIO22: NutrientPumpC (bloom phase nutrients)
+- GPIO23: WastewaterPump (drainage)
+
+**Water Level Sensors** (planned for GPIO10-11):
+- GPIO10: Water Level HIGH sensor (XKC-Y23-V) - **Requires moving DS18B20 temp sensor**
+- GPIO11: Water Level LOW sensor (XKC-Y23-V) - **Requires moving AirPump actuator**
 
 **Hardware Note**: Use external relay board with 12V/24V supply (ESP32 can't source enough current)
 
@@ -1092,12 +1096,14 @@ task snoop            # Attach to logs only (no build/flash)
 **Hardware**: 2x XKC-Y23-V 5V capacitive level sensors
 
 **Required Changes**:
-- Configure binary sensors on GPIO18 (high) and GPIO19 (low)
+- Configure binary sensors on GPIO10 (high) and GPIO11 (low)
 - Add voltage dividers (5V → 3.3V) or level shifters
 - Update WATER_FILLING/EMPTYING handlers to check levels and abort
 - Add level status to CentralStatusLogger
 
 **Safety**: Prevent overflow (abort fill on HIGH) and dry pump (abort empty on LOW)
+
+**Note**: This reassigns GPIO10 (currently DS18B20 temp sensor) and GPIO11 (currently air pump). Temperature sensor and air pump will need to be moved to available GPIO12-17 range.
 
 #### 3. pH Dosing Calibration (6-10 hours)
 **Current**: Placeholder formula `duration_ms = ph_diff * 10.0f * 1000.0f`

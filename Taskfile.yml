@@ -92,27 +92,78 @@ tasks:
   #     - esphome config {{.ENTRY_POINT}} --show-secrets | grep -E "(name:|platform:|board:|framework:)" || true
 
   reboot:
-    desc: Reboot the ESP32 device via ESPHome API (requires confirmation).
+    desc: Reboot the ESP32 device and attach to logs (requires confirmation).
     prompt: This will reboot the device. Continue?
+    silent: true
     cmds:
       - |
-        # Determine device IP
-        DEVICE_IP="{{.DEVICE_IP}}"
-        if [ -z "$DEVICE_IP" ]; then
-          echo "No DEVICE_IP provided, checking {{.ENTRY_POINT}} for static IP..."
-          STATIC_IP=$(grep -A 4 "manual_ip:" {{.ENTRY_POINT}} | grep "static_ip:" | sed 's/.*static_ip: *//;s/ *#.*//;s/"//g' | head -n 1)
-          if [ -n "$STATIC_IP" ]; then
-            echo "Found static IP in config: $STATIC_IP"
-            DEVICE_IP="$STATIC_IP"
+        bash -c '
+          # Try network reboot first
+          DEVICE_IP="{{.DEVICE_IP}}"
+          if [ -z "$DEVICE_IP" ]; then
+            echo "No DEVICE_IP provided, checking {{.ENTRY_POINT}} for static IP..."
+            STATIC_IP=$(grep -A 4 "manual_ip:" {{.ENTRY_POINT}} | grep "static_ip:" | sed "s/.*static_ip: *//;s/ *#.*//;s/\"//g" | head -n 1)
+            if [ -n "$STATIC_IP" ]; then
+              echo "Found static IP in config: $STATIC_IP"
+              DEVICE_IP="$STATIC_IP"
+            else
+              echo "No static IP found in config, using fallback: 192.168.0.201"
+              DEVICE_IP="192.168.0.201"
+            fi
           else
-            echo "No static IP found in config, using fallback: 192.168.0.201"
-            DEVICE_IP="192.168.0.201"
+            echo "Using provided DEVICE_IP: $DEVICE_IP"
           fi
-        else
-          echo "Using provided DEVICE_IP: $DEVICE_IP"
-        fi
-        echo "Attempting reboot via $DEVICE_IP..."
-        esphome run {{.ENTRY_POINT}} --device "$DEVICE_IP" --no-logs || echo "Reboot triggered. If this failed, verify the device IP address."
+
+          echo "Attempting network reboot at $DEVICE_IP..."
+          # Try the restart button endpoint (ESPHome web server v2)
+          if curl -X POST "http://$DEVICE_IP/button/03_01_Reboot_Device/press" --max-time 5 --silent --show-error 2>/dev/null; then
+            echo "✓ Reboot command sent via network successfully"
+            echo "Waiting for device to restart..."
+            sleep 5
+            echo ""
+            echo "=============================================="
+            echo "Attaching to logs at $DEVICE_IP..."
+            echo "Press Ctrl+C to exit"
+            echo "=============================================="
+            echo ""
+            esphome logs {{.ENTRY_POINT}} --device "$DEVICE_IP"
+            exit 0
+          else
+            echo "✗ Network reboot failed"
+            echo ""
+            echo "Serial reboot not supported - please manually press the reset button on the device."
+            echo ""
+
+            # Fall back to serial logs
+            devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null))
+            if [ ${#devices[@]} -eq 0 ]; then
+              echo "✗ No serial devices found for log monitoring."
+              echo "Please check network connection or connect via USB."
+              exit 1
+            elif [ ${#devices[@]} -eq 1 ]; then
+              device=${devices[0]}
+              echo "Using device: $device"
+            else
+              echo "Multiple serial devices found. Please select one:"
+              select device in "${devices[@]}"; do
+                if [ -n "$device" ]; then
+                  echo "Selected: $device"
+                  break
+                else
+                  echo "Invalid selection. Please try again."
+                fi
+              done
+            fi
+
+            echo ""
+            echo "=============================================="
+            echo "Waiting for manual reboot, then attaching to logs at $device..."
+            echo "Press Ctrl+C to exit"
+            echo "=============================================="
+            echo ""
+            esphome logs {{.ENTRY_POINT}} --device "$device"
+          fi
+        '
 
   config_validate:
     desc: Validate plantOS.yaml configuration for syntax and structural errors.

@@ -56,17 +56,17 @@ wifi:
 
  # Static IP configuration for consistent web UI access
  # Uncomment if you want a fixed IP address
-  manual_ip:
-    static_ip: 192.168.0.201
-    gateway: 192.168.0.1
-    subnet: 255.255.255.0
-    dns1: 192.168.0.1
+  # manual_ip:
+  #   static_ip: 192.168.0.201
+  #   gateway: 192.168.0.1
+  #   subnet: 255.255.255.0
+  #   dns1: 192.168.0.104
 
   # WiFi optimization for mesh networks (TP-Link Deco, etc.)
   # These settings improve compatibility with WiFi mesh systems
   # Mesh settings: Deactivate Fast Roaming and Beamforming, Deactiate Mesh for plantOS client, Deactivate 5 GHz band
   power_save_mode: none    # Disable power saving for better connectivity
-  fast_connect: true       # Skip channel scanning for faster connection
+  fast_connect: false       # Skip channel scanning for faster connection
 
   # Force WiFi B/G mode by disabling 802.11n/ac features
   # This helps with mesh network compatibility and web server access
@@ -83,6 +83,7 @@ wifi:
     - lambda: |-
         auto ip = wifi::global_wifi_component->get_ip_addresses()[0].str();
         id(unified_controller)->getStatusLogger()->updateIP(ip);
+        id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, false);
         ESP_LOGI("wifi", "IP address: %s", ip.c_str());
 
   # ==============================================================
@@ -491,6 +492,10 @@ text_sensor:
 ################################################################################
 button:
   # === 03 - System Control & Restart ===
+  - platform: restart
+    name: "03_01_Reboot Device"
+    id: restart_button
+
   - platform: template
     name: "04_04_Set to INIT"
     on_press:

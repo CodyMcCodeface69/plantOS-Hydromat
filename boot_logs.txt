@@ -1,0 +1,211 @@
+INFO ESPHome 2025.4.2
+INFO Reading configuration plantOS.yaml...
+INFO Updating https://github.com/lboue/esphome@adc_oneshot
+WARNING GPIO8 is a strapping PIN and should only be used for I/O with care.
+Attaching external pullup/down resistors to strapping pins can cause unexpected failures.
+See https://esphome.io/guides/faq.html#why-am-i-getting-a-warning-about-strapping-pins
+INFO Starting log output from /dev/ttyACM0 with baud rate 115200
+[19:07:47]:692]: ← RX: 
+[19:07:47][W][ezo_ph_uart:056]: Failed to read device info - check UART connection
+[19:07:47][I][ezo_ph_uart:593]: → TX: C,0
+[19:07:47][I][ezo_ph_uart:692]: ← RX: 
+[19:07:47][I][ezo_ph_uart:072]: EZO pH sensor setup complete
+[19:07:47][W][psm:012]: ========================================
+[19:07:47][W][psm:013]:   PSM SETUP STARTING
+[19:07:47][W][psm:014]: ===========[D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:47][D][esp-idf:000]: I (96295) gpio: GPIO[0]| InputEn: 0| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+[19:07:47]
+[19:07:47][D][sensor:093]: 'Light Intensity Raw': Sending state 35.21212 V with 2 decimals of accuracy
+[19:07:47][D][text_sensor:064]: 'Light Intensity': Sending state '35.2%'
+[19:07:48][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:48][D][gpio_status:1364]: 
+[19:07:48][D][gpio_status:1365]: === GPIO Status Report ===
+[19:07:48][D][gpio_status:1361]: GPIO[0] Light Sensor (ADC)  | Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[4] EZO pH UART TX      | Level: 1
+[19:07:48][D][gpio_status:1361]: GPIO[5] EZO pH UART RX      | Level: 1
+[19:07:48][D][gpio_status:1361]: GPIO[6] I2C SDA             | Level: 1
+[19:07:48][D][gpio_status:1361]: GPIO[7] I2C SCL             | Level: 1
+[19:07:48][D][gpio_status:1361]: GPIO[8] System LED (WS2812) | Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[10] Water Level HIGH    | Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[11] Water Level LOW     | Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[16] Water Temp (1-Wire) | Level: 1
+[19:07:48][D][gpio_status:1361]: GPIO[18] Water Valve (Mag)   | Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[19] Acid Pump (pH)      | Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[20] Nutrient Pump (Grow)| Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[21] Nutrient Pump (Micro)| Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[22] Nutrient Pump (Bloom)| Level: 0
+[19:07:48][D][gpio_status:1361]: GPIO[23] Wastewater Pump     | Level: 0
+[19:07:48][D][gpio_status:1394]: =========================
+[19:07:48][D][gpio_status:1395]: 
+[19:07:48][D][plantos_controller:256]: >>> IDLE PSM CHECK: EventID='', Status=0, Age=1766858867 sec
+[19:07:48][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:49][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:49][W][ezo_ph_uart:077]: Sensor not ready, skipping update
+[19:07:49][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:50][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:50][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:51][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:52][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:52][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:53][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:53][D][text_sensor:064]: 'Light Intensity': Sending state '35.2%'
+[19:07:53][D][esp-idf:000]: I (101296) gpio: GPIO[0]| InputEn: 0| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+[19:07:53]
+[19:07:53][D][sensor:093]: 'Light Intensity Raw': Sending state 35.24242 V with 2 decimals of accuracy
+[19:07:53][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:53][D][plantos_controller:256]: >>> IDLE PSM CHECK: EventID='', Status=0, Age=1766858872 sec
+[19:07:54][I][status.logger:385]: ================================================================================
+[19:07:54][I][status.logger:155]:   PLANTOS SYSTEM STATUS REPORT
+[19:07:54][I][status.logger:385]: ================================================================================
+[19:07:54][I][status.logger:159]: System Time: 2025-12-27 19:07:52
+[19:07:54][I][status.logger:181]: 
+[19:07:54][I][status.logger:184]: --- NETWORK STATUS ---
+[19:07:54][I][status.logger:185]:   IP Address: 192.168.0.201
+[19:07:54][I][status.logger:194]:   Web Server: OFFLINE
+[19:07:54][I][status.logger:197]: 
+[19:07:54][I][status.logger:200]: --- HARDWARE STATUS ---
+[19:07:54][I][status.logger:204]:   I²C Devices:
+[19:07:54][E][status.logger:232]:     ✗ 0x61: EZO pH Sensor (MISSING)
+[19:07:54][I][status.logger:236]:     Total: 0 found
+[19:07:54][I][status.logger:244]:   UART Devices:
+[19:07:54][E][status.logger:279]:     ✗ EZO pH Sensor (TX=GPIO4, RX=GPIO5) - Not responding
+[19:07:54][I][status.logger:284]:     Total: 0 ready
+[19:07:54][I][status.logger:290]: 
+[19:07:54][I][status.logger:293]: --- SENSOR DATA ---
+[19:07:54][I][status.logger:295]:   pH: 7.00
+[19:07:54][I][status.logger:300]: 
+[19:07:54][I][status.logger:303]: --- SYSTEM STATE ---
+[19:07:54][I][status.logger:305]:   Controller State:   IDLE
+[19:07:54][I][status.logger:307]:   Maintenance Mode:   DISABLED
+[19:07:54][I][status.logger:313]:   PSM Event:          None
+[19:07:54][I][status.logger:316]: 
+[19:07:54][I][status.logger:319]: --- ALERT STATUS ---
+[19:07:54][I][status.logger:323]:   Status: ALL CLEAR
+[19:07:54][I][status.logger:385]: ================================================================================
+[19:07:54][I][status.logger:327]: 
+[19:07:54][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:54][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:55][W][ezo_ph_uart:077]: Sensor not ready, skipping update
+[19:07:55][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:55][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:56][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:56][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:57][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:57][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:58][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:58][D][text_sensor:064]: 'Light Intensity': Sending state '35.2%'
+[19:07:58][D][esp-idf:000]: I (106302) gpio: GPIO[0]| InputEn: 0| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+[19:07:58]
+[19:07:58][D][sensor:093]: 'Light Intensity Raw': Sending state 38.12121 V with 2 decimals of accuracy
+[19:07:57][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:57][D][plantos_controller:256]: >>> IDLE PSM CHECK: EventID='', Status=0, Age=1766858877 sec
+[19:07:58][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:58][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:58][W][ezo_ph_uart:077]: Sensor not ready, skipping update
+[19:07:59][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:07:59][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:00][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:00][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:01][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:01][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:02][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:02][D][esp-idf:000]: I (111302) gpio: GPIO[0]| InputEn: 0| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+[19:08:02]
+[19:08:02][D][sensor:093]: 'Light Intensity Raw': Sending state 37.63636 V with 2 decimals of accuracy
+[19:08:02][D][text_sensor:064]: 'Light Intensity': Sending state '37.6%'
+[19:08:02][D][plantos_controller:256]: >>> IDLE PSM CHECK: EventID='', Status=0, Age=1766858882 sec
+[19:08:02][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:03][I][status.logger:385]: ================================================================================
+[19:08:03][I][status.logger:155]:   PLANTOS SYSTEM STATUS REPORT
+[19:08:03][I][status.logger:385]: ================================================================================
+[19:08:03][I][status.logger:159]: System Time: 2025-12-27 19:08:02
+[19:08:03][I][status.logger:181]: 
+[19:08:03][I][status.logger:184]: --- NETWORK STATUS ---
+[19:08:03][I][status.logger:185]:   IP Address: 192.168.0.201
+[19:08:03][I][status.logger:194]:   Web Server: OFFLINE
+[19:08:03][I][status.logger:197]: 
+[19:08:03][I][status.logger:200]: --- HARDWARE STATUS ---
+[19:08:03][I][status.logger:204]:   I²C Devices:
+[19:08:03][E][status.logger:232]:     ✗ 0x61: EZO pH Sensor (MISSING)
+[19:08:03][I][status.logger:236]:     Total: 0 found
+[19:08:03][I][status.logger:244]:   UART Devices:
+[19:08:03][E][status.logger:279]:     ✗ EZO pH Sensor (TX=GPIO4, RX=GPIO5) - Not responding
+[19:08:03][I][status.logger:284]:     Total: 0 ready
+[19:08:03][I][status.logger:290]: 
+[19:08:03][I][status.logger:293]: --- SENSOR DATA ---
+[19:08:03][I][status.logger:295]:   pH: 7.00
+[19:08:03][I][status.logger:300]: 
+[19:08:03][I][status.logger:303]: --- SYSTEM STATE ---
+[19:08:03][I][status.logger:305]:   Controller State:   IDLE
+[19:08:03][I][status.logger:307]:   Maintenance Mode:   DISABLED
+[19:08:03][I][status.logger:313]:   PSM Event:          None
+[19:08:03][I][status.logger:316]: 
+[19:08:03][I][status.logger:319]: --- ALERT STATUS ---
+[19:08:03][I][status.logger:323]:   Status: ALL CLEAR
+[19:08:03][I][status.logger:385]: ================================================================================
+[19:08:03][I][status.logger:327]: 
+[19:08:03][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:03][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:04][W][ezo_ph_uart:077]: Sensor not ready, skipping update
+[19:08:04][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:04][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:05][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:05][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:06][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:06][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:07][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:07][D][esp-idf:000]: I (116302) gpio: GPIO[0]| InputEn: 0| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+[19:08:07]
+[19:08:07][D][sensor:093]: 'Light Intensity Raw': Sending state 37.66667 V with 2 decimals of accuracy
+[19:08:07][D][text_sensor:064]: 'Light Intensity': Sending state '37.7%'
+[19:08:07][D][plantos_controller:256]: >>> IDLE PSM CHECK: EventID='', Status=0, Age=1766858887 sec
+[19:08:07][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:08][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:09][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:09][W][ezo_ph_uart:077]: Sensor not ready, skipping update
+[19:08:09][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:10][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:10][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:11][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:11][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:12][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:12][D][esp-idf:000]: I (121302) gpio: GPIO[0]| InputEn: 0| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0 
+[19:08:12]
+[19:08:12][D][sensor:093]: 'Light Intensity Raw': Sending state 37.15151 V with 2 decimals of accuracy
+[19:08:12][D][text_sensor:064]: 'Light Intensity': Sending state '37.2%'
+[19:08:12][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:13][D][plantos_controller:256]: >>> IDLE PSM CHECK: EventID='', Status=0, Age=1766858892 sec
+[19:08:13][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:13][I][status.logger:385]: ================================================================================
+[19:08:13][I][status.logger:155]:   PLANTOS SYSTEM STATUS REPORT
+[19:08:13][I][status.logger:385]: ================================================================================
+[19:08:13][I][status.logger:159]: System Time: 2025-12-27 19:08:12
+[19:08:13][I][status.logger:181]: 
+[19:08:13][I][status.logger:184]: --- NETWORK STATUS ---
+[19:08:13][I][status.logger:185]:   IP Address: 192.168.0.201
+[19:08:13][I][status.logger:194]:   Web Server: OFFLINE
+[19:08:13][I][status.logger:197]: 
+[19:08:13][I][status.logger:200]: --- HARDWARE STATUS ---
+[19:08:13][I][status.logger:204]:   I²C Devices:
+[19:08:13][E][status.logger:232]:     ✗ 0x61: EZO pH Sensor (MISSING)
+[19:08:13][I][status.logger:236]:     Total: 0 found
+[19:08:13][I][status.logger:244]:   UART Devices:
+[19:08:13][E][status.logger:279]:     ✗ EZO pH Sensor (TX=GPIO4, RX=GPIO5) - Not responding
+[19:08:13][I][status.logger:284]:     Total: 0 ready
+[19:08:13][I][status.logger:290]: 
+[19:08:13][I][status.logger:293]: --- SENSOR DATA ---
+[19:08:13][I][status.logger:295]:   pH: 7.00
+[19:08:13][I][status.logger:300]: 
+[19:08:13][I][status.logger:303]: --- SYSTEM STATE ---
+[19:08:13][I][status.logger:305]:   Controller State:   IDLE
+[19:08:13][I][status.logger:307]:   Maintenance Mode:   DISABLED
+[19:08:13][I][status.logger:313]:   PSM Event:          None
+[19:08:13][I][status.logger:316]: 
+[19:08:13][I][status.logger:319]: --- ALERT STATUS ---
+[19:08:13][I][status.logger:323]:   Status: ALL CLEAR
+[19:08:13][I][status.logger:385]: ================================================================================
+[19:08:13][I][status.logger:327]: 
+[19:08:13][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:14][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'
+[19:08:14][W][ezo_ph_uart:077]: Sensor not ready, skipping update
+[19:08:14][D][text_sensor:064]: '00_01_Controller State': Sending state 'IDLE'

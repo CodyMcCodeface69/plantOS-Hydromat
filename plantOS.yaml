@@ -66,13 +66,13 @@ wifi:
   # These settings improve compatibility with WiFi mesh systems
   # Mesh settings: Deactivate Fast Roaming and Beamforming, Deactiate Mesh for plantOS client, Deactivate 5 GHz band
   power_save_mode: none    # Disable power saving for better connectivity
-  fast_connect: false       # Skip channel scanning for faster connection
+  # fast_connect: true       # Skip channel scanning for faster connection
 
   # Force WiFi B/G mode by disabling 802.11n/ac features
   # This helps with mesh network compatibility and web server access
-  output_power: 8.5dB      # Lower output power for better mesh compatibility
-  enable_btm: false        # Disable 802.11v BSS Transition Management
-  enable_rrm: false        # Disable 802.11k Radio Resource Management
+  # output_power: 8.5dB      # Lower output power for better mesh compatibility
+  # enable_btm: false        # Disable 802.11v BSS Transition Management
+  # enable_rrm: false        # Disable 802.11k Radio Resource Management
 
   # Reboot on connection failure after timeout
   # Helps recover from transient WiFi issues without manual intervention
@@ -485,6 +485,21 @@ text_sensor:
     # Update every 5 seconds to match sensor update interval
     update_interval: 5s
 
+  - platform: template
+    name: "Water Temperature"
+    id: water_temperature_text
+    # Lambda returns current water temperature value from HAL
+    lambda: |-
+      if (id(hal)->hasTemperature()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f°C", id(hal)->readTemperature());
+        return {buf};
+      } else {
+        return {"N/A"};
+      }
+    # Update every 10 seconds to match sensor update interval
+    update_interval: 10s
+
 ################################################################################
 # Button: Controller Management and Manual Routines
 #
@@ -846,7 +861,7 @@ plantos_controller:
   # Status Logger Configuration
   enable_status_reports: true   # Enable/disable periodic status reports (default: true)
   status_report_interval: 10s   # How often to print status reports (default: 30s)
-  verbose_mode: false           # Enable instant verbose logging of all events (default: false)
+  verbose_mode: true           # Enable instant verbose logging of all events (default: false)
                                 # Verbose mode logs state changes, sensor readings, and actuator
                                 # commands in real-time without waiting for periodic reports.
                                 # Note: LED changes are automatically filtered out.

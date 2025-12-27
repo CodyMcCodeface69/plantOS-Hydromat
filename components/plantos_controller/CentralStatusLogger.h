@@ -49,6 +49,20 @@ struct UARTDeviceInfo {
 };
 
 /**
+ * 1-Wire Device Info structure for hardware status tracking
+ */
+struct OneWireDeviceInfo {
+    std::string name;        // Device name (e.g., "DS18B20 Temperature")
+    std::string port;        // GPIO pin (e.g., "GPIO16")
+    bool ready;              // Whether device is ready and responding
+    bool critical;           // Whether device is critical for operation
+    std::string status;      // Additional status info (e.g., "22.5°C", "Not responding")
+
+    OneWireDeviceInfo(const std::string& n, const std::string& p, bool r, bool c, const std::string& s = "")
+        : name(n), port(p), ready(r), critical(c), status(s) {}
+};
+
+/**
  * CentralStatusLogger - Unified logging and status display system
  *
  * This class manages all critical system variables and provides
@@ -140,6 +154,12 @@ public:
     void updateUARTHardwareStatus(const std::vector<UARTDeviceInfo>& devices);
 
     /**
+     * Update 1-Wire hardware status
+     * @param devices Vector of OneWireDeviceInfo structures with device status
+     */
+    void updateOneWireHardwareStatus(const std::vector<OneWireDeviceInfo>& devices);
+
+    /**
      * Set 420 mode for easter egg logging
      * @param enabled Whether 420 mode is enabled
      */
@@ -222,6 +242,10 @@ private:
     // UART Hardware status
     std::vector<UARTDeviceInfo> uartDevices;
     bool uartStatusUpdated;
+
+    // 1-Wire Hardware status
+    std::vector<OneWireDeviceInfo> oneWireDevices;
+    bool oneWireStatusUpdated;
 
     // Easter egg mode
     bool mode420_;

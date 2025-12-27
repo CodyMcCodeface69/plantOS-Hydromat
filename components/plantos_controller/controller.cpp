@@ -38,6 +38,18 @@ void PlantOSController::setup() {
         ESP_LOGW(TAG, "PSM not configured - State persistence disabled");
     }
 
+    // Register temperature change callback for verbose logging
+    if (hal_->hasTemperature()) {
+        hal_->onTemperatureChange([this](float temp) {
+            if (status_logger_.isVerboseMode()) {
+                ESP_LOGI(TAG, "Temperature changed: %.1f°C", temp);
+            }
+        });
+        ESP_LOGI(TAG, "Temperature sensor callback registered");
+    } else {
+        ESP_LOGW(TAG, "Temperature sensor not available - temperature compensation disabled");
+    }
+
     // Always start in INIT state for boot sequence
     ESP_LOGI(TAG, "Controller initialized - Starting INIT boot sequence");
     transitionTo(ControllerState::INIT);
@@ -85,6 +97,32 @@ void PlantOSController::loop() {
 
             status_logger_.updateUARTHardwareStatus(uartDevices);
         }
+
+        // Update 1-Wire hardware status (DS18B20 temperature sensor)
+        // Always report if configured, even if waiting for first reading
+        std::vector<OneWireDeviceInfo> oneWireDevices;
+
+        bool hasReading = hal_->hasTemperature();
+        std::string status;
+
+        if (hasReading) {
+            float temp = hal_->readTemperature();
+            char statusBuf[32];
+            snprintf(statusBuf, sizeof(statusBuf), "%.1f°C", temp);
+            status = std::string(statusBuf);
+        } else {
+            status = "Waiting for first reading";
+        }
+
+        oneWireDevices.push_back(OneWireDeviceInfo(
+            "DS18B20 Temperature",
+            "GPIO16",
+            hasReading,  // ready when has reading
+            true,        // critical for pH compensation
+            status
+        ));
+
+        status_logger_.updateOneWireHardwareStatus(oneWireDevices);
 
         // Update PSM event info in status logger
         if (psm_) {

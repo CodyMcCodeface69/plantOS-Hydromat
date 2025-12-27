@@ -19,6 +19,7 @@ CentralStatusLogger::CentralStatusLogger()
       verboseMode_(false),
       i2cScanPerformed(false),
       uartStatusUpdated(false),
+      oneWireStatusUpdated(false),
       mode420_(true) {
 }
 
@@ -143,6 +144,11 @@ void CentralStatusLogger::updateI2CHardwareStatus(const std::vector<I2CDeviceInf
 void CentralStatusLogger::updateUARTHardwareStatus(const std::vector<UARTDeviceInfo>& devices) {
     uartDevices = devices;
     uartStatusUpdated = true;
+}
+
+void CentralStatusLogger::updateOneWireHardwareStatus(const std::vector<OneWireDeviceInfo>& devices) {
+    oneWireDevices = devices;
+    oneWireStatusUpdated = true;
 }
 
 void CentralStatusLogger::logStatus() {
@@ -285,6 +291,54 @@ void CentralStatusLogger::logStatus() {
         }
     } else {
         ESP_LOGI(TAG, "  UART: Status not yet updated");
+    }
+
+    // 1-Wire Devices
+    if (oneWireStatusUpdated) {
+        ESP_LOGI(TAG, "  1-Wire Devices:");
+        if (oneWireDevices.empty()) {
+            ESP_LOGW(TAG, "    No 1-Wire devices configured");
+        } else {
+            // Separate devices into ready and not ready
+            std::vector<OneWireDeviceInfo> readyDevices;
+            std::vector<OneWireDeviceInfo> notReadyCritical;
+
+            for (const auto& device : oneWireDevices) {
+                if (device.ready) {
+                    readyDevices.push_back(device);
+                } else if (device.critical) {
+                    notReadyCritical.push_back(device);
+                }
+            }
+
+            // Display ready devices in green
+            if (!readyDevices.empty()) {
+                for (const auto& device : readyDevices) {
+                    // ANSI Green: \033[32m, Reset: \033[0m
+                    if (device.status.empty()) {
+                        ESP_LOGI(TAG, "    \033[32m✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
+                    } else {
+                        ESP_LOGI(TAG, "    \033[32m✓ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
+                    }
+                }
+            }
+
+            // Display not ready critical devices in red
+            if (!notReadyCritical.empty()) {
+                for (const auto& device : notReadyCritical) {
+                    // ANSI Red: \033[31m, Reset: \033[0m
+                    if (device.status.empty()) {
+                        ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
+                    } else {
+                        ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
+                    }
+                }
+            }
+
+            ESP_LOGI(TAG, "    Total: %d ready", readyDevices.size());
+        }
+    } else {
+        ESP_LOGI(TAG, "  1-Wire: Status not yet updated");
     }
 
     ESP_LOGI(TAG, "");

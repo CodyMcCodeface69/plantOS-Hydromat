@@ -37,7 +37,7 @@ PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and contro
 **MVP Timeline**: 1-2 weeks to completion (19-30 hours remaining)
 
 **Next Steps**:
-1. Relocate DS18B20 temp sensor (GPIO10 → GPIO12) and AirPump (GPIO11 → GPIO13)
+1. ✅ DONE: DS18B20 temp sensor relocated (GPIO10 → GPIO16), AirPump removed (future Zigbee)
 2. Configure water level sensors on GPIO10-11 (XKC-Y23-V with voltage dividers)
 3. Calibrate pH dosing formula
 4. End-to-end testing
@@ -1078,7 +1078,6 @@ task snoop            # Attach to logs only (no build/flash)
 - ✅ All actuators controllable via web UI and SafetyGate
 
 **Actuators** (as configured in plantOS.yaml):
-- GPIO11: AirPump (mixing/aeration) - **To be moved to GPIO12-17 for water level sensors**
 - GPIO18: WaterValve (fresh water solenoid)
 - GPIO19: AcidPump (pH down dosing)
 - GPIO20: NutrientPumpA (grow phase nutrients)
@@ -1086,14 +1085,25 @@ task snoop            # Attach to logs only (no build/flash)
 - GPIO22: NutrientPumpC (bloom phase nutrients)
 - GPIO23: WastewaterPump (drainage)
 
-**Water Level Sensors** (planned for GPIO10-11):
-- GPIO10: Water Level HIGH sensor (XKC-Y23-V) - **Requires moving DS18B20 temp sensor**
-- GPIO11: Water Level LOW sensor (XKC-Y23-V) - **Requires moving AirPump actuator**
+**Temperature Sensor**:
+- GPIO16: DS18B20 (1-Wire) - relocated from GPIO10 to free up water level sensor pins
+
+**Water Level Sensors** (available pins ready for GPIO10-11):
+- GPIO10: Water Level HIGH sensor (XKC-Y23-V) - ✅ NOW AVAILABLE
+- GPIO11: Water Level LOW sensor (XKC-Y23-V) - ✅ NOW AVAILABLE
+
+**Removed Actuators** (future implementation):
+- AirPump: Will be added via Zigbee (no GPIO needed)
 
 **Hardware Note**: Use external relay board with 12V/24V supply (ESP32 can't source enough current)
 
 #### 2. Water Level Sensors (3-4 hours) ⚠️ CRITICAL
 **Hardware**: 2x XKC-Y23-V 5V capacitive level sensors
+
+**Pin Assignment** - ✅ READY:
+- GPIO10: Water Level HIGH sensor
+- GPIO11: Water Level LOW sensor
+- (DS18B20 relocated to GPIO16, AirPump removed)
 
 **Required Changes**:
 - Configure binary sensors on GPIO10 (high) and GPIO11 (low)
@@ -1102,8 +1112,6 @@ task snoop            # Attach to logs only (no build/flash)
 - Add level status to CentralStatusLogger
 
 **Safety**: Prevent overflow (abort fill on HIGH) and dry pump (abort empty on LOW)
-
-**Note**: This reassigns GPIO10 (currently DS18B20 temp sensor) and GPIO11 (currently air pump). Temperature sensor and air pump will need to be moved to available GPIO12-17 range.
 
 #### 3. pH Dosing Calibration (6-10 hours)
 **Current**: Placeholder formula `duration_ms = ph_diff * 10.0f * 1000.0f`

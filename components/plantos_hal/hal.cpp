@@ -72,10 +72,7 @@ void ESPHomeHAL::set_pump_wastewater_switch(esphome::switch_::Switch* sw) {
     ESP_LOGI(TAG, "Wastewater pump switch configured (GPIO23)");
 }
 
-void ESPHomeHAL::set_pump_air_switch(esphome::switch_::Switch* sw) {
-    pump_air_switch_ = sw;
-    ESP_LOGI(TAG, "Air pump switch configured (GPIO11)");
-}
+// NOTE: set_pump_air_switch removed - future Zigbee implementation
 
 // ============================================================================
 // COMPONENT LIFECYCLE
@@ -182,18 +179,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
             ESP_LOGW(TAG, "Wastewater pump switch not configured - cannot control WastewaterPump");
         }
     }
-    else if (pumpId == "AirPump") {
-        // Air pump on GPIO11
-        if (pump_air_switch_) {
-            if (state) {
-                pump_air_switch_->turn_on();
-            } else {
-                pump_air_switch_->turn_off();
-            }
-        } else {
-            ESP_LOGW(TAG, "Air pump switch not configured - cannot control AirPump");
-        }
-    }
+    // NOTE: AirPump removed - future Zigbee implementation
     else {
         ESP_LOGW(TAG, "Unknown pump ID: %s", pumpId.c_str());
     }

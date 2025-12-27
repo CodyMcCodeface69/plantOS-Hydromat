@@ -244,13 +244,13 @@ public:
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
 
     // Actuator switch setters (Phase 2: Hardware Control)
+    // NOTE: Air pump removed - future Zigbee implementation
     void set_mag_valve_switch(esphome::switch_::Switch* sw);
     void set_pump_ph_switch(esphome::switch_::Switch* sw);
     void set_pump_grow_switch(esphome::switch_::Switch* sw);
     void set_pump_micro_switch(esphome::switch_::Switch* sw);
     void set_pump_bloom_switch(esphome::switch_::Switch* sw);
     void set_pump_wastewater_switch(esphome::switch_::Switch* sw);
-    void set_pump_air_switch(esphome::switch_::Switch* sw);
 
     // Configuration setters
     void set_ph_reading_interval(uint32_t interval_ms) { ph_reading_interval_ms_ = interval_ms; }
@@ -302,14 +302,14 @@ private:
     esphome::sensor::Sensor* light_sensor_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
 
-    // Actuator switches (Phase 2: Hardware Control - All 7 actuators)
+    // Actuator switches (Phase 2: Hardware Control - 6 actuators)
+    // NOTE: Air pump removed - future Zigbee implementation
     esphome::switch_::Switch* mag_valve_switch_{nullptr};
     esphome::switch_::Switch* pump_ph_switch_{nullptr};
     esphome::switch_::Switch* pump_grow_switch_{nullptr};
     esphome::switch_::Switch* pump_micro_switch_{nullptr};
     esphome::switch_::Switch* pump_bloom_switch_{nullptr};
     esphome::switch_::Switch* pump_wastewater_switch_{nullptr};
-    esphome::switch_::Switch* pump_air_switch_{nullptr};
 
     // Actuator state tracking (for getPumpState/getValveState)
     std::map<std::string, bool> pump_states_;

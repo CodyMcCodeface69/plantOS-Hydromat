@@ -19,8 +19,9 @@ Firmware: PlantOS v0.9 (MVP)
 | GPIO6 | I2C SDA | I2C Bus | Bidirectional | 100kHz | - | ✅ 4.7kΩ to 3.3V |
 | GPIO7 | I2C SCL | I2C Bus | Output | 100kHz | - | ✅ 4.7kΩ to 3.3V |
 | GPIO8 | System LED | WS2812 RGB (RMT) | Output | - | `led_` | No |
-| GPIO10 | Water Temp | DS18B20 (1-Wire) | Bidirectional | - | `temperature_sensor_` | ✅ 4.7kΩ to 3.3V |
-| GPIO11 | Air Pump | GPIO Output | Output | - | `pump_air_switch_` | No |
+| GPIO10 | Water Level HIGH | Binary Sensor (future) | Input | - | - | No |
+| GPIO11 | Water Level LOW | Binary Sensor (future) | Input | - | - | No |
+| GPIO16 | Water Temp | DS18B20 (1-Wire) | Bidirectional | - | `temperature_sensor_` | ✅ 4.7kΩ to 3.3V |
 | GPIO18 | Water Valve | GPIO Output | Output | - | `mag_valve_switch_` | No |
 | GPIO19 | Acid Pump | GPIO Output | Output | - | `pump_ph_switch_` | No |
 | GPIO20 | Nutrient Pump A | GPIO Output | Output | - | `pump_grow_switch_` | No |
@@ -55,11 +56,12 @@ Firmware: PlantOS v0.9 (MVP)
 - **Notes**: Can support multiple devices (future TDS/EC sensors, etc.)
 
 #### 1-Wire Bus (Temperature Sensor)
-- **GPIO10**: DS18B20 Digital Temperature Sensor
+- **GPIO16**: DS18B20 Digital Temperature Sensor (relocated from GPIO10)
 - **Pull-up**: 4.7kΩ resistor to 3.3V **REQUIRED**
 - **Component**: `dallas_temp` (ESPHome built-in)
 - **Accuracy**: ±0.5°C (range: -10°C to +85°C)
 - **Purpose**: Temperature compensation for pH sensor
+- **Note**: Relocated from GPIO10 to free up GPIO10-11 for water level sensors
 
 ---
 
@@ -74,6 +76,24 @@ Firmware: PlantOS v0.9 (MVP)
 - **Output**: 0-100% (normalized)
 - **⚠️ Boot Pin**: Keep floating or HIGH during boot
 - **Notes**: Using lboue's ESP32-C6 ADC fork (official ESPHome has bugs)
+
+#### Binary Sensors (Water Level)
+
+**GPIO10 - Water Level HIGH Sensor (future)**
+- **Type**: Binary input
+- **Hardware**: XKC-Y23-V 5V capacitive level sensor
+- **Voltage**: Requires voltage divider (5V → 3.3V) or level shifter
+- **Purpose**: Prevent tank overflow during WATER_FILLING
+- **Safety**: Controller aborts fill when HIGH detected
+- **Status**: ⚠️ NOT YET CONFIGURED
+
+**GPIO11 - Water Level LOW Sensor (future)**
+- **Type**: Binary input
+- **Hardware**: XKC-Y23-V 5V capacitive level sensor
+- **Voltage**: Requires voltage divider (5V → 3.3V) or level shifter
+- **Purpose**: Prevent dry pump during WATER_EMPTYING
+- **Safety**: Controller aborts empty when LOW detected
+- **Status**: ⚠️ NOT YET CONFIGURED
 
 ---
 
@@ -98,12 +118,7 @@ All actuators use **active HIGH** logic:
 
 ⚠️ **External relay board required** - ESP32 GPIO cannot source enough current for pumps/valves directly.
 
-#### GPIO11 - Air Pump
-- **HAL ID**: `AirPump`
-- **Switch**: `pump_air_switch`
-- **Purpose**: Aeration and mixing after pH dosing
-- **Max Duration**: Configurable (safety gate enforced)
-- **Control**: ActuatorSafetyGate → HAL → GPIO output
+**NOTE**: Air pump actuator removed - will be added via Zigbee in future implementation (no GPIO needed).
 
 #### GPIO18 - Water Valve (Magnetic/Solenoid)
 - **HAL ID**: `WaterValve`
@@ -173,11 +188,11 @@ All actuators use **active HIGH** logic:
 ```cpp
 esphome::sensor::Sensor* ph_sensor_{nullptr};                    // EZO pH UART (GPIO4/5)
 esphome::sensor::Sensor* light_sensor_{nullptr};                 // KY-046 ADC (GPIO0)
-esphome::sensor::Sensor* temperature_sensor_{nullptr};           // DS18B20 (GPIO10)
+esphome::sensor::Sensor* temperature_sensor_{nullptr};           // DS18B20 (GPIO16 - relocated)
 esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_;  // EZO pH Component
 ```
 
-#### Actuator Switch References
+#### Actuator Switch References (6 actuators)
 ```cpp
 esphome::switch_::Switch* mag_valve_switch_{nullptr};       // GPIO18 - WaterValve
 esphome::switch_::Switch* pump_ph_switch_{nullptr};         // GPIO19 - AcidPump
@@ -185,7 +200,7 @@ esphome::switch_::Switch* pump_grow_switch_{nullptr};       // GPIO20 - Nutrient
 esphome::switch_::Switch* pump_micro_switch_{nullptr};      // GPIO21 - NutrientPumpB
 esphome::switch_::Switch* pump_bloom_switch_{nullptr};      // GPIO22 - NutrientPumpC
 esphome::switch_::Switch* pump_wastewater_switch_{nullptr}; // GPIO23 - WastewaterPump
-esphome::switch_::Switch* pump_air_switch_{nullptr};        // GPIO11 - AirPump
+// NOTE: pump_air_switch removed - future Zigbee implementation
 ```
 
 #### Actuator State Tracking
@@ -218,11 +233,11 @@ i2c:
   frequency: 100kHz
 ```
 
-**1-Wire Configuration** (lines 361-364):
+**1-Wire Configuration** (lines 360-363):
 ```yaml
 one_wire:
   - platform: gpio
-    pin: GPIO10
+    pin: GPIO16    # Relocated from GPIO10
     id: one_wire_bus
 ```
 
@@ -262,14 +277,14 @@ plantos_hal:
   light_sensor: light_intensity_raw
   temperature_sensor: water_temperature
 
-  # Actuator switches
+  # Actuator switches (6 actuators)
   mag_valve_switch: mag_valve_switch        # GPIO18
   pump_ph_switch: pump_ph_switch            # GPIO19
   pump_grow_switch: pump_grow_switch        # GPIO20
   pump_micro_switch: pump_micro_switch      # GPIO21
   pump_bloom_switch: pump_bloom_switch      # GPIO22
   pump_wastewater_switch: pump_wastewater_switch  # GPIO23
-  pump_air_switch: pump_air_switch          # GPIO11
+  # NOTE: pump_air_switch removed - future Zigbee implementation
 ```
 
 ---
@@ -286,7 +301,7 @@ plantos_hal:
 
 2. **Pull-up Resistors**
    - I2C (GPIO6/7): 4.7kΩ to 3.3V **REQUIRED**
-   - 1-Wire (GPIO10): 4.7kΩ to 3.3V **REQUIRED**
+   - 1-Wire (GPIO16): 4.7kΩ to 3.3V **REQUIRED**
    - Missing pull-ups will cause bus timeouts and sensor failures
 
 3. **Strapping Pins**
@@ -316,27 +331,27 @@ on_boot:
 
 ---
 
-## ⚠️ Known Issues & Future Work
+## ✅ Resolved Issues & Future Work
 
-### 🐛 Critical Issue: Water Level Sensor Conflict
+### ✅ RESOLVED: Water Level Sensor GPIO Conflict
 
-**Problem**: CLAUDE.md documentation states:
-> Configure binary sensors on GPIO18 (high) and GPIO19 (low)
+**Problem (OLD)**: GPIO18-19 were incorrectly documented for water level sensors, but were already in use by actuators.
 
-**Reality**:
-- GPIO18 = Water Valve (mag_valve_output)
-- GPIO19 = Acid Pump (pump_ph_output)
+**Solution (IMPLEMENTED - 2025-12-27)**:
+- **DS18B20 temperature sensor**: Relocated from GPIO10 → GPIO16
+- **Air pump actuator**: Removed (future Zigbee implementation)
+- **GPIO10-11 NOW AVAILABLE** for water level sensors
 
-**Status**: ❌ Water level sensors NOT configured
+**Current Status**:
+- ✅ GPIO10: Ready for Water Level HIGH sensor (XKC-Y23-V)
+- ✅ GPIO11: Ready for Water Level LOW sensor (XKC-Y23-V)
+- ⚠️ Hardware configuration still needed (binary sensors, voltage dividers)
 
-**Solution**: Use available pins for water level sensors:
-- **GPIO12** - Water Level HIGH sensor (XKC-Y23-V)
-- **GPIO13** - Water Level LOW sensor (XKC-Y23-V)
-
-**Hardware Requirements**:
-- 2x XKC-Y23-V capacitive water level sensors (5V)
-- Voltage dividers (5V → 3.3V) or level shifters
-- Integration into WATER_FILLING/WATER_EMPTYING FSM handlers
+**Next Steps**:
+- Configure binary sensors on GPIO10-11 in plantOS.yaml
+- Add voltage dividers (5V → 3.3V) or level shifters
+- Update WATER_FILLING/EMPTYING handlers to check levels
+- Integrate with CentralStatusLogger
 
 **Reference**: See CLAUDE.md "Critical Blockers" section (blocker #2)
 
@@ -362,17 +377,18 @@ interval:
 [D][gpio_status:000] GPIO[0]  Light Sensor (ADC)    | Level: 0
 [D][gpio_status:000] GPIO[4]  EZO pH UART TX        | Level: 1
 [D][gpio_status:000] GPIO[5]  EZO pH UART RX        | Level: 1
-[D][gpio_status:000] GPIO[6]  I2C SDA               | Level: 1
-[D][gpio_status:000] GPIO[7]  I2C SCL               | Level: 1
-[D][gpio_status:000] GPIO[8]  System LED (WS2812)   | Level: 0
-[D][gpio_status:000] GPIO[10] Water Temp (1-Wire)   | Level: 1
-[D][gpio_status:000] GPIO[11] Air Pump              | Level: 0
-[D][gpio_status:000] GPIO[18] Water Valve (Mag)     | Level: 0
-[D][gpio_status:000] GPIO[19] Acid Pump (pH)        | Level: 0
-[D][gpio_status:000] GPIO[20] Nutrient Pump (Grow)  | Level: 0
-[D][gpio_status:000] GPIO[21] Nutrient Pump (Micro) | Level: 0
-[D][gpio_status:000] GPIO[22] Nutrient Pump (Bloom) | Level: 0
-[D][gpio_status:000] GPIO[23] Wastewater Pump       | Level: 0
+[D][gpio_status:000] GPIO[6]  I2C SDA                | Level: 1
+[D][gpio_status:000] GPIO[7]  I2C SCL                | Level: 1
+[D][gpio_status:000] GPIO[8]  System LED (WS2812)    | Level: 0
+[D][gpio_status:000] GPIO[10] Water Level HIGH       | Level: 0
+[D][gpio_status:000] GPIO[11] Water Level LOW        | Level: 0
+[D][gpio_status:000] GPIO[16] Water Temp (1-Wire)    | Level: 1
+[D][gpio_status:000] GPIO[18] Water Valve (Mag)      | Level: 0
+[D][gpio_status:000] GPIO[19] Acid Pump (pH)         | Level: 0
+[D][gpio_status:000] GPIO[20] Nutrient Pump (Grow)   | Level: 0
+[D][gpio_status:000] GPIO[21] Nutrient Pump (Micro)  | Level: 0
+[D][gpio_status:000] GPIO[22] Nutrient Pump (Bloom)  | Level: 0
+[D][gpio_status:000] GPIO[23] Wastewater Pump        | Level: 0
 [D][gpio_status:000] =========================
 ```
 
@@ -382,11 +398,19 @@ interval:
 
 ## Version History
 
-- **2025-12-27**: Initial pinout documentation created
+- **2025-12-27 (Update 2)**: Resolved water level sensor GPIO conflict
+  - Relocated DS18B20 temperature sensor: GPIO10 → GPIO16
+  - Removed AirPump actuator (future Zigbee implementation)
+  - Freed GPIO10-11 for water level sensors (XKC-Y23-V)
+  - Updated HAL to remove pump_air_switch references
+  - Updated all documentation (PINOUT.md, CLAUDE.md, plantOS.yaml)
+  - Active GPIO count: 13 configured + 2 reserved for water level sensors
+
+- **2025-12-27 (Initial)**: Initial pinout documentation created
   - Cross-referenced with HAL implementation
   - Identified water level sensor GPIO conflict
   - Added GPIO status logger
-  - Documented all 14 active GPIO assignments
+  - Documented all 14 active GPIO assignments (before changes)
 
 ---
 

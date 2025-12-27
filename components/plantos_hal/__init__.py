@@ -30,14 +30,14 @@ CONF_PH_READING_INTERVAL = 'ph_reading_interval'
 CONF_PH_MIN = 'ph_min'
 CONF_PH_MAX = 'ph_max'
 
-# Actuator switch keys (Phase 2 - All 7 actuators)
+# Actuator switch keys (Phase 2 - 6 actuators)
+# NOTE: Air pump removed - future Zigbee implementation
 CONF_MAG_VALVE_SWITCH = 'mag_valve_switch'
 CONF_PUMP_PH_SWITCH = 'pump_ph_switch'
 CONF_PUMP_GROW_SWITCH = 'pump_grow_switch'
 CONF_PUMP_MICRO_SWITCH = 'pump_micro_switch'
 CONF_PUMP_BLOOM_SWITCH = 'pump_bloom_switch'
 CONF_PUMP_WASTEWATER_SWITCH = 'pump_wastewater_switch'
-CONF_PUMP_AIR_SWITCH = 'pump_air_switch'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -51,14 +51,14 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_PH_MIN, default=5.5): cv.float_range(min=0.0, max=14.0),
     cv.Optional(CONF_PH_MAX, default=6.5): cv.float_range(min=0.0, max=14.0),
 
-    # Actuator switches (Phase 2: Hardware Control - All 7 actuators)
+    # Actuator switches (Phase 2: Hardware Control - 6 actuators)
+    # NOTE: Air pump removed - future Zigbee implementation
     cv.Optional(CONF_MAG_VALVE_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_PUMP_PH_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_PUMP_GROW_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_PUMP_MICRO_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_PUMP_BLOOM_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_PUMP_WASTEWATER_SWITCH): cv.use_id(switch.Switch),
-    cv.Optional(CONF_PUMP_AIR_SWITCH): cv.use_id(switch.Switch),
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -125,6 +125,4 @@ async def to_code(config):
         pump_wastewater_sw = await cg.get_variable(config[CONF_PUMP_WASTEWATER_SWITCH])
         cg.add(var.set_pump_wastewater_switch(pump_wastewater_sw))
 
-    if CONF_PUMP_AIR_SWITCH in config:
-        pump_air_sw = await cg.get_variable(config[CONF_PUMP_AIR_SWITCH])
-        cg.add(var.set_pump_air_switch(pump_air_sw))
+    # NOTE: pump_air_switch removed - future Zigbee implementation

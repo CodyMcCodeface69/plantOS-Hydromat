@@ -347,20 +347,19 @@ output:
     id: pump_wastewater_output
     pin: GPIO23
 
-  - platform: gpio
-    id: pump_air_output
-    pin: GPIO11
-
 ################################################################################
 # 1-Wire Bus: For DS18B20 Temperature Sensor
 #
 # DS18B20 is a digital temperature sensor that uses the 1-Wire protocol.
 # Only requires a single data line plus ground (can parasitic power from data).
 # Requires 4.7kΩ pull-up resistor between data line and 3.3V.
+#
+# NOTE: Relocated to GPIO16 to free GPIO10-11 for water level sensors.
+# AirPump actuator removed (future Zigbee implementation).
 ################################################################################
 one_wire:
   - platform: gpio
-    pin: GPIO10
+    pin: GPIO16
     id: one_wire_bus
 
 ################################################################################
@@ -800,16 +799,16 @@ plantos_hal:
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
   light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0)
-  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO10
+  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO16
 
-  # Actuator Switches (Phase 2: Hardware Control - All 7 actuators)
+  # Actuator Switches (Phase 2: Hardware Control - 6 actuators)
+  # NOTE: Air pump removed - future Zigbee implementation
   mag_valve_switch: mag_valve_switch        # GPIO18 - Magnetic valve (fresh water inlet)
   pump_ph_switch: pump_ph_switch            # GPIO19 - pH pump (acid dosing)
   pump_grow_switch: pump_grow_switch        # GPIO20 - Grow pump (grow nutrients)
   pump_micro_switch: pump_micro_switch      # GPIO21 - Micro pump (micronutrients)
   pump_bloom_switch: pump_bloom_switch      # GPIO22 - Bloom pump (bloom nutrients)
   pump_wastewater_switch: pump_wastewater_switch  # GPIO23 - Wastewater pump (drainage)
-  pump_air_switch: pump_air_switch          # GPIO11 - Air pump (mixing/aeration)
 
   # pH Reading Configuration
   ph_reading_interval: 2h     # How often to check pH (default: 2 hours)
@@ -1319,21 +1318,7 @@ switch:
             ESP_LOGW("switch", "Wastewater Pump: OFF command REJECTED by safety gate");
           }
 
-  - platform: template
-    id: pump_air_switch
-    name: "10_07_Air Pump"
-    optimistic: true
-    restore_mode: ALWAYS_OFF
-    turn_on_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("AirPump", true, 0)) {
-            ESP_LOGW("switch", "Air Pump: ON command REJECTED by safety gate");
-          }
-    turn_off_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("AirPump", false)) {
-            ESP_LOGW("switch", "Air Pump: OFF command REJECTED by safety gate");
-          }
+  # NOTE: Air Pump removed - future Zigbee implementation
 
   # === pH Sensor Control ===
   - platform: template
@@ -1391,11 +1376,14 @@ interval:
           // System LED
           log_gpio(8, "System LED (WS2812)");
 
-          // Temperature Sensor
-          log_gpio(10, "Water Temp (1-Wire)");
+          // Water Level Sensors (future - XKC-Y23-V)
+          log_gpio(10, "Water Level HIGH");
+          log_gpio(11, "Water Level LOW");
+
+          // Temperature Sensor (relocated from GPIO10)
+          log_gpio(16, "Water Temp (1-Wire)");
 
           // Actuators (Active HIGH outputs)
-          log_gpio(11, "Air Pump");
           log_gpio(18, "Water Valve (Mag)");
           log_gpio(19, "Acid Pump (pH)");
           log_gpio(20, "Nutrient Pump (Grow)");

@@ -116,7 +116,7 @@ void PlantOSController::loop() {
 
         oneWireDevices.push_back(OneWireDeviceInfo(
             "DS18B20 Temperature",
-            "GPIO16",
+            "GPIO23",
             hasReading,  // ready when has reading
             true,        // critical for pH compensation
             status

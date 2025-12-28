@@ -37,7 +37,7 @@ PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and contro
 **MVP Timeline**: 1-2 weeks to completion (19-30 hours remaining)
 
 **Next Steps**:
-1. ✅ DONE: DS18B20 temp sensor relocated (GPIO10 → GPIO16), AirPump removed (future Zigbee)
+1. ✅ DONE: DS18B20 temp sensor relocated (GPIO10 → GPIO16 → GPIO23), AirPump removed, Wastewater pump removed
 2. Configure water level sensors on GPIO10-11 (XKC-Y23-V with voltage dividers)
 3. Calibrate pH dosing formula
 4. End-to-end testing
@@ -1083,17 +1083,20 @@ task snoop            # Attach to logs only (no build/flash)
 - GPIO20: NutrientPumpA (grow phase nutrients)
 - GPIO21: NutrientPumpB (micronutrients)
 - GPIO22: NutrientPumpC (bloom phase nutrients)
-- GPIO23: WastewaterPump (drainage)
 
 **Temperature Sensor**:
-- GPIO16: DS18B20 (1-Wire) - relocated from GPIO10 to free up water level sensor pins
+- GPIO23: DS18B20 (1-Wire) - relocated from GPIO10 → GPIO16 → GPIO23 (UART TX conflict fix)
 
 **Water Level Sensors** (available pins ready for GPIO10-11):
 - GPIO10: Water Level HIGH sensor (XKC-Y23-V) - ✅ NOW AVAILABLE
 - GPIO11: Water Level LOW sensor (XKC-Y23-V) - ✅ NOW AVAILABLE
 
-**Removed Actuators** (future implementation):
+**Available GPIO**:
+- GPIO16: Available for future expansion (was UART TX, caused 1-Wire conflicts)
+
+**Removed Actuators** (not part of MVP or future implementation):
 - AirPump: Will be added via Zigbee (no GPIO needed)
+- WastewaterPump: Not part of MVP (GPIO23 now used for DS18B20)
 
 **Hardware Note**: Use external relay board with 12V/24V supply (ESP32 can't source enough current)
 
@@ -1103,7 +1106,7 @@ task snoop            # Attach to logs only (no build/flash)
 **Pin Assignment** - ✅ READY:
 - GPIO10: Water Level HIGH sensor
 - GPIO11: Water Level LOW sensor
-- (DS18B20 relocated to GPIO16, AirPump removed)
+- (DS18B20 relocated to GPIO23, AirPump removed, Wastewater pump removed)
 
 **Required Changes**:
 - Configure binary sensors on GPIO10 (high) and GPIO11 (low)

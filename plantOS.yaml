@@ -344,9 +344,10 @@ output:
     id: pump_bloom_output
     pin: GPIO22
 
-  - platform: gpio
-    id: pump_wastewater_output
-    pin: GPIO23
+  # NOTE: Wastewater pump removed - not part of MVP (GPIO23 now used for DS18B20)
+  # - platform: gpio
+  #   id: pump_wastewater_output
+  #   pin: GPIO23
 
 ################################################################################
 # 1-Wire Bus: For DS18B20 Temperature Sensor
@@ -355,12 +356,13 @@ output:
 # Only requires a single data line plus ground (can parasitic power from data).
 # Requires 4.7kΩ pull-up resistor between data line and 3.3V.
 #
-# NOTE: Relocated to GPIO16 to free GPIO10-11 for water level sensors.
+# NOTE: Relocated to GPIO23 (GPIO16 is UART TX, caused 1-Wire timing conflicts).
+# Wastewater pump removed (not part of MVP).
 # AirPump actuator removed (future Zigbee implementation).
 ################################################################################
 one_wire:
   - platform: gpio
-    pin: GPIO16
+    pin: GPIO23
     id: one_wire_bus
 
 ################################################################################
@@ -414,18 +416,18 @@ sensor:
   #
   # DS18B20 is a 1-Wire digital temperature sensor providing accurate readings
   # from -55°C to +125°C with ±0.5°C accuracy between -10°C and +85°C.
-  # Connected to GPIO10 via one_wire bus.
+  # Connected to GPIO23 via one_wire bus.
   #
-  # HARDWARE: Requires 4.7kΩ pull-up resistor between data line (GPIO10) and 3.3V
+  # HARDWARE: Requires 4.7kΩ pull-up resistor between data line (GPIO23) and 3.3V
   # WIRING:
   #   - Red wire (VCC) -> 3.3V
   #   - Black wire (GND) -> GND
-  #   - Yellow wire (DATA) -> GPIO10 (with 4.7kΩ pull-up to 3.3V)
+  #   - Yellow wire (DATA) -> GPIO23 (with 4.7kΩ pull-up to 3.3V)
   - platform: dallas_temp
     one_wire_id: one_wire_bus
     id: water_temperature
-    name: "Water Temperature"
-    update_interval: 10s     # Update temperature every 10 seconds
+    name: "Water Temperature - DS18B20"
+    update_interval: 6s     # Update temperature every 6 seconds (offset from EZO pH 10s interval)
     accuracy_decimals: 2     # Display 2 decimal places (e.g., 24.50°C)
     resolution: 12           # 12-bit resolution (0.0625°C per bit, ~750ms conversion)
 
@@ -435,7 +437,7 @@ sensor:
   # This improves data quality by removing sensor spikes, noise, and glitches.
   - id: sensor_filtered_id
     platform: sensor_filter
-    name: "Filtered Sensor"
+    name: "Filtered Sensor pH"
     accuracy_decimals: 3  # Display 3 decimal places (e.g., 2.936)
 
     # sensor_source: The raw sensor to filter
@@ -486,7 +488,7 @@ text_sensor:
     update_interval: 5s
 
   - platform: template
-    name: "Water Temperature"
+    name: "Water Temperature - HAL"
     id: water_temperature_text
     # Lambda returns current water temperature value from HAL
     lambda: |-
@@ -604,7 +606,7 @@ button:
             id(unified_controller)->startPhCorrection();
 
   - platform: template
-    name: "07_04_pH Kalibrierung pH 7 (Mitte)"
+    name: "07_04_pH Calibration pH 7 (Mid - 7.00 pH)"
     on_press:
       # Calibrate pH sensor at mid-point (pH 7.00)
       # Place probe in pH 7.00 buffer solution before pressing
@@ -618,7 +620,7 @@ button:
             }
 
   - platform: template
-    name: "07_05_pH Kalibrierung pH 4 (Unten)"
+    name: "07_05_pH Calibration pH 4 (Low - 4.00 pH)"
     on_press:
       # Calibrate pH sensor at low-point (pH 4.00)
       # Place probe in pH 4.00 buffer solution before pressing
@@ -632,7 +634,7 @@ button:
             }
 
   - platform: template
-    name: "07_06_pH Kalibrierung pH 10 (Oben)"
+    name: "07_06_pH Calibration pH 10 (High - 10.01 pH)"
     on_press:
       # Calibrate pH sensor at high-point (pH 10.01)
       # Place probe in pH 10.01 buffer solution before pressing
@@ -819,7 +821,7 @@ plantos_hal:
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
   light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0)
-  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO16
+  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO23
 
   # Actuator Switches (Phase 2: Hardware Control - 6 actuators)
   # NOTE: Air pump removed - future Zigbee implementation
@@ -828,7 +830,7 @@ plantos_hal:
   pump_grow_switch: pump_grow_switch        # GPIO20 - Grow pump (grow nutrients)
   pump_micro_switch: pump_micro_switch      # GPIO21 - Micro pump (micronutrients)
   pump_bloom_switch: pump_bloom_switch      # GPIO22 - Bloom pump (bloom nutrients)
-  pump_wastewater_switch: pump_wastewater_switch  # GPIO23 - Wastewater pump (drainage)
+  # pump_wastewater_switch: pump_wastewater_switch  # GPIO23 - Removed (not MVP, GPIO23 now DS18B20)
 
   # pH Reading Configuration
   ph_reading_interval: 2h     # How often to check pH (default: 2 hours)
@@ -1027,7 +1029,7 @@ actuator_safety_gate:
 ezo_ph_uart:
   id: ezo_ph_uart_component
   uart_id: uart_bus
-  update_interval: 5s  # Read pH every 60 seconds (recommended for production)
+  update_interval: 10s  # Read pH every 10 seconds (reduced frequency to avoid DS18B20 timing conflicts)
   verbose: true  # Enable detailed UART communication logging
   # pH sensor configuration
   ph:
@@ -1322,21 +1324,22 @@ switch:
             ESP_LOGW("switch", "Bloom Pump: OFF command REJECTED by safety gate");
           }
 
-  - platform: template
-    id: pump_wastewater_switch
-    name: "10_06_Wastewater Pump"
-    optimistic: true
-    restore_mode: ALWAYS_OFF
-    turn_on_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("WastewaterPump", true, 0)) {
-            ESP_LOGW("switch", "Wastewater Pump: ON command REJECTED by safety gate");
-          }
-    turn_off_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("WastewaterPump", false)) {
-            ESP_LOGW("switch", "Wastewater Pump: OFF command REJECTED by safety gate");
-          }
+  # NOTE: Wastewater pump removed - not part of MVP (GPIO23 now used for DS18B20)
+  # - platform: template
+  #   id: pump_wastewater_switch
+  #   name: "10_06_Wastewater Pump"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   turn_on_action:
+  #     - lambda: |-
+  #         if (!id(actuator_safety)->executeCommand("WastewaterPump", true, 0)) {
+  #           ESP_LOGW("switch", "Wastewater Pump: ON command REJECTED by safety gate");
+  #         }
+  #   turn_off_action:
+  #     - lambda: |-
+  #         if (!id(actuator_safety)->executeCommand("WastewaterPump", false)) {
+  #           ESP_LOGW("switch", "Wastewater Pump: OFF command REJECTED by safety gate");
+  #         }
 
   # NOTE: Air Pump removed - future Zigbee implementation
 
@@ -1400,8 +1403,11 @@ interval:
           log_gpio(10, "Water Level HIGH");
           log_gpio(11, "Water Level LOW");
 
-          // Temperature Sensor (relocated from GPIO10)
-          log_gpio(16, "Water Temp (1-Wire)");
+          // GPIO16 available for future use
+          // log_gpio(16, "Available");
+
+          // Temperature Sensor (1-Wire)
+          log_gpio(23, "Water Temp (DS18B20)");
 
           // Actuators (Active HIGH outputs)
           log_gpio(18, "Water Valve (Mag)");
@@ -1409,7 +1415,8 @@ interval:
           log_gpio(20, "Nutrient Pump (Grow)");
           log_gpio(21, "Nutrient Pump (Micro)");
           log_gpio(22, "Nutrient Pump (Bloom)");
-          log_gpio(23, "Wastewater Pump");
+          // GPIO23 is now DS18B20 (1-Wire), not a GPIO output
+          // log_gpio(23, "Wastewater Pump");  // Removed - not MVP
 
           ESP_LOGD("gpio_status", "=========================");
           ESP_LOGD("gpio_status", "");

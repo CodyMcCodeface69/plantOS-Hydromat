@@ -44,9 +44,19 @@ logger:
   hardware_uart: USB_SERIAL_JTAG
 
   # Component-specific log level overrides
+  # Use web UI switches (section 11) to toggle verbose logging for these components
   logs:
-    adc: NONE    # Suppress ADC component messages
-    light: INFO  # DEBUGNOLED: Suppress LED brightness/color debug messages 
+    adc: NONE              # Suppress ADC component messages
+    light: INFO            # DEBUGNOLED: Suppress LED brightness/color debug messages
+    sensor: INFO           # Suppress sensor state updates (toggle via 11_01)
+    text_sensor: INFO      # Suppress text sensor state updates (toggle via 11_02)
+    ezo_ph_uart: INFO      # Suppress EZO pH UART debug logs (toggle via 11_03)
+    sensor_filter: INFO    # Suppress sensor filter buffer logs (toggle via 11_04)
+    dallas.temp.sensor: INFO  # Suppress Dallas temp sensor logs (toggle via 11_05)
+    plantos_controller: INFO  # Suppress controller PSM check logs (toggle via 11_06)
+    gpio_status: INFO      # Suppress GPIO status logs (toggle via 11_07)
+    component: ERROR       # Suppress component timing warnings (toggle via 11_08)
+    esp-idf: WARN          # Suppress ESP-IDF GPIO logs (toggle via 11_09) 
 
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security
@@ -605,48 +615,6 @@ button:
         - lambda: |-
             id(unified_controller)->startPhCorrection();
 
-  - platform: template
-    name: "07_04_pH Calibration pH 7 (Mid - 7.00 pH)"
-    on_press:
-      # Calibrate pH sensor at mid-point (pH 7.00)
-      # Place probe in pH 7.00 buffer solution before pressing
-      then:
-        - logger.log: "Starting pH 7 (mid-point) calibration - ensure probe is in pH 7.00 buffer"
-        - lambda: |-
-            if (id(ezo_ph_uart_component)->calibrate_mid(7.00)) {
-              ESP_LOGI("button", "pH 7.00 mid-point calibration successful");
-            } else {
-              ESP_LOGE("button", "pH 7.00 mid-point calibration failed");
-            }
-
-  - platform: template
-    name: "07_05_pH Calibration pH 4 (Low - 4.00 pH)"
-    on_press:
-      # Calibrate pH sensor at low-point (pH 4.00)
-      # Place probe in pH 4.00 buffer solution before pressing
-      then:
-        - logger.log: "Starting pH 4 (low-point) calibration - ensure probe is in pH 4.00 buffer"
-        - lambda: |-
-            if (id(ezo_ph_uart_component)->calibrate_low(4.00)) {
-              ESP_LOGI("button", "pH 4.00 low-point calibration successful");
-            } else {
-              ESP_LOGE("button", "pH 4.00 low-point calibration failed");
-            }
-
-  - platform: template
-    name: "07_06_pH Calibration pH 10 (High - 10.01 pH)"
-    on_press:
-      # Calibrate pH sensor at high-point (pH 10.01)
-      # Place probe in pH 10.01 buffer solution before pressing
-      then:
-        - logger.log: "Starting pH 10 (high-point) calibration - ensure probe is in pH 10.01 buffer"
-        - lambda: |-
-            if (id(ezo_ph_uart_component)->calibrate_high(10.01)) {
-              ESP_LOGI("button", "pH 10.01 high-point calibration successful");
-            } else {
-              ESP_LOGE("button", "pH 10.01 high-point calibration failed");
-            }
-
   # === 07 - pH Temperature Compensation ===
   - platform: template
     name: "07_07_Temperature Compensation (Auto)"
@@ -683,6 +651,18 @@ button:
             } else {
               ESP_LOGE("button", "Manual temperature compensation failed");
             }
+
+  # === 07_09 - Check pH Calibration Status ===
+  - platform: template
+    name: "07_09_Check pH Calibration Status"
+    on_press:
+      # Query EZO pH sensor calibration status
+      # Returns number of calibration points: 0, 1, 2, or 3
+      # 3 points = fully calibrated (mid, low, high)
+      then:
+        - logger.log: "Querying EZO pH calibration status (Cal,?)"
+        - lambda: |-
+            id(ezo_ph_uart_component)->query_calibration_status();
 
   # === 08 - Primary Routines (Feeding) ===
   - platform: template
@@ -861,9 +841,9 @@ plantos_controller:
   ph_sensor: ezo_ph_uart_component  # pH sensor for calibration control
 
   # Status Logger Configuration
-  enable_status_reports: true   # Enable/disable periodic status reports (default: true)
+  enable_status_reports: false  # Enable/disable periodic status reports (default: false, use switch 11_10)
   status_report_interval: 10s   # How often to print status reports (default: 30s)
-  verbose_mode: true           # Enable instant verbose logging of all events (default: false)
+  verbose_mode: false           # Enable instant verbose logging of all events (default: false)
                                 # Verbose mode logs state changes, sensor readings, and actuator
                                 # commands in real-time without waiting for periodic reports.
                                 # Note: LED changes are automatically filtered out.
@@ -1029,8 +1009,8 @@ actuator_safety_gate:
 ezo_ph_uart:
   id: ezo_ph_uart_component
   uart_id: uart_bus
-  update_interval: 10s  # Read pH every 10 seconds (reduced frequency to avoid DS18B20 timing conflicts)
-  verbose: true  # Enable detailed UART communication logging
+  update_interval: 2s  # Read pH every 2 seconds (faster readings for better calibration stability detection)
+  verbose: false  # Disable verbose UART logging by default (enabled dynamically during calibration)
   # pH sensor configuration
   ph:
     name: "Nutrient Solution pH"
@@ -1363,6 +1343,242 @@ switch:
         - lambda: |-
             ESP_LOGI("switch", "Disabling continuous pH reading mode");
             id(ezo_ph_uart_component)->disable_continuous_reading();
+
+  # === 11 - Verbose Logging Toggles ===
+  # These switches control debug log output for specific components
+  # Turning ON enables DEBUG level (verbose), turning OFF sets to INFO level (quiet)
+  # Helps reduce log clutter during calibration and normal operation
+
+  - platform: template
+    name: "11_00_Verbose: ALL (Master Toggle)"
+    id: verbose_all
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling ALL verbose logging"
+          level: WARN
+      - switch.turn_on: verbose_sensor
+      - switch.turn_on: verbose_text_sensor
+      - switch.turn_on: verbose_ezo_ph
+      - switch.turn_on: verbose_sensor_filter
+      - switch.turn_on: verbose_dallas
+      - switch.turn_on: verbose_controller
+      - switch.turn_on: verbose_gpio_status
+      - switch.turn_on: verbose_component
+      - switch.turn_on: verbose_esp_idf
+    turn_off_action:
+      - logger.log:
+          format: "Disabling ALL verbose logging"
+          level: WARN
+      - switch.turn_off: verbose_sensor
+      - switch.turn_off: verbose_text_sensor
+      - switch.turn_off: verbose_ezo_ph
+      - switch.turn_off: verbose_sensor_filter
+      - switch.turn_off: verbose_dallas
+      - switch.turn_off: verbose_controller
+      - switch.turn_off: verbose_gpio_status
+      - switch.turn_off: verbose_component
+      - switch.turn_off: verbose_esp_idf
+
+  - platform: template
+    name: "11_01_Verbose: Sensor State Updates"
+    id: verbose_sensor
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: sensor"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("sensor", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: sensor"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("sensor", ESP_LOG_INFO);
+
+  - platform: template
+    name: "11_02_Verbose: Text Sensor Updates"
+    id: verbose_text_sensor
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: text_sensor"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("text_sensor", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: text_sensor"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("text_sensor", ESP_LOG_INFO);
+
+  - platform: template
+    name: "11_03_Verbose: EZO pH UART"
+    id: verbose_ezo_ph
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: ezo_ph_uart"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("ezo_ph_uart", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: ezo_ph_uart"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("ezo_ph_uart", ESP_LOG_INFO);
+
+  - platform: template
+    name: "11_04_Verbose: Sensor Filter"
+    id: verbose_sensor_filter
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: sensor_filter"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("sensor_filter", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: sensor_filter"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("sensor_filter", ESP_LOG_INFO);
+
+  - platform: template
+    name: "11_05_Verbose: Dallas Temp Sensor"
+    id: verbose_dallas
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: dallas.temp.sensor"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("dallas.temp.sensor", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: dallas.temp.sensor"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("dallas.temp.sensor", ESP_LOG_INFO);
+
+  - platform: template
+    name: "11_06_Verbose: PlantOS Controller"
+    id: verbose_controller
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: plantos_controller"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("plantos_controller", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: plantos_controller"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("plantos_controller", ESP_LOG_INFO);
+
+  - platform: template
+    name: "11_07_Verbose: GPIO Status"
+    id: verbose_gpio_status
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: gpio_status"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("gpio_status", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: gpio_status"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("gpio_status", ESP_LOG_INFO);
+
+  - platform: template
+    name: "11_08_Verbose: Component Warnings"
+    id: verbose_component
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: component"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("component", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: component (suppressing timing warnings)"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("component", ESP_LOG_ERROR);
+
+  - platform: template
+    name: "11_09_Verbose: ESP-IDF Framework"
+    id: verbose_esp_idf
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: esp-idf"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("esp-idf", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: esp-idf"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("esp-idf", ESP_LOG_WARN);
+
+  - platform: template
+    name: "11_10_Enable System Status Reports"
+    id: enable_status_reports
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    icon: "mdi:file-document-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling periodic system status reports"
+          level: INFO
+      - lambda: |-
+          // Enable status reports with current interval (10s) and verbose mode
+          auto logger = id(unified_controller)->getStatusLogger();
+          if (logger) {
+            logger->configure(true, 10000, false);  // 10s interval, verbose off
+          }
+    turn_off_action:
+      - logger.log:
+          format: "Disabling periodic system status reports"
+          level: INFO
+      - lambda: |-
+          // Disable status reports
+          auto logger = id(unified_controller)->getStatusLogger();
+          if (logger) {
+            logger->configure(false, 10000, false);
+          }
 
 ################################################################################
 # GPIO Status Logger (DEBUG Mode)

@@ -632,6 +632,10 @@ void PlantOSController::handlePhCalibrating() {
     if (!ph_sensor_->is_sensor_ready()) {
         ESP_LOGE(TAG, "pH sensor hardware not responding - calibration aborted");
         ESP_LOGE(TAG, "Check UART connection and power to sensor");
+        // Ensure verbose mode is off even on error
+        if (ph_sensor_) {
+            ph_sensor_->set_verbose(false);
+        }
         transitionTo(ControllerState::ERROR);
         return;
     }
@@ -669,6 +673,17 @@ void PlantOSController::handlePhCalibrating() {
         case CalibrationStep::MID_STABILIZING:
             // Take readings (20 per batch, 1/second, 5 batches with 30s wait between)
             if (calib_readings_in_batch_ < CALIB_READINGS_PER_BATCH) {
+                // Log when starting a new batch
+                if (calib_readings_in_batch_ == 0 && calib_current_batch_ < CALIB_TOTAL_BATCHES) {
+                    // Only log once when starting the batch (avoid spamming)
+                    static int last_logged_batch = -1;
+                    if (last_logged_batch != calib_current_batch_) {
+                        ESP_LOGI(TAG, "MID: Starting batch %d/%d - Taking %d readings at 1-second intervals",
+                                calib_current_batch_ + 1, CALIB_TOTAL_BATCHES, CALIB_READINGS_PER_BATCH);
+                        last_logged_batch = calib_current_batch_;
+                    }
+                }
+
                 // Time to take next reading?
                 if (now - calib_last_reading_time_ >= CALIB_READING_INTERVAL) {
                     float ph_value;
@@ -687,8 +702,9 @@ void PlantOSController::handlePhCalibrating() {
                 // Batch complete - calculate average
                 float batch_avg = calib_batch_sum_ / CALIB_READINGS_PER_BATCH;
                 calib_batch_averages_[calib_current_batch_] = batch_avg;
-                ESP_LOGI(TAG, "MID: Batch %d complete - Average: pH %.2f",
-                        calib_current_batch_ + 1, batch_avg);
+                ESP_LOGI(TAG, "MID: Batch %d/%d complete - Average: pH %.2f (Total readings: %d)",
+                        calib_current_batch_ + 1, CALIB_TOTAL_BATCHES, batch_avg,
+                        (calib_current_batch_ + 1) * CALIB_READINGS_PER_BATCH);
 
                 calib_current_batch_++;
 
@@ -725,8 +741,14 @@ void PlantOSController::handlePhCalibrating() {
             ESP_LOGI(TAG, "Sending mid-point calibration command at pH 7.00...");
             if (!hal_->startPhCalibration(7.00f, 0)) {  // 0 = mid
                 ESP_LOGE(TAG, "MID: Calibration command FAILED");
+                // Ensure verbose mode is off even on error
+                if (ph_sensor_) {
+                    ph_sensor_->set_verbose(false);
+                }
                 transitionTo(ControllerState::ERROR);
                 return;
+            } else {
+                ESP_LOGI(TAG, "✓ MID: Calibration command sent successfully");
             }
             calib_step_ = CalibrationStep::MID_COMPLETE;
             calib_step_start_time_ = now;
@@ -770,6 +792,17 @@ void PlantOSController::handlePhCalibrating() {
         case CalibrationStep::LOW_STABILIZING:
             // Same logic as MID_STABILIZING
             if (calib_readings_in_batch_ < CALIB_READINGS_PER_BATCH) {
+                // Log when starting a new batch
+                if (calib_readings_in_batch_ == 0 && calib_current_batch_ < CALIB_TOTAL_BATCHES) {
+                    // Only log once when starting the batch (avoid spamming)
+                    static int last_logged_batch = -1;
+                    if (last_logged_batch != calib_current_batch_) {
+                        ESP_LOGI(TAG, "LOW: Starting batch %d/%d - Taking %d readings at 1-second intervals",
+                                calib_current_batch_ + 1, CALIB_TOTAL_BATCHES, CALIB_READINGS_PER_BATCH);
+                        last_logged_batch = calib_current_batch_;
+                    }
+                }
+
                 if (now - calib_last_reading_time_ >= CALIB_READING_INTERVAL) {
                     float ph_value;
                     if (hal_->takeSinglePhReading(ph_value)) {
@@ -784,8 +817,9 @@ void PlantOSController::handlePhCalibrating() {
             } else {
                 float batch_avg = calib_batch_sum_ / CALIB_READINGS_PER_BATCH;
                 calib_batch_averages_[calib_current_batch_] = batch_avg;
-                ESP_LOGI(TAG, "LOW: Batch %d complete - Average: pH %.2f",
-                        calib_current_batch_ + 1, batch_avg);
+                ESP_LOGI(TAG, "LOW: Batch %d/%d complete - Average: pH %.2f (Total readings: %d)",
+                        calib_current_batch_ + 1, CALIB_TOTAL_BATCHES, batch_avg,
+                        (calib_current_batch_ + 1) * CALIB_READINGS_PER_BATCH);
 
                 calib_current_batch_++;
 
@@ -818,8 +852,14 @@ void PlantOSController::handlePhCalibrating() {
             ESP_LOGI(TAG, "Sending low-point calibration command at pH 4.00...");
             if (!hal_->startPhCalibration(4.00f, 1)) {  // 1 = low
                 ESP_LOGE(TAG, "LOW: Calibration command FAILED");
+                // Ensure verbose mode is off even on error
+                if (ph_sensor_) {
+                    ph_sensor_->set_verbose(false);
+                }
                 transitionTo(ControllerState::ERROR);
                 return;
+            } else {
+                ESP_LOGI(TAG, "✓ LOW: Calibration command sent successfully");
             }
             calib_step_ = CalibrationStep::LOW_COMPLETE;
             calib_step_start_time_ = now;
@@ -863,6 +903,17 @@ void PlantOSController::handlePhCalibrating() {
         case CalibrationStep::HIGH_STABILIZING:
             // Same logic as MID_STABILIZING and LOW_STABILIZING
             if (calib_readings_in_batch_ < CALIB_READINGS_PER_BATCH) {
+                // Log when starting a new batch
+                if (calib_readings_in_batch_ == 0 && calib_current_batch_ < CALIB_TOTAL_BATCHES) {
+                    // Only log once when starting the batch (avoid spamming)
+                    static int last_logged_batch = -1;
+                    if (last_logged_batch != calib_current_batch_) {
+                        ESP_LOGI(TAG, "HIGH: Starting batch %d/%d - Taking %d readings at 1-second intervals",
+                                calib_current_batch_ + 1, CALIB_TOTAL_BATCHES, CALIB_READINGS_PER_BATCH);
+                        last_logged_batch = calib_current_batch_;
+                    }
+                }
+
                 if (now - calib_last_reading_time_ >= CALIB_READING_INTERVAL) {
                     float ph_value;
                     if (hal_->takeSinglePhReading(ph_value)) {
@@ -877,8 +928,9 @@ void PlantOSController::handlePhCalibrating() {
             } else {
                 float batch_avg = calib_batch_sum_ / CALIB_READINGS_PER_BATCH;
                 calib_batch_averages_[calib_current_batch_] = batch_avg;
-                ESP_LOGI(TAG, "HIGH: Batch %d complete - Average: pH %.2f",
-                        calib_current_batch_ + 1, batch_avg);
+                ESP_LOGI(TAG, "HIGH: Batch %d/%d complete - Average: pH %.2f (Total readings: %d)",
+                        calib_current_batch_ + 1, CALIB_TOTAL_BATCHES, batch_avg,
+                        (calib_current_batch_ + 1) * CALIB_READINGS_PER_BATCH);
 
                 calib_current_batch_++;
 
@@ -911,8 +963,14 @@ void PlantOSController::handlePhCalibrating() {
             ESP_LOGI(TAG, "Sending high-point calibration command at pH 10.01...");
             if (!hal_->startPhCalibration(10.01f, 2)) {  // 2 = high
                 ESP_LOGE(TAG, "HIGH: Calibration command FAILED");
+                // Ensure verbose mode is off even on error
+                if (ph_sensor_) {
+                    ph_sensor_->set_verbose(false);
+                }
                 transitionTo(ControllerState::ERROR);
                 return;
+            } else {
+                ESP_LOGI(TAG, "✓ HIGH: Calibration command sent successfully");
             }
             calib_step_ = CalibrationStep::HIGH_COMPLETE;
             calib_step_start_time_ = now;
@@ -938,6 +996,12 @@ void PlantOSController::handlePhCalibrating() {
             ESP_LOGI(TAG, "Rinse with distilled water and return to tank");
             ESP_LOGI(TAG, "System returning to IDLE state...");
             ESP_LOGI(TAG, "");
+
+            // Disable verbose mode - calibration complete
+            if (ph_sensor_) {
+                ph_sensor_->set_verbose(false);
+                ESP_LOGI(TAG, "Verbose mode DISABLED - returning to normal operation");
+            }
 
             // Query calibration status to verify
             ph_sensor_->query_calibration_status();
@@ -1347,6 +1411,12 @@ void PlantOSController::startPhCalibration() {
     ESP_LOGI(TAG, "===============================================");
     ESP_LOGI(TAG, "Calibration points: 4.00 (low), 7.00 (mid), 10.01 (high)");
     ESP_LOGI(TAG, "Follow the prompts to insert probe into each solution");
+
+    // Enable verbose mode for detailed UART logging during calibration
+    if (ph_sensor_) {
+        ph_sensor_->set_verbose(true);
+        ESP_LOGI(TAG, "Verbose mode ENABLED for calibration sequence");
+    }
 
     // Reset calibration state
     calib_step_ = CalibrationStep::MID_PROMPT;

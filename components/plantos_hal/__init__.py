@@ -7,7 +7,7 @@ Provides platform-agnostic hardware interface for the unified Controller.
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import light, sensor
+from esphome.components import light, sensor, output
 from esphome.const import (
     CONF_ID,
 )
@@ -16,9 +16,6 @@ from esphome.const import (
 plantos_hal_ns = cg.esphome_ns.namespace('plantos_hal')
 HAL = plantos_hal_ns.class_('HAL')
 ESPHomeHAL = plantos_hal_ns.class_('ESPHomeHAL', HAL, cg.Component)
-
-# Import switch component for actuator control
-from esphome.components import switch
 
 # Configuration keys
 CONF_SYSTEM_LED = 'system_led'
@@ -30,14 +27,15 @@ CONF_PH_READING_INTERVAL = 'ph_reading_interval'
 CONF_PH_MIN = 'ph_min'
 CONF_PH_MAX = 'ph_max'
 
-# Actuator switch keys (Phase 2 - 6 actuators)
+# Actuator GPIO output keys (Phase 2 - 6 actuators)
+# NOTE: Using outputs instead of switches to avoid circular dependency
 # NOTE: Air pump removed - future Zigbee implementation
-CONF_MAG_VALVE_SWITCH = 'mag_valve_switch'
-CONF_PUMP_PH_SWITCH = 'pump_ph_switch'
-CONF_PUMP_GROW_SWITCH = 'pump_grow_switch'
-CONF_PUMP_MICRO_SWITCH = 'pump_micro_switch'
-CONF_PUMP_BLOOM_SWITCH = 'pump_bloom_switch'
-CONF_PUMP_WASTEWATER_SWITCH = 'pump_wastewater_switch'
+CONF_MAG_VALVE_OUTPUT = 'mag_valve_output'
+CONF_PUMP_PH_OUTPUT = 'pump_ph_output'
+CONF_PUMP_GROW_OUTPUT = 'pump_grow_output'
+CONF_PUMP_MICRO_OUTPUT = 'pump_micro_output'
+CONF_PUMP_BLOOM_OUTPUT = 'pump_bloom_output'
+CONF_PUMP_WASTEWATER_OUTPUT = 'pump_wastewater_output'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -51,14 +49,15 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_PH_MIN, default=5.5): cv.float_range(min=0.0, max=14.0),
     cv.Optional(CONF_PH_MAX, default=6.5): cv.float_range(min=0.0, max=14.0),
 
-    # Actuator switches (Phase 2: Hardware Control - 6 actuators)
+    # Actuator GPIO outputs (Phase 2: Hardware Control - 6 actuators)
+    # NOTE: Using outputs instead of switches to avoid circular dependency
     # NOTE: Air pump removed - future Zigbee implementation
-    cv.Optional(CONF_MAG_VALVE_SWITCH): cv.use_id(switch.Switch),
-    cv.Optional(CONF_PUMP_PH_SWITCH): cv.use_id(switch.Switch),
-    cv.Optional(CONF_PUMP_GROW_SWITCH): cv.use_id(switch.Switch),
-    cv.Optional(CONF_PUMP_MICRO_SWITCH): cv.use_id(switch.Switch),
-    cv.Optional(CONF_PUMP_BLOOM_SWITCH): cv.use_id(switch.Switch),
-    cv.Optional(CONF_PUMP_WASTEWATER_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_MAG_VALVE_OUTPUT): cv.use_id(output.BinaryOutput),
+    cv.Optional(CONF_PUMP_PH_OUTPUT): cv.use_id(output.BinaryOutput),
+    cv.Optional(CONF_PUMP_GROW_OUTPUT): cv.use_id(output.BinaryOutput),
+    cv.Optional(CONF_PUMP_MICRO_OUTPUT): cv.use_id(output.BinaryOutput),
+    cv.Optional(CONF_PUMP_BLOOM_OUTPUT): cv.use_id(output.BinaryOutput),
+    cv.Optional(CONF_PUMP_WASTEWATER_OUTPUT): cv.use_id(output.BinaryOutput),
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -100,29 +99,29 @@ async def to_code(config):
     # Set pH range configuration
     cg.add(var.set_ph_range(config[CONF_PH_MIN], config[CONF_PH_MAX]))
 
-    # Inject actuator switches (Phase 2: Hardware Control)
-    if CONF_MAG_VALVE_SWITCH in config:
-        mag_valve_sw = await cg.get_variable(config[CONF_MAG_VALVE_SWITCH])
-        cg.add(var.set_mag_valve_switch(mag_valve_sw))
+    # Inject actuator GPIO outputs (Phase 2: Hardware Control)
+    if CONF_MAG_VALVE_OUTPUT in config:
+        mag_valve_out = await cg.get_variable(config[CONF_MAG_VALVE_OUTPUT])
+        cg.add(var.set_mag_valve_output(mag_valve_out))
 
-    if CONF_PUMP_PH_SWITCH in config:
-        pump_ph_sw = await cg.get_variable(config[CONF_PUMP_PH_SWITCH])
-        cg.add(var.set_pump_ph_switch(pump_ph_sw))
+    if CONF_PUMP_PH_OUTPUT in config:
+        pump_ph_out = await cg.get_variable(config[CONF_PUMP_PH_OUTPUT])
+        cg.add(var.set_pump_ph_output(pump_ph_out))
 
-    if CONF_PUMP_GROW_SWITCH in config:
-        pump_grow_sw = await cg.get_variable(config[CONF_PUMP_GROW_SWITCH])
-        cg.add(var.set_pump_grow_switch(pump_grow_sw))
+    if CONF_PUMP_GROW_OUTPUT in config:
+        pump_grow_out = await cg.get_variable(config[CONF_PUMP_GROW_OUTPUT])
+        cg.add(var.set_pump_grow_output(pump_grow_out))
 
-    if CONF_PUMP_MICRO_SWITCH in config:
-        pump_micro_sw = await cg.get_variable(config[CONF_PUMP_MICRO_SWITCH])
-        cg.add(var.set_pump_micro_switch(pump_micro_sw))
+    if CONF_PUMP_MICRO_OUTPUT in config:
+        pump_micro_out = await cg.get_variable(config[CONF_PUMP_MICRO_OUTPUT])
+        cg.add(var.set_pump_micro_output(pump_micro_out))
 
-    if CONF_PUMP_BLOOM_SWITCH in config:
-        pump_bloom_sw = await cg.get_variable(config[CONF_PUMP_BLOOM_SWITCH])
-        cg.add(var.set_pump_bloom_switch(pump_bloom_sw))
+    if CONF_PUMP_BLOOM_OUTPUT in config:
+        pump_bloom_out = await cg.get_variable(config[CONF_PUMP_BLOOM_OUTPUT])
+        cg.add(var.set_pump_bloom_output(pump_bloom_out))
 
-    if CONF_PUMP_WASTEWATER_SWITCH in config:
-        pump_wastewater_sw = await cg.get_variable(config[CONF_PUMP_WASTEWATER_SWITCH])
-        cg.add(var.set_pump_wastewater_switch(pump_wastewater_sw))
+    if CONF_PUMP_WASTEWATER_OUTPUT in config:
+        pump_wastewater_out = await cg.get_variable(config[CONF_PUMP_WASTEWATER_OUTPUT])
+        cg.add(var.set_pump_wastewater_output(pump_wastewater_out))
 
-    # NOTE: pump_air_switch removed - future Zigbee implementation
+    # NOTE: pump_air_output removed - future Zigbee implementation

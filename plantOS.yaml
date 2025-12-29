@@ -322,42 +322,56 @@ light:
     default_transition_length: 0s
 
 ################################################################################
-# GPIO Outputs: Actuator Control via Logic Level MOSFETs
+# PWM Outputs: Actuator Control via Logic Level MOSFETs
 #
-# Five actuators controlled by 3.3V logic level MOSFETs:
+# Five actuators controlled by 3.3V logic level MOSFETs with PWM support:
 # - GPIO18: Magnetic Valve (fresh water inlet)
 # - GPIO19: pH Pump (acid dosing for pH down)
 # - GPIO20: Grow Pump (grow phase nutrients)
 # - GPIO21: Micro Pump (micronutrients)
 # - GPIO22: Bloom Pump (bloom phase nutrients)
 #
+# Using LEDC (LED PWM Controller) for both on/off and PWM control
+# Frequency: 1000 Hz (1 kHz) - suitable for most pumps and valves
 # All outputs are active HIGH (3.3V = ON/OPEN, 0V = OFF/CLOSED)
 ################################################################################
 output:
-  - platform: gpio
+  - platform: ledc
     id: mag_valve_output
     pin: GPIO18
+    frequency: 1000 Hz
+    zero_means_zero: true  # 0% duty cycle = truly off
 
-  - platform: gpio
+  - platform: ledc
     id: pump_ph_output
     pin: GPIO19
+    frequency: 1000 Hz
+    zero_means_zero: true
 
-  - platform: gpio
+  - platform: ledc
     id: pump_grow_output
     pin: GPIO20
+    frequency: 1000 Hz
+    zero_means_zero: true
 
-  - platform: gpio
+  - platform: ledc
     id: pump_micro_output
     pin: GPIO21
+    frequency: 1000 Hz
+    zero_means_zero: true
 
-  - platform: gpio
+  - platform: ledc
     id: pump_bloom_output
     pin: GPIO22
+    frequency: 1000 Hz
+    zero_means_zero: true
 
   # NOTE: Wastewater pump removed - not part of MVP (GPIO23 now used for DS18B20)
-  # - platform: gpio
+  # - platform: ledc
   #   id: pump_wastewater_output
   #   pin: GPIO23
+  #   frequency: 1000 Hz
+  #   zero_means_zero: true
 
 ################################################################################
 # 1-Wire Bus: For DS18B20 Temperature Sensor
@@ -803,14 +817,15 @@ plantos_hal:
   light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0)
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO23
 
-  # Actuator Switches (Phase 2: Hardware Control - 6 actuators)
+  # Actuator GPIO Outputs (Phase 2: Hardware Control - 6 actuators)
+  # NOTE: Using outputs instead of switches to avoid circular dependency
   # NOTE: Air pump removed - future Zigbee implementation
-  mag_valve_switch: mag_valve_switch        # GPIO18 - Magnetic valve (fresh water inlet)
-  pump_ph_switch: pump_ph_switch            # GPIO19 - pH pump (acid dosing)
-  pump_grow_switch: pump_grow_switch        # GPIO20 - Grow pump (grow nutrients)
-  pump_micro_switch: pump_micro_switch      # GPIO21 - Micro pump (micronutrients)
-  pump_bloom_switch: pump_bloom_switch      # GPIO22 - Bloom pump (bloom nutrients)
-  # pump_wastewater_switch: pump_wastewater_switch  # GPIO23 - Removed (not MVP, GPIO23 now DS18B20)
+  mag_valve_output: mag_valve_output        # GPIO18 - Magnetic valve (fresh water inlet)
+  pump_ph_output: pump_ph_output            # GPIO19 - pH pump (acid dosing)
+  pump_grow_output: pump_grow_output        # GPIO20 - Grow pump (grow nutrients)
+  pump_micro_output: pump_micro_output      # GPIO21 - Micro pump (micronutrients)
+  pump_bloom_output: pump_bloom_output      # GPIO22 - Bloom pump (bloom nutrients)
+  # pump_wastewater_output: pump_wastewater_output  # GPIO23 - Removed (not MVP, GPIO23 now DS18B20)
 
   # pH Reading Configuration
   ph_reading_interval: 2h     # How often to check pH (default: 2 hours)
@@ -1579,6 +1594,195 @@ switch:
           if (logger) {
             logger->configure(false, 10000, false);
           }
+
+  ################################################################################
+  # === 12 - DIRECT GPIO CONTROL (HARDWARE TESTING ONLY) ===
+  #
+  # WARNING: These switches bypass ALL safety and abstraction layers!
+  # - NO SafetyGate validation
+  # - NO HAL abstraction
+  # - NO debouncing or duration limits
+  # - Direct GPIO output control via output.turn_on/turn_off
+  #
+  # PURPOSE: Hardware testing and wiring validation only
+  # TODO: REMOVE BEFORE FINAL RELEASE
+  ################################################################################
+
+  - platform: template
+    id: direct_gpio18_switch
+    name: "12_01_Set GPIO18 - Water Valve to HIGH"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    icon: "mdi:electric-switch"
+    turn_on_action:
+      - output.turn_on: mag_valve_output
+      - logger.log: "DIRECT GPIO18 (Water Valve) -> HIGH (bypassing all safety!)"
+    turn_off_action:
+      - output.turn_off: mag_valve_output
+      - logger.log: "DIRECT GPIO18 (Water Valve) -> LOW"
+
+  - platform: template
+    id: direct_gpio19_switch
+    name: "12_02_Set GPIO19 - Acid Pump to HIGH"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    icon: "mdi:electric-switch"
+    turn_on_action:
+      - output.turn_on: pump_ph_output
+      - logger.log: "DIRECT GPIO19 (Acid Pump) -> HIGH (bypassing all safety!)"
+    turn_off_action:
+      - output.turn_off: pump_ph_output
+      - logger.log: "DIRECT GPIO19 (Acid Pump) -> LOW"
+
+  - platform: template
+    id: direct_gpio20_switch
+    name: "12_03_Set GPIO20 - Nutrient Pump A to HIGH"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    icon: "mdi:electric-switch"
+    turn_on_action:
+      - output.turn_on: pump_grow_output
+      - logger.log: "DIRECT GPIO20 (Nutrient Pump A) -> HIGH (bypassing all safety!)"
+    turn_off_action:
+      - output.turn_off: pump_grow_output
+      - logger.log: "DIRECT GPIO20 (Nutrient Pump A) -> LOW"
+
+  - platform: template
+    id: direct_gpio21_switch
+    name: "12_04_Set GPIO21 - Nutrient Pump B to HIGH"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    icon: "mdi:electric-switch"
+    turn_on_action:
+      - output.turn_on: pump_micro_output
+      - logger.log: "DIRECT GPIO21 (Nutrient Pump B) -> HIGH (bypassing all safety!)"
+    turn_off_action:
+      - output.turn_off: pump_micro_output
+      - logger.log: "DIRECT GPIO21 (Nutrient Pump B) -> LOW"
+
+  - platform: template
+    id: direct_gpio22_switch
+    name: "12_05_Set GPIO22 - Nutrient Pump C to HIGH"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    icon: "mdi:electric-switch"
+    turn_on_action:
+      - output.turn_on: pump_bloom_output
+      - logger.log: "DIRECT GPIO22 (Nutrient Pump C) -> HIGH (bypassing all safety!)"
+    turn_off_action:
+      - output.turn_off: pump_bloom_output
+      - logger.log: "DIRECT GPIO22 (Nutrient Pump C) -> LOW"
+
+################################################################################
+# Number Components: PWM Sliders for Direct GPIO Control
+#
+# Section 13 - PWM Control Sliders (HARDWARE TESTING ONLY)
+# These sliders provide direct PWM control (0-100%) of GPIO outputs
+# bypassing ALL safety and abstraction layers.
+#
+# WARNING: Use only for hardware testing and calibration!
+# TODO: REMOVE BEFORE FINAL RELEASE
+################################################################################
+number:
+  - platform: template
+    id: pwm_gpio18_slider
+    name: "13_01_GPIO18 - Water Valve PWM"
+    icon: "mdi:water-percent"
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 0
+    restore_value: false
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      - output.set_level:
+          id: mag_valve_output
+          level: !lambda 'return x / 100.0;'
+      - logger.log:
+          format: "PWM GPIO18 (Water Valve) set to %.0f%% (duty cycle: %.2f)"
+          args: ['x', 'x / 100.0']
+
+  - platform: template
+    id: pwm_gpio19_slider
+    name: "13_02_GPIO19 - Acid Pump PWM"
+    icon: "mdi:flask-percent"
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 0
+    restore_value: false
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      - output.set_level:
+          id: pump_ph_output
+          level: !lambda 'return x / 100.0;'
+      - logger.log:
+          format: "PWM GPIO19 (Acid Pump) set to %.0f%% (duty cycle: %.2f)"
+          args: ['x', 'x / 100.0']
+
+  - platform: template
+    id: pwm_gpio20_slider
+    name: "13_03_GPIO20 - Nutrient Pump A PWM"
+    icon: "mdi:water-pump"
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 0
+    restore_value: false
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      - output.set_level:
+          id: pump_grow_output
+          level: !lambda 'return x / 100.0;'
+      - logger.log:
+          format: "PWM GPIO20 (Nutrient Pump A) set to %.0f%% (duty cycle: %.2f)"
+          args: ['x', 'x / 100.0']
+
+  - platform: template
+    id: pwm_gpio21_slider
+    name: "13_04_GPIO21 - Nutrient Pump B PWM"
+    icon: "mdi:water-pump"
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 0
+    restore_value: false
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      - output.set_level:
+          id: pump_micro_output
+          level: !lambda 'return x / 100.0;'
+      - logger.log:
+          format: "PWM GPIO21 (Nutrient Pump B) set to %.0f%% (duty cycle: %.2f)"
+          args: ['x', 'x / 100.0']
+
+  - platform: template
+    id: pwm_gpio22_slider
+    name: "13_05_GPIO22 - Nutrient Pump C PWM"
+    icon: "mdi:water-pump"
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 0
+    restore_value: false
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      - output.set_level:
+          id: pump_bloom_output
+          level: !lambda 'return x / 100.0;'
+      - logger.log:
+          format: "PWM GPIO22 (Nutrient Pump C) set to %.0f%% (duty cycle: %.2f)"
+          args: ['x', 'x / 100.0']
 
 ################################################################################
 # GPIO Status Logger (DEBUG Mode)

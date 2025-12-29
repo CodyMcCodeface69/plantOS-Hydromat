@@ -2,7 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/switch/switch.h"
+#include "esphome/components/output/binary_output.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 
 namespace plantos_hal {
@@ -39,40 +39,40 @@ void ESPHomeHAL::set_temperature_sensor(esphome::sensor::Sensor* temperature_sen
 }
 
 // ============================================================================
-// ACTUATOR SWITCH SETTERS (Phase 2: Hardware Control)
+// ACTUATOR OUTPUT SETTERS (Phase 2: Hardware Control)
 // ============================================================================
 
-void ESPHomeHAL::set_mag_valve_switch(esphome::switch_::Switch* sw) {
-    mag_valve_switch_ = sw;
-    ESP_LOGI(TAG, "Magnetic valve switch configured (GPIO18)");
+void ESPHomeHAL::set_mag_valve_output(esphome::output::BinaryOutput* output) {
+    mag_valve_output_ = output;
+    ESP_LOGI(TAG, "Magnetic valve output configured (GPIO18)");
 }
 
-void ESPHomeHAL::set_pump_ph_switch(esphome::switch_::Switch* sw) {
-    pump_ph_switch_ = sw;
-    ESP_LOGI(TAG, "pH pump switch configured (GPIO19)");
+void ESPHomeHAL::set_pump_ph_output(esphome::output::BinaryOutput* output) {
+    pump_ph_output_ = output;
+    ESP_LOGI(TAG, "pH pump output configured (GPIO19)");
 }
 
-void ESPHomeHAL::set_pump_grow_switch(esphome::switch_::Switch* sw) {
-    pump_grow_switch_ = sw;
-    ESP_LOGI(TAG, "Grow pump switch configured (GPIO20)");
+void ESPHomeHAL::set_pump_grow_output(esphome::output::BinaryOutput* output) {
+    pump_grow_output_ = output;
+    ESP_LOGI(TAG, "Grow pump output configured (GPIO20)");
 }
 
-void ESPHomeHAL::set_pump_micro_switch(esphome::switch_::Switch* sw) {
-    pump_micro_switch_ = sw;
-    ESP_LOGI(TAG, "Micro pump switch configured (GPIO21)");
+void ESPHomeHAL::set_pump_micro_output(esphome::output::BinaryOutput* output) {
+    pump_micro_output_ = output;
+    ESP_LOGI(TAG, "Micro pump output configured (GPIO21)");
 }
 
-void ESPHomeHAL::set_pump_bloom_switch(esphome::switch_::Switch* sw) {
-    pump_bloom_switch_ = sw;
-    ESP_LOGI(TAG, "Bloom pump switch configured (GPIO22)");
+void ESPHomeHAL::set_pump_bloom_output(esphome::output::BinaryOutput* output) {
+    pump_bloom_output_ = output;
+    ESP_LOGI(TAG, "Bloom pump output configured (GPIO22)");
 }
 
-void ESPHomeHAL::set_pump_wastewater_switch(esphome::switch_::Switch* sw) {
-    pump_wastewater_switch_ = sw;
-    ESP_LOGI(TAG, "Wastewater pump switch configured (GPIO23)");
+void ESPHomeHAL::set_pump_wastewater_output(esphome::output::BinaryOutput* output) {
+    pump_wastewater_output_ = output;
+    ESP_LOGI(TAG, "Wastewater pump output configured (GPIO23)");
 }
 
-// NOTE: set_pump_air_switch removed - future Zigbee implementation
+// NOTE: set_pump_air_output removed - future Zigbee implementation
 
 // ============================================================================
 // COMPONENT LIFECYCLE
@@ -118,65 +118,65 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
     // Update internal state tracking
     pump_states_[pumpId] = state;
 
-    // Route to appropriate hardware switch based on pump ID
+    // Route to appropriate GPIO output based on pump ID
     if (pumpId == "AcidPump") {
         // pH pump (acid dosing) on GPIO19
-        if (pump_ph_switch_) {
+        if (pump_ph_output_) {
             if (state) {
-                pump_ph_switch_->turn_on();
+                pump_ph_output_->turn_on();
             } else {
-                pump_ph_switch_->turn_off();
+                pump_ph_output_->turn_off();
             }
         } else {
-            ESP_LOGW(TAG, "pH pump switch not configured - cannot control AcidPump");
+            ESP_LOGW(TAG, "pH pump output not configured - cannot control AcidPump");
         }
     }
     else if (pumpId == "NutrientPumpA") {
         // Grow pump on GPIO20
-        if (pump_grow_switch_) {
+        if (pump_grow_output_) {
             if (state) {
-                pump_grow_switch_->turn_on();
+                pump_grow_output_->turn_on();
             } else {
-                pump_grow_switch_->turn_off();
+                pump_grow_output_->turn_off();
             }
         } else {
-            ESP_LOGW(TAG, "Grow pump switch not configured - cannot control NutrientPumpA");
+            ESP_LOGW(TAG, "Grow pump output not configured - cannot control NutrientPumpA");
         }
     }
     else if (pumpId == "NutrientPumpB") {
         // Micro pump on GPIO21
-        if (pump_micro_switch_) {
+        if (pump_micro_output_) {
             if (state) {
-                pump_micro_switch_->turn_on();
+                pump_micro_output_->turn_on();
             } else {
-                pump_micro_switch_->turn_off();
+                pump_micro_output_->turn_off();
             }
         } else {
-            ESP_LOGW(TAG, "Micro pump switch not configured - cannot control NutrientPumpB");
+            ESP_LOGW(TAG, "Micro pump output not configured - cannot control NutrientPumpB");
         }
     }
     else if (pumpId == "NutrientPumpC") {
         // Bloom pump on GPIO22
-        if (pump_bloom_switch_) {
+        if (pump_bloom_output_) {
             if (state) {
-                pump_bloom_switch_->turn_on();
+                pump_bloom_output_->turn_on();
             } else {
-                pump_bloom_switch_->turn_off();
+                pump_bloom_output_->turn_off();
             }
         } else {
-            ESP_LOGW(TAG, "Bloom pump switch not configured - cannot control NutrientPumpC");
+            ESP_LOGW(TAG, "Bloom pump output not configured - cannot control NutrientPumpC");
         }
     }
     else if (pumpId == "WastewaterPump") {
         // Wastewater pump on GPIO23
-        if (pump_wastewater_switch_) {
+        if (pump_wastewater_output_) {
             if (state) {
-                pump_wastewater_switch_->turn_on();
+                pump_wastewater_output_->turn_on();
             } else {
-                pump_wastewater_switch_->turn_off();
+                pump_wastewater_output_->turn_off();
             }
         } else {
-            ESP_LOGW(TAG, "Wastewater pump switch not configured - cannot control WastewaterPump");
+            ESP_LOGW(TAG, "Wastewater pump output not configured - cannot control WastewaterPump");
         }
     }
     // NOTE: AirPump removed - future Zigbee implementation
@@ -191,17 +191,17 @@ void ESPHomeHAL::setValve(const std::string& valveId, bool state) {
     // Update internal state tracking
     valve_states_[valveId] = state;
 
-    // Route to appropriate hardware switch based on valve ID
+    // Route to appropriate GPIO output based on valve ID
     if (valveId == "WaterValve") {
         // Magnetic valve (fresh water inlet) on GPIO18
-        if (mag_valve_switch_) {
+        if (mag_valve_output_) {
             if (state) {
-                mag_valve_switch_->turn_on();
+                mag_valve_output_->turn_on();
             } else {
-                mag_valve_switch_->turn_off();
+                mag_valve_output_->turn_off();
             }
         } else {
-            ESP_LOGW(TAG, "Magnetic valve switch not configured - cannot control WaterValve");
+            ESP_LOGW(TAG, "Magnetic valve output not configured - cannot control WaterValve");
         }
     }
     else {

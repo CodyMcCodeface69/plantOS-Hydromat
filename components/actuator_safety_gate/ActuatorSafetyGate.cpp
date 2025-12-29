@@ -53,11 +53,12 @@ bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
     uint32_t currentTime = esphome::millis();
 
     // ========================================================================
-    // SAFETY CHECK 1: DEBOUNCING
+    // SAFETY CHECK 1: DEBOUNCING (only if safety gate is enabled)
     // ========================================================================
     // Reject if requesting the same state as currently tracked
     // This prevents unnecessary pin toggles and redundant operations
-    if (state.lastRequestedState == targetState) {
+    // NOTE: Debouncing is bypassed when safety gate is disabled
+    if (enabled_ && state.lastRequestedState == targetState) {
         logRejection(actuatorID, "Debouncing - state already requested");
         return false;
     }

@@ -7,7 +7,7 @@ Provides platform-agnostic hardware interface for the unified Controller.
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import light, sensor, output
+from esphome.components import light, sensor, binary_sensor, output
 from esphome.const import (
     CONF_ID,
 )
@@ -26,6 +26,8 @@ CONF_PH_SENSOR = 'ph_sensor'
 CONF_PH_SENSOR_COMPONENT = 'ph_sensor_component'
 CONF_LIGHT_SENSOR = 'light_sensor'
 CONF_TEMPERATURE_SENSOR = 'temperature_sensor'
+CONF_WATER_LEVEL_HIGH_SENSOR = 'water_level_high_sensor'
+CONF_WATER_LEVEL_LOW_SENSOR = 'water_level_low_sensor'
 CONF_PH_READING_INTERVAL = 'ph_reading_interval'
 CONF_PH_MIN = 'ph_min'
 CONF_PH_MAX = 'ph_max'
@@ -62,6 +64,8 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_PH_SENSOR_COMPONENT): cv.use_id(cg.PollingComponent),  # EZO pH UART component
     cv.Optional(CONF_LIGHT_SENSOR): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
+    cv.Optional(CONF_WATER_LEVEL_HIGH_SENSOR): cv.use_id(binary_sensor.BinarySensor),
+    cv.Optional(CONF_WATER_LEVEL_LOW_SENSOR): cv.use_id(binary_sensor.BinarySensor),
     cv.Optional(CONF_PH_READING_INTERVAL, default='2h'): cv.positive_time_period_milliseconds,
     cv.Optional(CONF_PH_MIN, default=5.5): cv.float_range(min=0.0, max=14.0),
     cv.Optional(CONF_PH_MAX, default=6.5): cv.float_range(min=0.0, max=14.0),
@@ -123,6 +127,15 @@ async def to_code(config):
     if CONF_TEMPERATURE_SENSOR in config:
         temperature_sensor = await cg.get_variable(config[CONF_TEMPERATURE_SENSOR])
         cg.add(var.set_temperature_sensor(temperature_sensor))
+
+    # Inject water level sensor dependencies (optional)
+    if CONF_WATER_LEVEL_HIGH_SENSOR in config:
+        water_level_high = await cg.get_variable(config[CONF_WATER_LEVEL_HIGH_SENSOR])
+        cg.add(var.set_water_level_high_sensor(water_level_high))
+
+    if CONF_WATER_LEVEL_LOW_SENSOR in config:
+        water_level_low = await cg.get_variable(config[CONF_WATER_LEVEL_LOW_SENSOR])
+        cg.add(var.set_water_level_low_sensor(water_level_low))
 
     # Set pH reading interval configuration
     cg.add(var.set_ph_reading_interval(config[CONF_PH_READING_INTERVAL]))

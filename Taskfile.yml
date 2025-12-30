@@ -75,9 +75,94 @@ tasks:
       - esphome clean {{.ENTRY_POINT}}
 
   snoop:
-    desc: Attach to device logs via serial port (USB) with auto-reconnect.
+    desc: Attach to device logs via serial port (USB) or OTA fallback with auto-reconnect.
     cmds:
-      - bash -c 'trap "echo \"\nExiting...\"; exit 0" INT; devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)); if [ ${#devices[@]} -eq 0 ]; then echo "No serial devices found. Please connect the device and try again."; exit 1; elif [ ${#devices[@]} -eq 1 ]; then device=${devices[0]}; echo "Using device{{":"}} $device"; else echo "Multiple serial devices found. Please select one{{":"}}"; select device in "${devices[@]}"; do if [ -n "$device" ]; then echo "Selected{{":"}} $device"; break; else echo "Invalid selection. Please try again."; fi; done; fi; while true; do echo ""; echo "=============================================="; echo "Connecting to $device..."; echo "=============================================="; esphome logs {{.ENTRY_POINT}} --device "$device" || true; echo ""; echo "Connection lost. Retrying in 0.5 seconds..."; echo "Press Ctrl+C to exit."; sleep 0.5; done'
+      - |
+        bash -c '
+          trap "echo \"\nExiting...\"; exit 0" INT
+
+          # Try to find serial devices first
+          devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null))
+
+          if [ ${#devices[@]} -eq 0 ]; then
+            # No serial devices - fall back to OTA
+            echo "No serial devices found. Falling back to OTA..."
+
+            # Check for static IP in plantOS.yaml
+            DEVICE_IP="{{.DEVICE_IP}}"
+            if [ -z "$DEVICE_IP" ]; then
+              echo "No DEVICE_IP provided, checking {{.ENTRY_POINT}} for static IP..."
+              STATIC_IP=$(grep -A 4 "manual_ip:" {{.ENTRY_POINT}} | grep "static_ip:" | sed "s/.*static_ip: *//;s/ *#.*//;s/\"//g" | head -n 1)
+              if [ -n "$STATIC_IP" ]; then
+                echo "Found static IP in config: $STATIC_IP"
+                DEVICE_IP="$STATIC_IP"
+              else
+                echo "No static IP found in config, using fallback: 192.168.0.201"
+                DEVICE_IP="192.168.0.201"
+              fi
+            else
+              echo "Using provided DEVICE_IP: $DEVICE_IP"
+            fi
+
+            # Connect via OTA with auto-reconnect
+            echo ""
+            echo "=============================================="
+            echo "Connecting to logs via OTA at $DEVICE_IP..."
+            echo "Press Ctrl+C to exit"
+            echo "=============================================="
+            echo ""
+
+            while true; do
+              esphome logs {{.ENTRY_POINT}} --device "$DEVICE_IP" || true
+              echo ""
+              echo "Connection lost. Retrying in 2 seconds..."
+              sleep 2
+            done
+
+          elif [ ${#devices[@]} -eq 1 ]; then
+            # Single serial device found
+            device=${devices[0]}
+            echo "Using device: $device"
+
+            # Connect via serial with auto-reconnect
+            while true; do
+              echo ""
+              echo "=============================================="
+              echo "Connecting to $device..."
+              echo "=============================================="
+              esphome logs {{.ENTRY_POINT}} --device "$device" || true
+              echo ""
+              echo "Connection lost. Retrying in 0.5 seconds..."
+              echo "Press Ctrl+C to exit."
+              sleep 0.5
+            done
+
+          else
+            # Multiple serial devices - let user select
+            echo "Multiple serial devices found. Please select one:"
+            select device in "${devices[@]}"; do
+              if [ -n "$device" ]; then
+                echo "Selected: $device"
+                break
+              else
+                echo "Invalid selection. Please try again."
+              fi
+            done
+
+            # Connect via selected serial device with auto-reconnect
+            while true; do
+              echo ""
+              echo "=============================================="
+              echo "Connecting to $device..."
+              echo "=============================================="
+              esphome logs {{.ENTRY_POINT}} --device "$device" || true
+              echo ""
+              echo "Connection lost. Retrying in 0.5 seconds..."
+              echo "Press Ctrl+C to exit."
+              sleep 0.5
+            done
+          fi
+        '
 
   push:
     desc: Push updated configuration to github.

@@ -511,6 +511,59 @@ void CentralStatusLogger::print420Art() {
     ESP_LOGI(TAG, "============================        +          ");
 }
 
+void CentralStatusLogger::logWaterLevelStatus(bool high_sensor, bool low_sensor, bool sensors_available) {
+    ESP_LOGI(TAG, "--- WATER LEVEL STATUS ---");
+
+    if (!sensors_available) {
+        ESP_LOGI(TAG, "  Water Level Sensors: OFFLINE");
+        ESP_LOGI(TAG, "  Status: Using time-based fill/drain limits");
+        return;
+    }
+
+    // Determine level status based on sensor states
+    std::string level_status;
+    if (high_sensor && low_sensor) {
+        level_status = "FULL (above HIGH sensor)";
+        // ASCII Art: Tank FULL
+        ESP_LOGI(TAG, "  ┌─────────┐");
+        ESP_LOGI(TAG, "  │█████████│ ← HIGH");
+        ESP_LOGI(TAG, "  │█████████│");
+        ESP_LOGI(TAG, "  │█████████│ ← LOW");
+        ESP_LOGI(TAG, "  └─────────┘");
+    } else if (!high_sensor && low_sensor) {
+        level_status = "NORMAL (between HIGH and LOW)";
+        // ASCII Art: Tank NORMAL
+        ESP_LOGI(TAG, "  ┌─────────┐");
+        ESP_LOGI(TAG, "  │         │ ← HIGH");
+        ESP_LOGI(TAG, "  │█████████│");
+        ESP_LOGI(TAG, "  │█████████│ ← LOW");
+        ESP_LOGI(TAG, "  └─────────┘");
+    } else if (!high_sensor && !low_sensor) {
+        level_status = "LOW (below LOW sensor)";
+        // ASCII Art: Tank LOW
+        ESP_LOGI(TAG, "  ┌─────────┐");
+        ESP_LOGI(TAG, "  │         │ ← HIGH");
+        ESP_LOGI(TAG, "  │         │");
+        ESP_LOGI(TAG, "  │▒▒▒▒▒▒▒▒▒│ ← LOW");
+        ESP_LOGI(TAG, "  └─────────┘");
+    } else {
+        // Invalid state: HIGH ON but LOW OFF (physically impossible)
+        level_status = "ERROR (invalid sensor state)";
+        ESP_LOGE(TAG, "  ALERT: Invalid sensor state - HIGH=ON, LOW=OFF (check wiring)");
+        // ASCII Art: ERROR
+        ESP_LOGI(TAG, "  ┌─────────┐");
+        ESP_LOGI(TAG, "  │  ERROR  │ ← HIGH");
+        ESP_LOGI(TAG, "  │ INVALID │");
+        ESP_LOGI(TAG, "  │  STATE  │ ← LOW");
+        ESP_LOGI(TAG, "  └─────────┘");
+    }
+
+    ESP_LOGI(TAG, "  Water Level: %s", level_status.c_str());
+    ESP_LOGI(TAG, "  Sensors: HIGH=%s, LOW=%s",
+             high_sensor ? "ON" : "OFF",
+             low_sensor ? "ON" : "OFF");
+}
+
 void CentralStatusLogger::configure(bool enableReports, uint32_t reportIntervalMs, bool verboseMode) {
     enableReports_ = enableReports;
     reportInterval_ = reportIntervalMs;

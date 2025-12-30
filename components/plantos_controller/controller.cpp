@@ -177,6 +177,15 @@ void PlantOSController::loop() {
         }
 
         status_logger_.logStatus();
+
+        // Log water level status with ASCII art visualization
+        if (hal_->hasWaterLevelSensors()) {
+            bool high = hal_->readWaterLevelHigh();
+            bool low = hal_->readWaterLevelLow();
+            status_logger_.logWaterLevelStatus(high, low, true);
+        } else {
+            status_logger_.logWaterLevelStatus(false, false, false);  // Sensors offline
+        }
     }
 
     // Call state-specific handler
@@ -272,6 +281,26 @@ void PlantOSController::handleInit() {
                                  psm_->getEventAge());
                         boot_restore_state_ = ControllerState::PAUSE;
                         boot_restore_pending_ = true;
+                    } else if (eventID == "WATER_FILLING") {
+                        ESP_LOGW(TAG, "RECOVERY: Interrupted WATER_FILLING operation found (age: %lld sec)", psm_->getEventAge());
+                        ESP_LOGW(TAG, "RECOVERY: Force-closing water valve to prevent overflow");
+                        // Close valve via SafetyGate
+                        if (safety_gate_) {
+                            safety_gate_->executeCommand(WATER_VALVE, false, 0);
+                        }
+                        // Clear PSM event
+                        psm_->clearEvent();
+                        ESP_LOGI(TAG, "RECOVERY: Water valve closed, PSM event cleared");
+                    } else if (eventID == "WATER_EMPTYING") {
+                        ESP_LOGW(TAG, "RECOVERY: Interrupted WATER_EMPTYING operation found (age: %lld sec)", psm_->getEventAge());
+                        ESP_LOGW(TAG, "RECOVERY: Force-stopping wastewater pump");
+                        // Stop pump via SafetyGate
+                        if (safety_gate_) {
+                            safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
+                        }
+                        // Clear PSM event
+                        psm_->clearEvent();
+                        ESP_LOGI(TAG, "RECOVERY: Wastewater pump stopped, PSM event cleared");
                     } else {
                         // Some other operation was interrupted - log warning
                         ESP_LOGW(TAG, "RECOVERY: Interrupted operation found: %s (status: %d, age: %lld sec)",
@@ -1208,22 +1237,23 @@ void PlantOSController::handleFeeding() {
 
 void PlantOSController::handleWaterFilling() {
     // Blue solid LED handled by LedBehaviorSystem
-    // Open water valve for fixed duration
-
     uint32_t elapsed = getStateElapsed();
 
-    // Fill duration: 30 seconds (matches old PlantOSLogic implementation)
+    // Fill duration: 30 seconds (fallback if sensors unavailable)
     static constexpr uint32_t FILL_DURATION_MS = 30000;
 
-    // On entry: open water valve
+    // ENTRY: Log and activate water valve
     if (elapsed < 100) {
+        ESP_LOGI(TAG, "[WATER_FILLING] Starting tank fill sequence");
+
+        // Request water valve open (30s max duration as safety backup)
         if (safety_gate_) {
-            bool approved = safety_gate_->executeCommand(WATER_VALVE, true, 30);  // 30 seconds
+            bool approved = safety_gate_->executeCommand(WATER_VALVE, true, 30);  // 30 seconds max
 
             if (!approved) {
-                ESP_LOGE(TAG, "Water valve command rejected by SafetyGate!");
+                ESP_LOGE(TAG, "[WATER_FILLING] SafetyGate rejected WaterValve command");
 
-                // Clear PSM event - water fill aborted due to safety rejection
+                // Clear PSM event - fill aborted
                 if (psm_) {
                     psm_->clearEvent();
                 }
@@ -1233,48 +1263,109 @@ void PlantOSController::handleWaterFilling() {
             }
         }
 
-        ESP_LOGI(TAG, "Water valve OPEN for %d seconds", FILL_DURATION_MS / 1000);
+        ESP_LOGI(TAG, "[WATER_FILLING] Water valve OPENED");
         return;
     }
 
-    // Wait for fill duration + 200ms safety margin
-    if (elapsed < FILL_DURATION_MS + 200) {
+    // MONITOR: Check water level sensors (if available)
+    if (hal_->hasWaterLevelSensors()) {
+        bool high_sensor = hal_->readWaterLevelHigh();
+        bool low_sensor = hal_->readWaterLevelLow();
+
+        // SUCCESS: High level reached
+        if (high_sensor) {
+            ESP_LOGI(TAG, "[WATER_FILLING] HIGH sensor triggered - tank full");
+
+            // Close water valve
+            if (safety_gate_) {
+                safety_gate_->executeCommand(WATER_VALVE, false, 0);
+            }
+
+            // Clear PSM event
+            if (psm_) {
+                psm_->clearEvent();
+            }
+
+            ESP_LOGI(TAG, "[WATER_FILLING] Fill complete - returning to IDLE");
+            transitionTo(ControllerState::IDLE);
+            return;
+        }
+
+        // MONITOR: Log progress when LOW sensor triggered
+        static bool low_sensor_logged = false;
+        if (low_sensor && !low_sensor_logged) {
+            ESP_LOGI(TAG, "[WATER_FILLING] LOW sensor triggered - filling in progress");
+            low_sensor_logged = true;
+        }
+        if (!low_sensor) {
+            low_sensor_logged = false;  // Reset for next fill cycle
+        }
+    } else {
+        // FALLBACK: No sensors available - use time-based limit
+        static bool no_sensor_warning_logged = false;
+        if (!no_sensor_warning_logged) {
+            ESP_LOGW(TAG, "[WATER_FILLING] Water level sensors not available - using 30s timeout");
+            no_sensor_warning_logged = true;
+        }
+    }
+
+    // TIMEOUT: Safety backup - 30s max fill time
+    if (elapsed >= FILL_DURATION_MS) {
+        ESP_LOGW(TAG, "[WATER_FILLING] 30s timeout reached - closing valve");
+
+        // Close water valve
+        if (safety_gate_) {
+            safety_gate_->executeCommand(WATER_VALVE, false, 0);
+        }
+
+        // Clear PSM event
+        if (psm_) {
+            psm_->clearEvent();
+        }
+
+        // Alert if sensors were expected but didn't trigger
+        if (hal_->hasWaterLevelSensors()) {
+            ESP_LOGE(TAG, "[WATER_FILLING] HIGH sensor never triggered - possible sensor failure or low water pressure");
+        }
+
+        ESP_LOGI(TAG, "[WATER_FILLING] Timeout complete - returning to IDLE");
+        transitionTo(ControllerState::IDLE);
         return;
     }
-
-    // Close valve explicitly
-    if (safety_gate_) {
-        safety_gate_->executeCommand(WATER_VALVE, false, 0);
-    }
-
-    ESP_LOGI(TAG, "Water fill complete");
-
-    // Clear PSM event - water fill complete
-    if (psm_) {
-        psm_->clearEvent();
-    }
-
-    transitionTo(ControllerState::IDLE);
 }
 
 void PlantOSController::handleWaterEmptying() {
     // Purple pulse LED handled by LedBehaviorSystem
-    // Activate wastewater pump for fixed duration
-
     uint32_t elapsed = getStateElapsed();
 
-    // Empty duration: 30 seconds (matches old PlantOSLogic implementation)
+    // Empty duration: 30 seconds (fallback if sensors unavailable)
     static constexpr uint32_t EMPTY_DURATION_MS = 30000;
 
-    // On entry: activate wastewater pump
+    // ENTRY: Log and activate wastewater pump
     if (elapsed < 100) {
+        ESP_LOGI(TAG, "[WATER_EMPTYING] Starting tank drain sequence");
+
+        // Check LOW sensor before starting (prevent dry-pump immediately)
+        if (hal_->hasWaterLevelSensors() && !hal_->readWaterLevelLow()) {
+            ESP_LOGW(TAG, "[WATER_EMPTYING] LOW sensor already OFF - tank already empty, aborting");
+
+            // Clear PSM event
+            if (psm_) {
+                psm_->clearEvent();
+            }
+
+            transitionTo(ControllerState::IDLE);
+            return;
+        }
+
+        // Request wastewater pump on (30s max duration as safety backup)
         if (safety_gate_) {
-            bool approved = safety_gate_->executeCommand(WASTEWATER_PUMP, true, 30);  // 30 seconds
+            bool approved = safety_gate_->executeCommand(WASTEWATER_PUMP, true, 30);  // 30 seconds max
 
             if (!approved) {
-                ESP_LOGE(TAG, "Wastewater pump command rejected by SafetyGate!");
+                ESP_LOGE(TAG, "[WATER_EMPTYING] SafetyGate rejected WastewaterPump command");
 
-                // Clear PSM event - water empty aborted due to safety rejection
+                // Clear PSM event - drain aborted
                 if (psm_) {
                     psm_->clearEvent();
                 }
@@ -1284,28 +1375,75 @@ void PlantOSController::handleWaterEmptying() {
             }
         }
 
-        ESP_LOGI(TAG, "Wastewater pump ON for %d seconds", EMPTY_DURATION_MS / 1000);
+        ESP_LOGI(TAG, "[WATER_EMPTYING] Wastewater pump ACTIVATED");
         return;
     }
 
-    // Wait for empty duration + 200ms safety margin
-    if (elapsed < EMPTY_DURATION_MS + 200) {
+    // MONITOR: Check water level sensors (if available)
+    if (hal_->hasWaterLevelSensors()) {
+        bool high_sensor = hal_->readWaterLevelHigh();
+        bool low_sensor = hal_->readWaterLevelLow();
+
+        // SUCCESS: Low level reached (tank empty)
+        if (!low_sensor) {
+            ESP_LOGI(TAG, "[WATER_EMPTYING] LOW sensor OFF - tank empty");
+
+            // Stop wastewater pump
+            if (safety_gate_) {
+                safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
+            }
+
+            // Clear PSM event
+            if (psm_) {
+                psm_->clearEvent();
+            }
+
+            ESP_LOGI(TAG, "[WATER_EMPTYING] Drain complete - returning to IDLE");
+            transitionTo(ControllerState::IDLE);
+            return;
+        }
+
+        // MONITOR: Log progress when HIGH sensor clears
+        static bool high_sensor_logged = false;
+        if (!high_sensor && !high_sensor_logged) {
+            ESP_LOGI(TAG, "[WATER_EMPTYING] HIGH sensor OFF - draining in progress");
+            high_sensor_logged = true;
+        }
+        if (high_sensor) {
+            high_sensor_logged = false;  // Reset for next drain cycle
+        }
+    } else {
+        // FALLBACK: No sensors available - use time-based limit
+        static bool no_sensor_warning_logged = false;
+        if (!no_sensor_warning_logged) {
+            ESP_LOGW(TAG, "[WATER_EMPTYING] Water level sensors not available - using 30s timeout");
+            no_sensor_warning_logged = true;
+        }
+    }
+
+    // TIMEOUT: Safety backup - 30s max drain time
+    if (elapsed >= EMPTY_DURATION_MS) {
+        ESP_LOGW(TAG, "[WATER_EMPTYING] 30s timeout reached - stopping pump");
+
+        // Stop wastewater pump
+        if (safety_gate_) {
+            safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
+        }
+
+        // Clear PSM event
+        if (psm_) {
+            psm_->clearEvent();
+        }
+
+        // Alert if sensors were expected but didn't trigger
+        if (hal_->hasWaterLevelSensors()) {
+            ESP_LOGE(TAG, "[WATER_EMPTYING] LOW sensor never cleared - possible sensor failure or clog");
+        }
+
+        ESP_LOGI(TAG, "[WATER_EMPTYING] Timeout complete - returning to IDLE");
+        transitionTo(ControllerState::IDLE);
         return;
     }
-
-    // Turn off pump explicitly
-    if (safety_gate_) {
-        safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
-    }
-
-    ESP_LOGI(TAG, "Water empty complete");
-
-    // Clear PSM event - water empty complete
-    if (psm_) {
-        psm_->clearEvent();
-    }
-
-    transitionTo(ControllerState::IDLE);
 }
 
 // ============================================================================

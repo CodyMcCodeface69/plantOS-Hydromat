@@ -222,6 +222,14 @@ public:
     void print420Art();
 
     /**
+     * Log water level status with ASCII art visualization
+     * @param high_sensor State of HIGH water level sensor (true = water present)
+     * @param low_sensor State of LOW water level sensor (true = water present)
+     * @param sensors_available Whether sensors are configured and available
+     */
+    void logWaterLevelStatus(bool high_sensor, bool low_sensor, bool sensors_available);
+
+    /**
      * Configure status logger behavior
      * @param enableReports Enable/disable periodic status reports
      * @param reportIntervalMs Report interval in milliseconds

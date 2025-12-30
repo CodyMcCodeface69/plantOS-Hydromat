@@ -13,6 +13,9 @@ class LightState;
 namespace sensor {
 class Sensor;
 }
+namespace binary_sensor {
+class BinarySensor;
+}
 namespace switch_ {
 class Switch;
 }
@@ -238,6 +241,24 @@ public:
     virtual bool hasWaterLevel() const = 0;
 
     /**
+     * Read water level HIGH sensor (XKC-Y23-V on GPIO10)
+     * @return true if water is at or above HIGH level, false otherwise
+     */
+    virtual bool readWaterLevelHigh() = 0;
+
+    /**
+     * Read water level LOW sensor (XKC-Y23-V on GPIO11)
+     * @return true if water is at or above LOW level, false otherwise
+     */
+    virtual bool readWaterLevelLow() = 0;
+
+    /**
+     * Check if water level sensors are configured and available
+     * @return true if both HIGH and LOW sensors are available
+     */
+    virtual bool hasWaterLevelSensors() const = 0;
+
+    /**
      * Read light intensity from analog sensor
      * @return Light intensity raw ADC value (0.0-1.0 normalized, or raw voltage)
      */
@@ -329,6 +350,8 @@ public:
     void set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component);
     void set_light_sensor(esphome::sensor::Sensor* light_sensor);
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
+    void set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor);
+    void set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor);
 
     // Actuator output setters (Phase 2: Hardware Control)
     // NOTE: Using LEDC PWM outputs for pump control with variable intensity
@@ -374,6 +397,9 @@ public:
 
     float readWaterLevel() override;
     bool hasWaterLevel() const override;
+    bool readWaterLevelHigh() override;
+    bool readWaterLevelLow() override;
+    bool hasWaterLevelSensors() const override;
 
     float readLightIntensity() override;
     bool hasLightIntensity() const override;
@@ -398,6 +424,8 @@ private:
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_{nullptr};
     esphome::sensor::Sensor* light_sensor_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
+    esphome::binary_sensor::BinarySensor* water_level_high_sensor_{nullptr};
+    esphome::binary_sensor::BinarySensor* water_level_low_sensor_{nullptr};
 
     // Actuator GPIO outputs (Phase 2: Hardware Control - 6 actuators)
     // NOTE: Using FloatOutput (LEDC PWM) for variable pump intensity control

@@ -38,6 +38,16 @@ void ESPHomeHAL::set_temperature_sensor(esphome::sensor::Sensor* temperature_sen
     ESP_LOGI(TAG, "Temperature sensor configured");
 }
 
+void ESPHomeHAL::set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor) {
+    water_level_high_sensor_ = sensor;
+    ESP_LOGI(TAG, "Water level HIGH sensor configured");
+}
+
+void ESPHomeHAL::set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor) {
+    water_level_low_sensor_ = sensor;
+    ESP_LOGI(TAG, "Water level LOW sensor configured");
+}
+
 // ============================================================================
 // ACTUATOR OUTPUT SETTERS (Phase 2: Hardware Control)
 // ============================================================================
@@ -385,6 +395,25 @@ float ESPHomeHAL::readWaterLevel() {
 bool ESPHomeHAL::hasWaterLevel() const {
     // TODO: Implement when water level sensor is available
     return false;
+}
+
+bool ESPHomeHAL::readWaterLevelHigh() {
+    if (!water_level_high_sensor_) {
+        return false;
+    }
+    return water_level_high_sensor_->state;
+}
+
+bool ESPHomeHAL::readWaterLevelLow() {
+    if (!water_level_low_sensor_) {
+        return false;
+    }
+    return water_level_low_sensor_->state;
+}
+
+bool ESPHomeHAL::hasWaterLevelSensors() const {
+    return water_level_high_sensor_ != nullptr &&
+           water_level_low_sensor_ != nullptr;
 }
 
 float ESPHomeHAL::readLightIntensity() {

@@ -473,6 +473,63 @@ sensor:
 
 
 ################################################################################
+# Binary Sensors: Water Level Sensors (XKC-Y23-V)
+#
+# Two capacitive non-contact water level sensors for tank fill monitoring
+# - HIGH sensor (GPIO10): Tank full indicator
+# - LOW sensor (GPIO11): Tank minimum level indicator
+#
+# Sensor Logic:
+# - Both ON: Tank FULL (water above HIGH level)
+# - Only LOW ON: Tank NORMAL (water between HIGH and LOW)
+# - Both OFF: Tank LOW (water below LOW level)
+# - HIGH ON, LOW OFF: ERROR (invalid state - check wiring)
+################################################################################
+binary_sensor:
+  # XKC-Y23-V Water Level HIGH Sensor (GPIO10)
+  # Triggers when water reaches high level (tank near full)
+  - platform: gpio
+    id: water_level_high_sensor
+    name: "Water Level HIGH"
+    pin:
+      number: GPIO10
+      mode:
+        input: true
+        pulldown: true  # Pull down when sensor not active
+    filters:
+      # Debounce: sensor must be stable for 500ms to prevent water ripple false triggers
+      - delayed_on: 500ms
+      - delayed_off: 500ms
+    on_press:
+      then:
+        - logger.log: "Water level HIGH detected - tank near full"
+    on_release:
+      then:
+        - logger.log: "Water level HIGH cleared - tank below high level"
+
+  # XKC-Y23-V Water Level LOW Sensor (GPIO11)
+  # Triggers when water reaches minimum safe level
+  - platform: gpio
+    id: water_level_low_sensor
+    name: "Water Level LOW"
+    pin:
+      number: GPIO11
+      mode:
+        input: true
+        pulldown: true  # Pull down when sensor not active
+    filters:
+      # Debounce: sensor must be stable for 500ms to prevent water ripple false triggers
+      - delayed_on: 500ms
+      - delayed_off: 500ms
+    on_press:
+      then:
+        - logger.log: "Water level LOW detected - tank above minimum"
+    on_release:
+      then:
+        - logger.log: "Water level LOW cleared - tank below minimum level"
+
+
+################################################################################
 # Text Sensor: Controller State (00 - Kern-Status)
 #
 # Publishes the current unified controller FSM state to the web UI.
@@ -958,6 +1015,8 @@ plantos_hal:
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
   light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0)
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO23
+  water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO10
+  water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO11
 
   # Actuator GPIO Outputs (Phase 2: Hardware Control - 6 actuators)
   # NOTE: Using outputs instead of switches to avoid circular dependency

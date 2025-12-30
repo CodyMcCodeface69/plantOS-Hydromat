@@ -63,6 +63,18 @@ struct OneWireDeviceInfo {
 };
 
 /**
+ * Pump Configuration Info structure for calibration status tracking
+ */
+struct PumpConfigInfo {
+    std::string pump_name;      // Pump name (e.g., "pH Pump", "Grow Pump")
+    float flow_rate_ml_s;       // Flow rate in mL/second at configured PWM
+    float pwm_intensity;        // PWM intensity (0.0-1.0)
+
+    PumpConfigInfo(const std::string& name, float flow_rate, float pwm)
+        : pump_name(name), flow_rate_ml_s(flow_rate), pwm_intensity(pwm) {}
+};
+
+/**
  * CentralStatusLogger - Unified logging and status display system
  *
  * This class manages all critical system variables and provides
@@ -160,6 +172,12 @@ public:
     void updateOneWireHardwareStatus(const std::vector<OneWireDeviceInfo>& devices);
 
     /**
+     * Update pump configuration status
+     * @param configs Vector of PumpConfigInfo structures with pump calibration data
+     */
+    void updatePumpConfigurations(const std::vector<PumpConfigInfo>& configs);
+
+    /**
      * Set 420 mode for easter egg logging
      * @param enabled Whether 420 mode is enabled
      */
@@ -246,6 +264,10 @@ private:
     // 1-Wire Hardware status
     std::vector<OneWireDeviceInfo> oneWireDevices;
     bool oneWireStatusUpdated;
+
+    // Pump Configuration status
+    std::vector<PumpConfigInfo> pumpConfigs;
+    bool pumpConfigsUpdated;
 
     // Easter egg mode
     bool mode420_;

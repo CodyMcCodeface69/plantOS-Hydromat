@@ -124,6 +124,30 @@ void PlantOSController::loop() {
 
         status_logger_.updateOneWireHardwareStatus(oneWireDevices);
 
+        // Update pump configurations in status logger
+        std::vector<PumpConfigInfo> pumpConfigs;
+        pumpConfigs.push_back(PumpConfigInfo(
+            "pH Pump (AcidPump)",
+            hal_->getPumpConfig("AcidPump").flow_rate_ml_s,
+            hal_->getPumpConfig("AcidPump").pwm_intensity
+        ));
+        pumpConfigs.push_back(PumpConfigInfo(
+            "Grow Pump (NutrientPumpA)",
+            hal_->getPumpConfig("NutrientPumpA").flow_rate_ml_s,
+            hal_->getPumpConfig("NutrientPumpA").pwm_intensity
+        ));
+        pumpConfigs.push_back(PumpConfigInfo(
+            "Micro Pump (NutrientPumpB)",
+            hal_->getPumpConfig("NutrientPumpB").flow_rate_ml_s,
+            hal_->getPumpConfig("NutrientPumpB").pwm_intensity
+        ));
+        pumpConfigs.push_back(PumpConfigInfo(
+            "Bloom Pump (NutrientPumpC)",
+            hal_->getPumpConfig("NutrientPumpC").flow_rate_ml_s,
+            hal_->getPumpConfig("NutrientPumpC").pwm_intensity
+        ));
+        status_logger_.updatePumpConfigurations(pumpConfigs);
+
         // Update PSM event info in status logger
         if (psm_) {
             if (psm_->hasEvent()) {
@@ -531,15 +555,19 @@ void PlantOSController::handlePhCalculating() {
         return;
     }
 
-    // pH is too high - calculate required acid dose
-    uint32_t dose_ms = calculateAcidDuration(ph_current_, target_max);
+    // pH is too high - calculate required acid dose in mL
+    float dose_ml = calculateAcidDoseML(ph_current_, target_max);
 
     // Check minimum dose threshold (avoid tiny corrections)
-    if (dose_ms < 1000) {
-        ESP_LOGI(TAG, "Calculated dose too small (%u ms < 1000 ms) - skipping correction", dose_ms);
+    if (dose_ml < 0.5f) {
+        ESP_LOGI(TAG, "Calculated dose too small (%.1f mL < 0.5 mL) - skipping correction", dose_ml);
         transitionTo(ControllerState::IDLE);
         return;
     }
+
+    // Convert mL to seconds using HAL pumpflow
+    float dose_seconds = hal_->pumpflow("AcidPump", dose_ml);
+    uint32_t dose_ms = static_cast<uint32_t>(dose_seconds * 1000.0f);
 
     // Check max attempts to prevent infinite loops
     if (ph_attempt_count_ >= MAX_PH_ATTEMPTS) {
@@ -550,11 +578,12 @@ void PlantOSController::handlePhCalculating() {
     }
 
     // Proceed with injection
+    ph_dose_ml_ = dose_ml;
     ph_dose_duration_ms_ = dose_ms;
     ph_attempt_count_++;
 
-    ESP_LOGI(TAG, "pH correction needed: %.2f → %.2f (dose: %u ms, attempt %d/%d)",
-             ph_current_, target_max, dose_ms, ph_attempt_count_, MAX_PH_ATTEMPTS);
+    ESP_LOGI(TAG, "pH correction needed: %.2f → %.2f (dose: %.1f mL = %.2f sec, attempt %d/%d)",
+             ph_current_, target_max, dose_ml, dose_seconds, ph_attempt_count_, MAX_PH_ATTEMPTS);
 
     transitionTo(ControllerState::PH_INJECTING);
 }
@@ -570,7 +599,7 @@ void PlantOSController::handlePhInjecting() {
         // Calculate duration in seconds (round up)
         uint32_t duration_sec = (ph_dose_duration_ms_ + 999) / 1000;
 
-        ESP_LOGI(TAG, "Starting acid injection: %u ms (%u sec)", ph_dose_duration_ms_, duration_sec);
+        ESP_LOGI(TAG, "Starting acid injection: %.1f mL (%.2f sec)", ph_dose_ml_, duration_sec / 1.0f);
 
         // Start air pump first for immediate mixing
         requestPump(AIR_PUMP, true, 0); // Continuous during injection
@@ -583,7 +612,7 @@ void PlantOSController::handlePhInjecting() {
             return;
         }
 
-        ESP_LOGI(TAG, "Acid pump active (Air pump mixing)");
+        ESP_LOGI(TAG, "Acid pump active - dosing %.1f mL (Air pump mixing)", ph_dose_ml_);
         return;
     }
 
@@ -594,7 +623,7 @@ void PlantOSController::handlePhInjecting() {
         // Injection complete - explicitly stop acid pump
         requestPump(ACID_PUMP, false);
 
-        ESP_LOGI(TAG, "Acid dosing complete (%u ms) - starting 2-minute mixing phase", ph_dose_duration_ms_);
+        ESP_LOGI(TAG, "Acid dosing complete: %.1f mL added - starting 2-minute mixing phase", ph_dose_ml_);
         transitionTo(ControllerState::PH_MIXING);
     }
 }
@@ -1268,6 +1297,7 @@ void PlantOSController::handlePhProcessing() {
         ph_attempt_count_ = 0;
         ph_readings_.clear();
         ph_current_ = 0.0f;
+        ph_dose_ml_ = 0.0f;
         ph_dose_duration_ms_ = 0;
 
         // Log event for crash recovery
@@ -1659,30 +1689,43 @@ bool PlantOSController::hasPhValue() {
 // pH Correction Helpers
 // ============================================================================
 
-uint32_t PlantOSController::calculateAcidDuration(float current_ph, float target_ph_max) {
-    // Calculate acid dose based on pH offset
-    // Formula: dose_seconds = pH_offset * calibration_factor
-    // This is a simplified calculation - production systems would use
-    // tank volume, acid concentration, and empirical calibration data
+float PlantOSController::calculateAcidDoseML(float current_ph, float target_ph_max) {
+    // Calculate acid dose in milliliters based on pH offset
+    // Uses 0.5mL increments for precise control
+    // Formula: dose_ml = pH_offset * calibration_factor (per liter of tank volume)
 
     if (current_ph <= target_ph_max) {
-        return 0; // No correction needed
+        return 0.0f; // No correction needed
     }
 
     float ph_offset = current_ph - target_ph_max;
 
-    // Calibration factor: 2 seconds per 0.1 pH unit
-    // Example: pH 7.0 → 6.5 = 0.5 offset = 10 seconds
-    float dose_seconds = ph_offset * 20.0f; // 20 seconds per 1.0 pH
+    // Get tank volume from HAL
+    float tank_volume_liters = hal_ ? hal_->getTankVolume() : 10.0f;
 
-    // Convert to milliseconds
-    uint32_t dose_ms = static_cast<uint32_t>(dose_seconds * 1000.0f);
+    // Calibration factor: 0.5mL per 0.1 pH unit per 10 liters of water
+    // Example: pH 7.0 → 6.5 = 0.5 offset = 2.5mL for 10L tank
+    // This is a conservative starting point - adjust based on your acid concentration
+    float dose_ml_per_liter = ph_offset * 0.5f;  // 0.5mL per 0.1 pH per 10L
+    float dose_ml = dose_ml_per_liter * (tank_volume_liters / 10.0f);
 
-    // Apply safety limits
-    if (dose_ms > 30000) dose_ms = 30000; // Max 30 seconds
-    if (dose_ms < 1000) dose_ms = 1000;   // Min 1 second
+    // Round to nearest 0.5mL increment
+    dose_ml = roundf(dose_ml * 2.0f) / 2.0f;
 
-    return dose_ms;
+    // Ensure minimum dose of 0.5mL
+    if (dose_ml < 0.5f) {
+        dose_ml = 0.5f;
+    }
+
+    // Apply safety limit: max 5.0mL per dose
+    if (dose_ml > 5.0f) {
+        dose_ml = 5.0f;
+    }
+
+    ESP_LOGI(TAG, "Calculated acid dose: %.1f mL for %.2f pH offset (tank: %.1fL)",
+             dose_ml, ph_offset, tank_volume_liters);
+
+    return dose_ml;
 }
 
 float PlantOSController::calculateRobustPhAverage() {

@@ -526,6 +526,18 @@ text_sensor:
     # Update every 10 seconds to match sensor update interval
     update_interval: 10s
 
+  - platform: template
+    name: "Tank Volume"
+    id: tank_volume_text
+    # Lambda returns configured tank volume from HAL
+    lambda: |-
+      char buf[64];
+      float volume_liters = id(hal)->getTankVolume();
+      snprintf(buf, sizeof(buf), "%.1f L (LOW to HIGH)", volume_liters);
+      return {buf};
+    # Update every 30 seconds (static configuration value)
+    update_interval: 30s
+
 ################################################################################
 # Button: Controller Management and Manual Routines
 #
@@ -728,80 +740,145 @@ button:
             }
 
   - platform: template
-    name: "10_02_Test pH Pump (3s)"
+    name: "10_02_Test pH Pump (10s)"
     on_press:
-      # Turn ON pH pump for 3 seconds, then auto turn OFF
+      # Turn ON pH pump for 10 seconds at current PWM slider value
       # Maps to "AcidPump" actuator ID
       then:
         - lambda: |-
-            ESP_LOGI("button", "Testing pH Pump for 3 seconds");
-            if (id(actuator_safety)->executeCommand("AcidPump", true, 10)) {
-              ESP_LOGI("button", "pH Pump ON - will auto turn OFF after 3s");
-            } else {
-              ESP_LOGW("button", "pH Pump test command rejected");
-            }
-        - delay: 3s
+            // Read current PWM slider value (0-100%)
+            float pwm_percent = id(pwm_gpio19_slider).state;
+            float pwm_intensity = pwm_percent / 100.0f;
+
+            // Log calibration instructions
+            ESP_LOGI("button", "=== pH Pump Calibration Test ===");
+            ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
+            ESP_LOGI("button", "Please measure the volume in mL.");
+            ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
+            ESP_LOGI("button", "Update 'pump_ph_flow_rate_ml_s' and 'pump_ph_pwm_intensity' in plantOS.yaml.");
+
+            // Turn on pump with PWM intensity
+            id(hal)->setPump("AcidPump", true, pwm_intensity);
+
+        - delay: 10s
         - lambda: |-
-            if (id(actuator_safety)->executeCommand("AcidPump", false)) {
-              ESP_LOGI("button", "pH Pump auto-OFF after 3s");
-            }
+            // Turn off pump
+            id(hal)->setPump("AcidPump", false);
+            ESP_LOGI("button", "pH Pump auto-OFF after 10s");
+            ESP_LOGI("button", "================================");
 
   - platform: template
-    name: "10_03_Test Grow Pump (3s)"
+    name: "10_03_Test Grow Pump (10s)"
     on_press:
-      # Turn ON grow pump for 3 seconds, then auto turn OFF
+      # Turn ON grow pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpA" actuator ID
       then:
         - lambda: |-
-            ESP_LOGI("button", "Testing Grow Pump for 3 seconds");
-            if (id(actuator_safety)->executeCommand("NutrientPumpA", true, 10)) {
-              ESP_LOGI("button", "Grow Pump ON - will auto turn OFF after 3s");
-            } else {
-              ESP_LOGW("button", "Grow Pump test command rejected");
-            }
-        - delay: 3s
+            // Read current PWM slider value (0-100%)
+            float pwm_percent = id(pwm_gpio20_slider).state;
+            float pwm_intensity = pwm_percent / 100.0f;
+
+            // Log calibration instructions
+            ESP_LOGI("button", "=== Grow Pump Calibration Test ===");
+            ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
+            ESP_LOGI("button", "Please measure the volume in mL.");
+            ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
+            ESP_LOGI("button", "Update 'pump_grow_flow_rate_ml_s' and 'pump_grow_pwm_intensity' in plantOS.yaml.");
+
+            // Turn on pump with PWM intensity
+            id(hal)->setPump("NutrientPumpA", true, pwm_intensity);
+
+        - delay: 10s
         - lambda: |-
-            if (id(actuator_safety)->executeCommand("NutrientPumpA", false)) {
-              ESP_LOGI("button", "Grow Pump auto-OFF after 3s");
-            }
+            // Turn off pump
+            id(hal)->setPump("NutrientPumpA", false);
+            ESP_LOGI("button", "Grow Pump auto-OFF after 10s");
+            ESP_LOGI("button", "===================================");
 
   - platform: template
-    name: "10_04_Test Micro Pump (3s)"
+    name: "10_04_Test Micro Pump (10s)"
     on_press:
-      # Turn ON micro pump for 3 seconds, then auto turn OFF
+      # Turn ON micro pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpB" actuator ID
       then:
         - lambda: |-
-            ESP_LOGI("button", "Testing Micro Pump for 3 seconds");
-            if (id(actuator_safety)->executeCommand("NutrientPumpB", true, 10)) {
-              ESP_LOGI("button", "Micro Pump ON - will auto turn OFF after 3s");
-            } else {
-              ESP_LOGW("button", "Micro Pump test command rejected");
-            }
-        - delay: 3s
+            // Read current PWM slider value (0-100%)
+            float pwm_percent = id(pwm_gpio21_slider).state;
+            float pwm_intensity = pwm_percent / 100.0f;
+
+            // Log calibration instructions
+            ESP_LOGI("button", "=== Micro Pump Calibration Test ===");
+            ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
+            ESP_LOGI("button", "Please measure the volume in mL.");
+            ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
+            ESP_LOGI("button", "Update 'pump_micro_flow_rate_ml_s' and 'pump_micro_pwm_intensity' in plantOS.yaml.");
+
+            // Turn on pump with PWM intensity
+            id(hal)->setPump("NutrientPumpB", true, pwm_intensity);
+
+        - delay: 10s
         - lambda: |-
-            if (id(actuator_safety)->executeCommand("NutrientPumpB", false)) {
-              ESP_LOGI("button", "Micro Pump auto-OFF after 3s");
-            }
+            // Turn off pump
+            id(hal)->setPump("NutrientPumpB", false);
+            ESP_LOGI("button", "Micro Pump auto-OFF after 10s");
+            ESP_LOGI("button", "====================================");
 
   - platform: template
-    name: "10_05_Test Bloom Pump (3s)"
+    name: "10_05_Test Bloom Pump (10s)"
     on_press:
-      # Turn ON bloom pump for 3 seconds, then auto turn OFF
+      # Turn ON bloom pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpC" actuator ID
       then:
         - lambda: |-
-            ESP_LOGI("button", "Testing Bloom Pump for 3 seconds");
-            if (id(actuator_safety)->executeCommand("NutrientPumpC", true, 10)) {
-              ESP_LOGI("button", "Bloom Pump ON - will auto turn OFF after 3s");
-            } else {
-              ESP_LOGW("button", "Bloom Pump test command rejected");
-            }
-        - delay: 3s
+            // Read current PWM slider value (0-100%)
+            float pwm_percent = id(pwm_gpio22_slider).state;
+            float pwm_intensity = pwm_percent / 100.0f;
+
+            // Log calibration instructions
+            ESP_LOGI("button", "=== Bloom Pump Calibration Test ===");
+            ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
+            ESP_LOGI("button", "Please measure the volume in mL.");
+            ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
+            ESP_LOGI("button", "Update 'pump_bloom_flow_rate_ml_s' and 'pump_bloom_pwm_intensity' in plantOS.yaml.");
+
+            // Turn on pump with PWM intensity
+            id(hal)->setPump("NutrientPumpC", true, pwm_intensity);
+
+        - delay: 10s
         - lambda: |-
-            if (id(actuator_safety)->executeCommand("NutrientPumpC", false)) {
-              ESP_LOGI("button", "Bloom Pump auto-OFF after 3s");
-            }
+            // Turn off pump
+            id(hal)->setPump("NutrientPumpC", false);
+            ESP_LOGI("button", "Bloom Pump auto-OFF after 10s");
+            ESP_LOGI("button", "====================================");
+
+  - platform: template
+    name: "10_06_Test Grow Pump (2cl = 20mL)"
+    on_press:
+      # Test precise volume output: 2cl (20mL) from Grow Pump
+      # Uses HAL pumpflow() to convert mL to seconds based on calibration
+      then:
+        - lambda: |-
+            // Use HAL pumpflow to calculate duration for 20mL
+            float target_ml = 20.0f;
+            float duration_s = id(hal)->pumpflow("NutrientPumpA", target_ml);
+
+            ESP_LOGI("button", "=== Grow Pump 2cl Test ===");
+            ESP_LOGI("button", "Target: %.1f mL (2cl)", target_ml);
+            ESP_LOGI("button", "Calculated duration: %.2f seconds", duration_s);
+            ESP_LOGI("button", "Using configured PWM and flow rate from HAL");
+
+            // Turn on pump using configured PWM intensity
+            id(hal)->setPump("NutrientPumpA", true);
+
+        # Wait for calculated duration (convert to milliseconds)
+        - delay: !lambda "return (uint32_t)(id(hal)->pumpflow(\"NutrientPumpA\", 20.0f) * 1000);"
+
+        - lambda: |-
+            // Turn off pump
+            id(hal)->setPump("NutrientPumpA", false);
+            ESP_LOGI("button", "Grow Pump OFF - 2cl test complete");
+            ESP_LOGI("button", "Please verify 20mL was dispensed");
+            ESP_LOGI("button", "==========================");
 
 ################################################################################
 # PlantOS HAL (Hardware Abstraction Layer) - Layer 3
@@ -826,6 +903,26 @@ plantos_hal:
   pump_micro_output: pump_micro_output      # GPIO21 - Micro pump (micronutrients)
   pump_bloom_output: pump_bloom_output      # GPIO22 - Bloom pump (bloom nutrients)
   # pump_wastewater_output: pump_wastewater_output  # GPIO23 - Removed (not MVP, GPIO23 now DS18B20)
+
+  # Tank Volume Configuration (for mL/L dosing calculations)
+  # Measured volume between LOW and HIGH water level sensors
+  tank_volume_liters: 10.0           # Tank volume in liters (LOW to HIGH sensor range, default: 10.0L)
+
+  # Magnetic Valve Flow Rate (for automated water addition)
+  # IMPORTANT: Calibrate using 10s test button (even though valve is ON/OFF only)
+  mag_valve_flow_rate_ml_s: 50.0     # Magnetic valve: mL/second when OPEN (default: 50.0, approx 3L/min)
+
+  # Pump Calibration Configuration (flow rates and PWM intensities)
+  # IMPORTANT: Update these values after calibration using 10s test buttons
+  # Formula: flow_rate_ml_s = (measured_mL) / 10
+  pump_ph_flow_rate_ml_s: 1.0        # pH pump: mL/second @ configured PWM (default: 1.0)
+  pump_ph_pwm_intensity: 100%        # pH pump: PWM intensity (0-100%, default: 100%)
+  pump_grow_flow_rate_ml_s: 0.31     # Grow pump: mL/second @ configured PWM (CALIBRATED: 3.1mL/10s @ 60%)
+  pump_grow_pwm_intensity: 60%       # Grow pump: PWM intensity (0-100%, CALIBRATED: 60%)
+  pump_micro_flow_rate_ml_s: 1.0     # Micro pump: mL/second @ configured PWM (default: 1.0)
+  pump_micro_pwm_intensity: 100%     # Micro pump: PWM intensity (0-100%, default: 100%)
+  pump_bloom_flow_rate_ml_s: 1.0     # Bloom pump: mL/second @ configured PWM (default: 1.0)
+  pump_bloom_pwm_intensity: 100%     # Bloom pump: PWM intensity (0-100%, default: 100%)
 
   # pH Reading Configuration
   ph_reading_interval: 2h     # How often to check pH (default: 2 hours)

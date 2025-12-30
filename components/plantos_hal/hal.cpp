@@ -2,7 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/output/binary_output.h"
+#include "esphome/components/output/float_output.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 
 namespace plantos_hal {
@@ -42,34 +42,34 @@ void ESPHomeHAL::set_temperature_sensor(esphome::sensor::Sensor* temperature_sen
 // ACTUATOR OUTPUT SETTERS (Phase 2: Hardware Control)
 // ============================================================================
 
-void ESPHomeHAL::set_mag_valve_output(esphome::output::BinaryOutput* output) {
+void ESPHomeHAL::set_mag_valve_output(esphome::output::FloatOutput* output) {
     mag_valve_output_ = output;
-    ESP_LOGI(TAG, "Magnetic valve output configured (GPIO18)");
+    ESP_LOGI(TAG, "Magnetic valve output configured (GPIO18 - PWM capable)");
 }
 
-void ESPHomeHAL::set_pump_ph_output(esphome::output::BinaryOutput* output) {
+void ESPHomeHAL::set_pump_ph_output(esphome::output::FloatOutput* output) {
     pump_ph_output_ = output;
-    ESP_LOGI(TAG, "pH pump output configured (GPIO19)");
+    ESP_LOGI(TAG, "pH pump output configured (GPIO19 - PWM capable)");
 }
 
-void ESPHomeHAL::set_pump_grow_output(esphome::output::BinaryOutput* output) {
+void ESPHomeHAL::set_pump_grow_output(esphome::output::FloatOutput* output) {
     pump_grow_output_ = output;
-    ESP_LOGI(TAG, "Grow pump output configured (GPIO20)");
+    ESP_LOGI(TAG, "Grow pump output configured (GPIO20 - PWM capable)");
 }
 
-void ESPHomeHAL::set_pump_micro_output(esphome::output::BinaryOutput* output) {
+void ESPHomeHAL::set_pump_micro_output(esphome::output::FloatOutput* output) {
     pump_micro_output_ = output;
-    ESP_LOGI(TAG, "Micro pump output configured (GPIO21)");
+    ESP_LOGI(TAG, "Micro pump output configured (GPIO21 - PWM capable)");
 }
 
-void ESPHomeHAL::set_pump_bloom_output(esphome::output::BinaryOutput* output) {
+void ESPHomeHAL::set_pump_bloom_output(esphome::output::FloatOutput* output) {
     pump_bloom_output_ = output;
-    ESP_LOGI(TAG, "Bloom pump output configured (GPIO22)");
+    ESP_LOGI(TAG, "Bloom pump output configured (GPIO22 - PWM capable)");
 }
 
-void ESPHomeHAL::set_pump_wastewater_output(esphome::output::BinaryOutput* output) {
+void ESPHomeHAL::set_pump_wastewater_output(esphome::output::FloatOutput* output) {
     pump_wastewater_output_ = output;
-    ESP_LOGI(TAG, "Wastewater pump output configured (GPIO23)");
+    ESP_LOGI(TAG, "Wastewater pump output configured (GPIO23 - PWM capable)");
 }
 
 // NOTE: set_pump_air_output removed - future Zigbee implementation
@@ -101,6 +101,27 @@ void ESPHomeHAL::setup() {
     // Initialize actuator state tracking
     pump_states_.clear();
     valve_states_.clear();
+
+    // Initialize pump configurations with defaults (will be overridden from YAML)
+    // Default: 1.0 mL/s @ 100% PWM for all pumps
+    if (pump_configs_.find("AcidPump") == pump_configs_.end()) {
+        pump_configs_["AcidPump"] = PumpConfig("AcidPump", 1.0f, 1.0f);
+    }
+    if (pump_configs_.find("NutrientPumpA") == pump_configs_.end()) {
+        pump_configs_["NutrientPumpA"] = PumpConfig("NutrientPumpA", 1.0f, 1.0f);
+    }
+    if (pump_configs_.find("NutrientPumpB") == pump_configs_.end()) {
+        pump_configs_["NutrientPumpB"] = PumpConfig("NutrientPumpB", 1.0f, 1.0f);
+    }
+    if (pump_configs_.find("NutrientPumpC") == pump_configs_.end()) {
+        pump_configs_["NutrientPumpC"] = PumpConfig("NutrientPumpC", 1.0f, 1.0f);
+    }
+
+    ESP_LOGI(TAG, "Pump configurations initialized:");
+    for (const auto& pair : pump_configs_) {
+        ESP_LOGI(TAG, "  %s: %.3f mL/s @ %.0f%% PWM",
+                 pair.first.c_str(), pair.second.flow_rate_ml_s, pair.second.pwm_intensity * 100.0f);
+    }
 }
 
 void ESPHomeHAL::loop() {
@@ -113,20 +134,29 @@ void ESPHomeHAL::loop() {
 // ============================================================================
 
 void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
-    ESP_LOGI(TAG, "setPump(%s, %s)", pumpId.c_str(), state ? "ON" : "OFF");
+    // Legacy method - use configured PWM intensity from pump config
+    auto it = pump_configs_.find(pumpId);
+    float pwm = (it != pump_configs_.end()) ? it->second.pwm_intensity : 1.0f;
+    setPump(pumpId, state, pwm);
+}
+
+void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensity) {
+    ESP_LOGI(TAG, "setPump(%s, %s, PWM=%.0f%%)", pumpId.c_str(), state ? "ON" : "OFF", pwmIntensity * 100.0f);
 
     // Update internal state tracking
     pump_states_[pumpId] = state;
+
+    // Clamp PWM intensity to valid range
+    pwmIntensity = std::clamp(pwmIntensity, 0.0f, 1.0f);
+
+    // Calculate effective duty cycle (OFF = 0%, ON = pwmIntensity)
+    float dutyCycle = state ? pwmIntensity : 0.0f;
 
     // Route to appropriate GPIO output based on pump ID
     if (pumpId == "AcidPump") {
         // pH pump (acid dosing) on GPIO19
         if (pump_ph_output_) {
-            if (state) {
-                pump_ph_output_->turn_on();
-            } else {
-                pump_ph_output_->turn_off();
-            }
+            pump_ph_output_->set_level(dutyCycle);
         } else {
             ESP_LOGW(TAG, "pH pump output not configured - cannot control AcidPump");
         }
@@ -134,11 +164,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
     else if (pumpId == "NutrientPumpA") {
         // Grow pump on GPIO20
         if (pump_grow_output_) {
-            if (state) {
-                pump_grow_output_->turn_on();
-            } else {
-                pump_grow_output_->turn_off();
-            }
+            pump_grow_output_->set_level(dutyCycle);
         } else {
             ESP_LOGW(TAG, "Grow pump output not configured - cannot control NutrientPumpA");
         }
@@ -146,11 +172,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
     else if (pumpId == "NutrientPumpB") {
         // Micro pump on GPIO21
         if (pump_micro_output_) {
-            if (state) {
-                pump_micro_output_->turn_on();
-            } else {
-                pump_micro_output_->turn_off();
-            }
+            pump_micro_output_->set_level(dutyCycle);
         } else {
             ESP_LOGW(TAG, "Micro pump output not configured - cannot control NutrientPumpB");
         }
@@ -158,11 +180,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
     else if (pumpId == "NutrientPumpC") {
         // Bloom pump on GPIO22
         if (pump_bloom_output_) {
-            if (state) {
-                pump_bloom_output_->turn_on();
-            } else {
-                pump_bloom_output_->turn_off();
-            }
+            pump_bloom_output_->set_level(dutyCycle);
         } else {
             ESP_LOGW(TAG, "Bloom pump output not configured - cannot control NutrientPumpC");
         }
@@ -170,11 +188,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
     else if (pumpId == "WastewaterPump") {
         // Wastewater pump on GPIO23
         if (pump_wastewater_output_) {
-            if (state) {
-                pump_wastewater_output_->turn_on();
-            } else {
-                pump_wastewater_output_->turn_off();
-            }
+            pump_wastewater_output_->set_level(dutyCycle);
         } else {
             ESP_LOGW(TAG, "Wastewater pump output not configured - cannot control WastewaterPump");
         }
@@ -183,6 +197,71 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state) {
     else {
         ESP_LOGW(TAG, "Unknown pump ID: %s", pumpId.c_str());
     }
+}
+
+float ESPHomeHAL::pumpflow(const std::string& pumpId, float targetML) {
+    auto it = pump_configs_.find(pumpId);
+    if (it == pump_configs_.end()) {
+        ESP_LOGW(TAG, "pumpflow(%s): Pump not configured, using default 1 mL/s", pumpId.c_str());
+        return targetML / 1.0f;  // Default: 1 mL/s
+    }
+
+    const PumpConfig& config = it->second;
+    if (config.flow_rate_ml_s <= 0.0f) {
+        ESP_LOGE(TAG, "pumpflow(%s): Invalid flow rate %.3f mL/s", pumpId.c_str(), config.flow_rate_ml_s);
+        return 0.0f;
+    }
+
+    float duration_s = targetML / config.flow_rate_ml_s;
+    ESP_LOGI(TAG, "pumpflow(%s): %.1f mL @ %.3f mL/s = %.2f seconds",
+             pumpId.c_str(), targetML, config.flow_rate_ml_s, duration_s);
+    return duration_s;
+}
+
+PumpConfig ESPHomeHAL::getPumpConfig(const std::string& pumpId) const {
+    auto it = pump_configs_.find(pumpId);
+    if (it != pump_configs_.end()) {
+        return it->second;
+    }
+    // Return default config if not found
+    return PumpConfig();
+}
+
+void ESPHomeHAL::setPumpConfig(const std::string& pumpId, float flowRateMLPerSec, float pwmIntensity) {
+    pump_configs_[pumpId] = PumpConfig(pumpId, flowRateMLPerSec, pwmIntensity);
+    ESP_LOGI(TAG, "Pump config set: %s - %.3f mL/s @ %.0f%% PWM",
+             pumpId.c_str(), flowRateMLPerSec, pwmIntensity * 100.0f);
+}
+
+void ESPHomeHAL::setTankVolume(float volumeLiters) {
+    tank_volume_liters_ = volumeLiters;
+    ESP_LOGI(TAG, "Tank volume set: %.1f liters", volumeLiters);
+}
+
+float ESPHomeHAL::getTankVolume() const {
+    return tank_volume_liters_;
+}
+
+void ESPHomeHAL::setMagValveFlowRate(float flowRateMLPerSec) {
+    mag_valve_flow_rate_ml_s_ = flowRateMLPerSec;
+    ESP_LOGI(TAG, "Magnetic valve flow rate set: %.1f mL/s (%.2f L/min)",
+             flowRateMLPerSec, flowRateMLPerSec * 0.06f);
+}
+
+float ESPHomeHAL::getMagValveFlowRate() const {
+    return mag_valve_flow_rate_ml_s_;
+}
+
+float ESPHomeHAL::valveflow(float targetML) {
+    if (mag_valve_flow_rate_ml_s_ <= 0.0f) {
+        ESP_LOGE(TAG, "valveflow: Invalid mag valve flow rate %.3f mL/s", mag_valve_flow_rate_ml_s_);
+        return 0.0f;
+    }
+
+    float duration_s = targetML / mag_valve_flow_rate_ml_s_;
+    ESP_LOGI(TAG, "valveflow(WaterValve): %.1f mL @ %.1f mL/s = %.2f seconds",
+             targetML, mag_valve_flow_rate_ml_s_, duration_s);
+    return duration_s;
 }
 
 void ESPHomeHAL::setValve(const std::string& valveId, bool state) {

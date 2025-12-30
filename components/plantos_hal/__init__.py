@@ -12,6 +12,9 @@ from esphome.const import (
     CONF_ID,
 )
 
+# Import FloatOutput for PWM pump control
+FloatOutput = output.FloatOutput
+
 # Define namespace and classes
 plantos_hal_ns = cg.esphome_ns.namespace('plantos_hal')
 HAL = plantos_hal_ns.class_('HAL')
@@ -37,6 +40,20 @@ CONF_PUMP_MICRO_OUTPUT = 'pump_micro_output'
 CONF_PUMP_BLOOM_OUTPUT = 'pump_bloom_output'
 CONF_PUMP_WASTEWATER_OUTPUT = 'pump_wastewater_output'
 
+# Tank volume and valve configuration
+CONF_TANK_VOLUME_LITERS = 'tank_volume_liters'
+CONF_MAG_VALVE_FLOW_RATE = 'mag_valve_flow_rate_ml_s'
+
+# Pump configuration keys (flow rate and PWM intensity for calibration)
+CONF_PUMP_PH_FLOW_RATE = 'pump_ph_flow_rate_ml_s'
+CONF_PUMP_PH_PWM = 'pump_ph_pwm_intensity'
+CONF_PUMP_GROW_FLOW_RATE = 'pump_grow_flow_rate_ml_s'
+CONF_PUMP_GROW_PWM = 'pump_grow_pwm_intensity'
+CONF_PUMP_MICRO_FLOW_RATE = 'pump_micro_flow_rate_ml_s'
+CONF_PUMP_MICRO_PWM = 'pump_micro_pwm_intensity'
+CONF_PUMP_BLOOM_FLOW_RATE = 'pump_bloom_flow_rate_ml_s'
+CONF_PUMP_BLOOM_PWM = 'pump_bloom_pwm_intensity'
+
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(ESPHomeHAL),
@@ -50,14 +67,28 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_PH_MAX, default=6.5): cv.float_range(min=0.0, max=14.0),
 
     # Actuator GPIO outputs (Phase 2: Hardware Control - 6 actuators)
-    # NOTE: Using outputs instead of switches to avoid circular dependency
+    # NOTE: Using FloatOutput (LEDC PWM) for variable pump intensity control
     # NOTE: Air pump removed - future Zigbee implementation
-    cv.Optional(CONF_MAG_VALVE_OUTPUT): cv.use_id(output.BinaryOutput),
-    cv.Optional(CONF_PUMP_PH_OUTPUT): cv.use_id(output.BinaryOutput),
-    cv.Optional(CONF_PUMP_GROW_OUTPUT): cv.use_id(output.BinaryOutput),
-    cv.Optional(CONF_PUMP_MICRO_OUTPUT): cv.use_id(output.BinaryOutput),
-    cv.Optional(CONF_PUMP_BLOOM_OUTPUT): cv.use_id(output.BinaryOutput),
-    cv.Optional(CONF_PUMP_WASTEWATER_OUTPUT): cv.use_id(output.BinaryOutput),
+    cv.Optional(CONF_MAG_VALVE_OUTPUT): cv.use_id(output.FloatOutput),
+    cv.Optional(CONF_PUMP_PH_OUTPUT): cv.use_id(output.FloatOutput),
+    cv.Optional(CONF_PUMP_GROW_OUTPUT): cv.use_id(output.FloatOutput),
+    cv.Optional(CONF_PUMP_MICRO_OUTPUT): cv.use_id(output.FloatOutput),
+    cv.Optional(CONF_PUMP_BLOOM_OUTPUT): cv.use_id(output.FloatOutput),
+    cv.Optional(CONF_PUMP_WASTEWATER_OUTPUT): cv.use_id(output.FloatOutput),
+
+    # Tank volume and valve configuration
+    cv.Optional(CONF_TANK_VOLUME_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
+    cv.Optional(CONF_MAG_VALVE_FLOW_RATE, default=50.0): cv.float_range(min=0.001, max=1000.0),
+
+    # Pump calibration configuration (flow rates and PWM intensities)
+    cv.Optional(CONF_PUMP_PH_FLOW_RATE, default=1.0): cv.float_range(min=0.001, max=100.0),
+    cv.Optional(CONF_PUMP_PH_PWM, default=1.0): cv.percentage,
+    cv.Optional(CONF_PUMP_GROW_FLOW_RATE, default=1.0): cv.float_range(min=0.001, max=100.0),
+    cv.Optional(CONF_PUMP_GROW_PWM, default=1.0): cv.percentage,
+    cv.Optional(CONF_PUMP_MICRO_FLOW_RATE, default=1.0): cv.float_range(min=0.001, max=100.0),
+    cv.Optional(CONF_PUMP_MICRO_PWM, default=1.0): cv.percentage,
+    cv.Optional(CONF_PUMP_BLOOM_FLOW_RATE, default=1.0): cv.float_range(min=0.001, max=100.0),
+    cv.Optional(CONF_PUMP_BLOOM_PWM, default=1.0): cv.percentage,
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -123,5 +154,15 @@ async def to_code(config):
     if CONF_PUMP_WASTEWATER_OUTPUT in config:
         pump_wastewater_out = await cg.get_variable(config[CONF_PUMP_WASTEWATER_OUTPUT])
         cg.add(var.set_pump_wastewater_output(pump_wastewater_out))
+
+    # Inject tank volume and valve configuration
+    cg.add(var.setTankVolume(config[CONF_TANK_VOLUME_LITERS]))
+    cg.add(var.setMagValveFlowRate(config[CONF_MAG_VALVE_FLOW_RATE]))
+
+    # Inject pump configurations (flow rates and PWM intensities)
+    cg.add(var.setPumpConfig("AcidPump", config[CONF_PUMP_PH_FLOW_RATE], config[CONF_PUMP_PH_PWM]))
+    cg.add(var.setPumpConfig("NutrientPumpA", config[CONF_PUMP_GROW_FLOW_RATE], config[CONF_PUMP_GROW_PWM]))
+    cg.add(var.setPumpConfig("NutrientPumpB", config[CONF_PUMP_MICRO_FLOW_RATE], config[CONF_PUMP_MICRO_PWM]))
+    cg.add(var.setPumpConfig("NutrientPumpC", config[CONF_PUMP_BLOOM_FLOW_RATE], config[CONF_PUMP_BLOOM_PWM]))
 
     # NOTE: pump_air_output removed - future Zigbee implementation

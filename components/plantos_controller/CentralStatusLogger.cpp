@@ -20,6 +20,7 @@ CentralStatusLogger::CentralStatusLogger()
       i2cScanPerformed(false),
       uartStatusUpdated(false),
       oneWireStatusUpdated(false),
+      pumpConfigsUpdated(false),
       mode420_(true) {
 }
 
@@ -149,6 +150,11 @@ void CentralStatusLogger::updateUARTHardwareStatus(const std::vector<UARTDeviceI
 void CentralStatusLogger::updateOneWireHardwareStatus(const std::vector<OneWireDeviceInfo>& devices) {
     oneWireDevices = devices;
     oneWireStatusUpdated = true;
+}
+
+void CentralStatusLogger::updatePumpConfigurations(const std::vector<PumpConfigInfo>& configs) {
+    pumpConfigs = configs;
+    pumpConfigsUpdated = true;
 }
 
 void CentralStatusLogger::logStatus() {
@@ -349,6 +355,20 @@ void CentralStatusLogger::logStatus() {
         ESP_LOGI(TAG, "  pH: %.2f", filteredPH);
     } else {
         ESP_LOGW(TAG, "  pH: No reading available");
+    }
+
+    ESP_LOGI(TAG, "");
+
+    // Pump Configurations
+    ESP_LOGI(TAG, "--- PUMP CONFIGURATION ---");
+    if (pumpConfigsUpdated && !pumpConfigs.empty()) {
+        for (const auto& pump : pumpConfigs) {
+            ESP_LOGI(TAG, "  %s:", pump.pump_name.c_str());
+            ESP_LOGI(TAG, "    Flow Rate:    %.3f mL/s", pump.flow_rate_ml_s);
+            ESP_LOGI(TAG, "    PWM Intensity: %.0f%%", pump.pwm_intensity * 100.0f);
+        }
+    } else {
+        ESP_LOGW(TAG, "  Pump configurations not yet loaded");
     }
 
     ESP_LOGI(TAG, "");

@@ -17,7 +17,7 @@ namespace switch_ {
 class Switch;
 }
 namespace output {
-class BinaryOutput;
+class FloatOutput;
 }
 namespace ezo_ph_uart {
 class EZOPHUARTComponent;
@@ -25,6 +25,28 @@ class EZOPHUARTComponent;
 }  // namespace esphome
 
 namespace plantos_hal {
+
+/**
+ * Pump Configuration Structure
+ *
+ * Stores calibration data for each pump to enable accurate dosing
+ * by converting mL volumes to time durations.
+ */
+struct PumpConfig {
+    std::string pump_id;          // Pump identifier (e.g., "AcidPump")
+    float flow_rate_ml_s;         // Flow rate in mL/second at configured PWM
+    float pwm_intensity;          // PWM intensity (0.0-1.0, default 1.0 = 100%)
+
+    PumpConfig()
+        : pump_id(""),
+          flow_rate_ml_s(1.0f),   // Default: 1 mL/s
+          pwm_intensity(1.0f) {}   // Default: 100% PWM
+
+    PumpConfig(const std::string& id, float flow_rate, float pwm)
+        : pump_id(id),
+          flow_rate_ml_s(flow_rate),
+          pwm_intensity(pwm) {}
+};
 
 /**
  * Hardware Abstraction Layer (HAL) Interface
@@ -47,11 +69,73 @@ public:
     // ============================================================================
 
     /**
-     * Set pump state (ON/OFF)
+     * Set pump state (ON/OFF) - Legacy method for backward compatibility
      * @param pumpId Pump identifier (e.g., "AcidPump", "NutrientPumpA", "AirPump")
      * @param state true = ON, false = OFF
      */
     virtual void setPump(const std::string& pumpId, bool state) = 0;
+
+    /**
+     * Set pump state with PWM intensity control
+     * @param pumpId Pump identifier (e.g., "AcidPump", "NutrientPumpA")
+     * @param state true = ON, false = OFF
+     * @param pwmIntensity PWM duty cycle (0.0-1.0, where 1.0 = 100%)
+     */
+    virtual void setPump(const std::string& pumpId, bool state, float pwmIntensity) = 0;
+
+    /**
+     * Calculate pump runtime duration for target volume (Pumpflow)
+     * @param pumpId Pump identifier
+     * @param targetML Target volume in milliliters
+     * @return Duration in seconds (target_ml / flow_rate_ml_s)
+     */
+    virtual float pumpflow(const std::string& pumpId, float targetML) = 0;
+
+    /**
+     * Get pump configuration
+     * @param pumpId Pump identifier
+     * @return Pump configuration (flow_rate_ml_s, pwm_intensity)
+     */
+    virtual PumpConfig getPumpConfig(const std::string& pumpId) const = 0;
+
+    /**
+     * Set pump configuration
+     * @param pumpId Pump identifier
+     * @param flowRateMLPerSec Flow rate in mL/second at configured PWM
+     * @param pwmIntensity PWM intensity (0.0-1.0)
+     */
+    virtual void setPumpConfig(const std::string& pumpId, float flowRateMLPerSec, float pwmIntensity) = 0;
+
+    /**
+     * Set tank volume
+     * @param volumeLiters Tank volume in liters (LOW to HIGH sensor range)
+     */
+    virtual void setTankVolume(float volumeLiters) = 0;
+
+    /**
+     * Get tank volume
+     * @return Tank volume in liters
+     */
+    virtual float getTankVolume() const = 0;
+
+    /**
+     * Set magnetic valve flow rate
+     * @param flowRateMLPerSec Flow rate in mL/second when valve is open
+     */
+    virtual void setMagValveFlowRate(float flowRateMLPerSec) = 0;
+
+    /**
+     * Get magnetic valve flow rate
+     * @return Flow rate in mL/second
+     */
+    virtual float getMagValveFlowRate() const = 0;
+
+    /**
+     * Calculate valve open duration for target volume (valveflow)
+     * @param targetML Target volume in milliliters
+     * @return Duration in seconds (target_ml / mag_valve_flow_rate_ml_s)
+     */
+    virtual float valveflow(float targetML) = 0;
 
     /**
      * Set valve state (OPEN/CLOSED)
@@ -247,14 +331,14 @@ public:
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
 
     // Actuator output setters (Phase 2: Hardware Control)
-    // NOTE: Using GPIO outputs instead of template switches to avoid circular dependency
+    // NOTE: Using LEDC PWM outputs for pump control with variable intensity
     // NOTE: Air pump removed - future Zigbee implementation
-    void set_mag_valve_output(esphome::output::BinaryOutput* output);
-    void set_pump_ph_output(esphome::output::BinaryOutput* output);
-    void set_pump_grow_output(esphome::output::BinaryOutput* output);
-    void set_pump_micro_output(esphome::output::BinaryOutput* output);
-    void set_pump_bloom_output(esphome::output::BinaryOutput* output);
-    void set_pump_wastewater_output(esphome::output::BinaryOutput* output);
+    void set_mag_valve_output(esphome::output::FloatOutput* output);
+    void set_pump_ph_output(esphome::output::FloatOutput* output);
+    void set_pump_grow_output(esphome::output::FloatOutput* output);
+    void set_pump_micro_output(esphome::output::FloatOutput* output);
+    void set_pump_bloom_output(esphome::output::FloatOutput* output);
+    void set_pump_wastewater_output(esphome::output::FloatOutput* output);
 
     // Configuration setters
     void set_ph_reading_interval(uint32_t interval_ms) { ph_reading_interval_ms_ = interval_ms; }
@@ -267,6 +351,15 @@ public:
 
     // HAL interface implementation
     void setPump(const std::string& pumpId, bool state) override;
+    void setPump(const std::string& pumpId, bool state, float pwmIntensity) override;
+    float pumpflow(const std::string& pumpId, float targetML) override;
+    PumpConfig getPumpConfig(const std::string& pumpId) const override;
+    void setPumpConfig(const std::string& pumpId, float flowRateMLPerSec, float pwmIntensity) override;
+    void setTankVolume(float volumeLiters) override;
+    float getTankVolume() const override;
+    void setMagValveFlowRate(float flowRateMLPerSec) override;
+    float getMagValveFlowRate() const override;
+    float valveflow(float targetML) override;
     void setValve(const std::string& valveId, bool state) override;
     bool getPumpState(const std::string& pumpId) const override;
     bool getValveState(const std::string& valveId) const override;
@@ -307,18 +400,25 @@ private:
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
 
     // Actuator GPIO outputs (Phase 2: Hardware Control - 6 actuators)
-    // NOTE: Using BinaryOutput instead of Switch to avoid circular dependency
+    // NOTE: Using FloatOutput (LEDC PWM) for variable pump intensity control
     // NOTE: Air pump removed - future Zigbee implementation
-    esphome::output::BinaryOutput* mag_valve_output_{nullptr};
-    esphome::output::BinaryOutput* pump_ph_output_{nullptr};
-    esphome::output::BinaryOutput* pump_grow_output_{nullptr};
-    esphome::output::BinaryOutput* pump_micro_output_{nullptr};
-    esphome::output::BinaryOutput* pump_bloom_output_{nullptr};
-    esphome::output::BinaryOutput* pump_wastewater_output_{nullptr};
+    esphome::output::FloatOutput* mag_valve_output_{nullptr};
+    esphome::output::FloatOutput* pump_ph_output_{nullptr};
+    esphome::output::FloatOutput* pump_grow_output_{nullptr};
+    esphome::output::FloatOutput* pump_micro_output_{nullptr};
+    esphome::output::FloatOutput* pump_bloom_output_{nullptr};
+    esphome::output::FloatOutput* pump_wastewater_output_{nullptr};
 
     // Actuator state tracking (for getPumpState/getValveState)
     std::map<std::string, bool> pump_states_;
     std::map<std::string, bool> valve_states_;
+
+    // Pump configuration storage
+    std::map<std::string, PumpConfig> pump_configs_;
+
+    // Tank and valve configuration
+    float tank_volume_liters_{10.0f};            // Default: 10 liters
+    float mag_valve_flow_rate_ml_s_{50.0f};     // Default: 50 mL/s (3 L/min)
 
     // Configuration parameters
     uint32_t ph_reading_interval_ms_{7200000};  // Default: 2 hours

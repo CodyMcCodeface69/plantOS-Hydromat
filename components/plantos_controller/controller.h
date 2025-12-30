@@ -231,7 +231,8 @@ private:
     float ph_current_{0.0f};              // Current pH reading
     std::vector<float> ph_readings_;      // Buffer for robust averaging
     uint32_t ph_attempt_count_{0};        // Number of pH correction attempts
-    uint32_t ph_dose_duration_ms_{0};     // Calculated acid dose duration
+    float ph_dose_ml_{0.0f};              // Calculated acid dose in milliliters
+    uint32_t ph_dose_duration_ms_{0};     // Calculated acid dose duration (converted from mL)
     static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
 
     // ========================================================================
@@ -386,7 +387,7 @@ private:
      * @param target_ph_max Upper bound of target pH range
      * @return Dosing duration in milliseconds
      */
-    uint32_t calculateAcidDuration(float current_ph, float target_ph_max);
+    float calculateAcidDoseML(float current_ph, float target_ph_max);
 
     /**
      * Perform robust average of pH readings

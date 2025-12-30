@@ -4,6 +4,7 @@
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 #include "esphome/components/calendar_manager/CalendarManager.h"
+#include "esphome/components/time/real_time_clock.h"
 #include <algorithm> // for std::sort, std::min, std::max
 
 namespace plantos_controller {
@@ -529,12 +530,20 @@ void PlantOSController::handlePhCalculating() {
     // Yellow fast blink - determining pH adjustment
     // Decision point: Does pH need correction?
 
-    // Use hardcoded target range for Phase 4
-    // Phase 7 will integrate CalendarManager for dynamic targets
-    float target_min = PH_TARGET_MIN; // 5.5
-    float target_max = PH_TARGET_MAX; // 6.5
+    // Get pH target range from calendar schedule for current grow day
+    float target_min = PH_TARGET_MIN; // Fallback: 5.5
+    float target_max = PH_TARGET_MAX; // Fallback: 6.5
 
-    ESP_LOGI(TAG, "pH: %.2f, Target: %.2f-%.2f", ph_current_, target_min, target_max);
+    if (calendar_manager_) {
+        uint8_t current_day = getCurrentGrowDay();
+        auto schedule = calendar_manager_->get_schedule(current_day);
+        target_min = schedule.target_ph_min;
+        target_max = schedule.target_ph_max;
+        ESP_LOGI(TAG, "pH: %.2f, Target (day %d): %.2f-%.2f",
+                 ph_current_, current_day, target_min, target_max);
+    } else {
+        ESP_LOGI(TAG, "pH: %.2f, Target (default): %.2f-%.2f", ph_current_, target_min, target_max);
+    }
 
     // Check if pH is within target range
     if (ph_current_ >= target_min && ph_current_ <= target_max) {
@@ -1075,8 +1084,11 @@ void PlantOSController::handleFeeding() {
     float dose_c_ml = 0.0f;
 
     if (calendar_manager_ && hal_) {
-        // Get today's schedule from calendar
-        auto schedule = calendar_manager_->get_today_schedule();
+        // Get current grow day (auto-calculated from NTP or manual counter)
+        uint8_t current_day = getCurrentGrowDay();
+
+        // Get schedule for current day from calendar
+        auto schedule = calendar_manager_->get_schedule(current_day);
         float tank_volume_liters = hal_->getTankVolume();
 
         // Calculate actual mL doses from mL/L concentrations
@@ -1084,8 +1096,8 @@ void PlantOSController::handleFeeding() {
         dose_b_ml = schedule.nutrient_B_ml_per_liter * tank_volume_liters;
         dose_c_ml = schedule.nutrient_C_ml_per_liter * tank_volume_liters;
 
-        ESP_LOGI(TAG, "Calendar day %d: Tank %.1fL, A:%.2f mL, B:%.2f mL, C:%.2f mL",
-                 schedule.day_number, tank_volume_liters, dose_a_ml, dose_b_ml, dose_c_ml);
+        ESP_LOGI(TAG, "Feeding day %d: Tank %.1fL, A:%.2f mL, B:%.2f mL, C:%.2f mL",
+                 current_day, tank_volume_liters, dose_a_ml, dose_b_ml, dose_c_ml);
     } else {
         // Fallback: use hardcoded values if calendar not available
         dose_a_ml = 5.0f;  // 5 mL
@@ -1715,6 +1727,55 @@ bool PlantOSController::hasPhValue() {
         return false;
     }
     return hal_->hasPhValue();
+}
+
+// ============================================================================
+// Grow Cycle Helpers
+// ============================================================================
+
+uint8_t PlantOSController::getCurrentGrowDay() {
+    // Automatic day calculation if grow start date and time source are configured
+    if (grow_start_timestamp_ > 0 && time_source_ != nullptr) {
+        // Get current time from NTP
+        auto now = time_source_->now();
+
+        // Check if time is valid (NTP synchronized)
+        if (now.is_valid()) {
+            // Get current Unix timestamp
+            int64_t current_timestamp = now.timestamp;
+
+            // Calculate days elapsed since grow start
+            int64_t seconds_elapsed = current_timestamp - grow_start_timestamp_;
+            int32_t days_elapsed = static_cast<int32_t>(seconds_elapsed / 86400);  // 86400 seconds per day
+
+            // Handle negative elapsed time (clock not set or start date in future)
+            if (days_elapsed < 0) {
+                ESP_LOGW(TAG, "Grow start date is in the future or clock not synchronized - using day 1");
+                return 1;
+            }
+
+            // Calculate current day (1-120, wraps around)
+            uint8_t current_day = static_cast<uint8_t>((days_elapsed % 120) + 1);
+
+            ESP_LOGD(TAG, "Auto-calculated grow day: %d (elapsed: %d days since start)",
+                     current_day, days_elapsed);
+
+            return current_day;
+        } else {
+            ESP_LOGW(TAG, "NTP time not synchronized yet - falling back to calendar day counter");
+        }
+    }
+
+    // Fallback: Use calendar manager's manual day counter (NVS-persisted)
+    if (calendar_manager_) {
+        uint8_t manual_day = calendar_manager_->get_current_day();
+        ESP_LOGD(TAG, "Using calendar manager day counter: %d", manual_day);
+        return manual_day;
+    }
+
+    // Ultimate fallback: Day 1
+    ESP_LOGW(TAG, "No grow start date or calendar manager - defaulting to day 1");
+    return 1;
 }
 
 // ============================================================================

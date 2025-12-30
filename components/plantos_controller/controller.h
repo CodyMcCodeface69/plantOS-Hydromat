@@ -30,6 +30,9 @@ class EZOPHUARTComponent;
 namespace calendar_manager {
 class CalendarManager;
 }
+namespace time {
+class RealTimeClock;
+}
 }
 
 namespace plantos_controller {
@@ -121,6 +124,23 @@ public:
         calendar_manager_ = calendar;
     }
 
+    /**
+     * Set Time Source (RealTimeClock)
+     * OPTIONAL - Used for automatic day calculation based on grow start date
+     */
+    void setTimeSource(esphome::time::RealTimeClock* time_source) {
+        time_source_ = time_source;
+    }
+
+    /**
+     * Set Grow Start Date
+     * OPTIONAL - Unix timestamp of day 1 of grow cycle (midnight UTC)
+     * Enables automatic day calculation: current_day = (current_time - start_date) / 86400 % 120 + 1
+     */
+    void setGrowStartDate(int64_t timestamp) {
+        grow_start_timestamp_ = timestamp;
+    }
+
     // ========================================================================
     // Public API for External Control (ESPHome services, buttons, etc.)
     // ========================================================================
@@ -210,6 +230,17 @@ public:
      */
     void configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode);
 
+    /**
+     * Calculate current grow day number (1-120)
+     * If grow_start_timestamp is configured and time_source is available:
+     *   - Gets current time from NTP
+     *   - Calculates days elapsed since start date
+     *   - Returns (days_elapsed % 120) + 1
+     * Otherwise falls back to calendar_manager's manual day counter
+     * @return Current day number (1-120)
+     */
+    uint8_t getCurrentGrowDay();
+
 private:
     // ========================================================================
     // Dependencies
@@ -220,6 +251,10 @@ private:
     esphome::persistent_state_manager::PersistentStateManager* psm_{nullptr};
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_{nullptr};
     esphome::calendar_manager::CalendarManager* calendar_manager_{nullptr};
+    esphome::time::RealTimeClock* time_source_{nullptr};
+
+    // Grow cycle configuration
+    int64_t grow_start_timestamp_{0};  // Unix timestamp of day 1 (0 = not configured)
 
     // Status logger (owned by controller, not injected)
     CentralStatusLogger status_logger_;

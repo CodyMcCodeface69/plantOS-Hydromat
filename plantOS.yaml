@@ -139,33 +139,27 @@ api:
 # This enables accurate timestamping for logs, sensor data, and scheduled actions.
 ################################################################################
 time:
-  - platform: sntp
-    id: sntp_time
-    # NTP servers for time synchronization (pool.ntp.org provides load-balanced servers)
-    servers:
-      - 0.pool.ntp.org
-      - 1.pool.ntp.org
-      - 2.pool.ntp.org
+  # === TIME DUMMY (for testing calendar function) ===
+  # Provides configurable dummy time instead of real NTP synchronization
+  # Allows manual time control via buttons for testing grow day calculations
+  - platform: time_dummy
+    id: sntp_time  # Keep same ID for compatibility with controller
+    initial_time: "2025-12-30 08:00:00"  # Starting time (YYYY-MM-DD HH:MM:SS)
+    update_interval: 1s
 
-    # Central European Time (CET/CEST)
-    # CET: UTC+1 (winter) - standard offset: 3600 seconds
-    # CEST: UTC+2 (summer) - daylight saving adds 3600 seconds
-    # ESPHome format: "TZ_database_name" or "STD offset DST,rule"
-    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
-    # Format explanation: CET-1CEST,M3.5.0,M10.5.0/3
-    # - CET-1: Standard time zone (CET), offset is UTC+1 (specified as -1)
-    # - CEST: Daylight saving time zone name
-    # - M3.5.0: DST starts last (5th) Sunday (0) of March (M3) at 02:00
-    # - M10.5.0/3: DST ends last (5th) Sunday (0) of October (M10) at 03:00
-
-    # Update interval: how often to sync with NTP servers
-    # Default 15min is reasonable; too frequent can overload servers
-    update_interval: 15min
-
-    # Callback when time is synchronized
-    on_time_sync:
-      then:
-        - logger.log: "System time synchronized with NTP server"
+  # === SNTP TIME (production - currently disabled) ===
+  # Uncomment below to use real NTP time synchronization
+  # - platform: sntp
+  #   id: sntp_time
+  #   servers:
+  #     - 0.pool.ntp.org
+  #     - 1.pool.ntp.org
+  #     - 2.pool.ntp.org
+  #   timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
+  #   update_interval: 15min
+  #   on_time_sync:
+  #     then:
+  #       - logger.log: "System time synchronized with NTP server"
 
 external_components:
   # Points to local custom components directory
@@ -173,7 +167,7 @@ external_components:
   - source: components
     components: [sensor_dummy, sensor_filter, ezo_ph_uart,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
-                 i2c_scanner, time_logger, wdt_manager, i2c_mutex_demo, plantos_hal,
+                 i2c_scanner, time_logger, time_dummy, wdt_manager, i2c_mutex_demo, plantos_hal,
                  plantos_controller]
 
   # ESP32-C6 ADC Fix: Use lboue's working implementation with adc_oneshot API
@@ -538,6 +532,36 @@ text_sensor:
     # Update every 30 seconds (static configuration value)
     update_interval: 30s
 
+  - platform: template
+    name: "00_02_Current Time (Dummy)"
+    id: current_time_text
+    # Lambda returns current dummy time in readable format
+    lambda: |-
+      auto time = id(sntp_time)->now();
+      if (time.is_valid()) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
+                 time.year, time.month, time.day_of_month,
+                 time.hour, time.minute, time.second);
+        return {buf};
+      } else {
+        return {"Not initialized"};
+      }
+    # Update every 1 second to show real-time clock
+    update_interval: 1s
+
+  - platform: template
+    name: "00_03_Current Grow Day"
+    id: current_grow_day_text
+    # Lambda returns current grow day calculated by controller
+    lambda: |-
+      uint8_t day = id(unified_controller)->getCurrentGrowDay();
+      char buf[32];
+      snprintf(buf, sizeof(buf), "Day %d / 120", day);
+      return {buf};
+    # Update every 10 seconds
+    update_interval: 10s
+
 ################################################################################
 # Button: Controller Management and Manual Routines
 #
@@ -619,6 +643,47 @@ button:
       then:
         - lambda: |-
             id(psm)->clearEvent();
+
+  # === 06 - Time Control (Dummy Time for Testing) ===
+  - platform: template
+    name: "06_01_Time +1 Day"
+    on_press:
+      # Increase dummy time by 1 day (86400 seconds)
+      # Used to test calendar function and grow day calculations
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Time +1 Day button pressed");
+            id(sntp_time)->add_days(1);
+
+  - platform: template
+    name: "06_02_Time -1 Day"
+    on_press:
+      # Decrease dummy time by 1 day (86400 seconds)
+      # Used to test calendar function and grow day calculations
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Time -1 Day button pressed");
+            id(sntp_time)->add_days(-1);
+
+  - platform: template
+    name: "06_03_Time +1 Hour"
+    on_press:
+      # Increase dummy time by 1 hour (3600 seconds)
+      # Used to test time-based events and scheduling
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Time +1 Hour button pressed");
+            id(sntp_time)->add_hours(1);
+
+  - platform: template
+    name: "06_04_Time -1 Hour"
+    on_press:
+      # Decrease dummy time by 1 hour (3600 seconds)
+      # Used to test time-based events and scheduling
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Time -1 Hour button pressed");
+            id(sntp_time)->add_hours(-1);
 
   # === 07 - pH & Measurement ===
   - platform: template
@@ -952,6 +1017,14 @@ plantos_controller:
   persistence: psm               # Persistent state manager for crash recovery
   ph_sensor: ezo_ph_uart_component  # pH sensor for calibration control
   calendar: plant_calendar       # Calendar manager for grow schedule and nutrient dosing
+  time_source: sntp_time         # NTP time source for automatic day calculation
+
+  # Grow Cycle Configuration
+  # grow_start_date: Date when grow cycle day 1 started (YYYY-MM-DD format)
+  # Controller calculates current day by comparing NTP time to this start date
+  # Example: "2025-12-30" means Dec 30, 2025 is day 1 of the 120-day cycle
+  # If not set, falls back to calendar manager's manual day counter (NVS-persisted)
+  grow_start_date: "2025-12-30"
 
   # Status Logger Configuration
   enable_status_reports: false  # Enable/disable periodic status reports (default: false, use switch 11_10)

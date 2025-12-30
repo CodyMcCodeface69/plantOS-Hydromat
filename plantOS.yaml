@@ -89,12 +89,31 @@ wifi:
   reboot_timeout: 2min
 
   # Update status logger with IP address when WiFi connects
+  # Also perform online connectivity check on first connection
   on_connect:
     - lambda: |-
         auto ip = wifi::global_wifi_component->get_ip_addresses()[0].str();
         id(unified_controller)->getStatusLogger()->updateIP(ip);
         id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, false);
         ESP_LOGI("wifi", "IP address: %s", ip.c_str());
+
+    # Wait 2 seconds for network stack to fully initialize
+    - delay: 2s
+
+    # Perform online connectivity check
+    - logger.log: "Performing online connectivity check (ping www.google.com)..."
+    - http_request.get:
+        url: http://www.google.com/generate_204
+        on_response:
+          then:
+            - lambda: |-
+                // Note: Any successful response (even error codes) means network is working
+                // Only timeouts indicate mesh network issues
+                ESP_LOGI("wifi", "✓ Online connectivity check PASSED - HTTP response received");
+                id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
+
+    # Handle connection timeout/error (no response received)
+    - script.execute: connectivity_check_timeout
 
   # ==============================================================
   # FALLBACK ACCESS POINT (AP) FOR DEBUGGING
@@ -131,6 +150,19 @@ web_server:
 # For now, calibration can be done via direct I2C commands or custom code.
 ################################################################################
 api:
+
+################################################################################
+# HTTP Request Component - For Online Connectivity Check
+#
+# Used to verify internet connectivity by attempting to fetch a known URL.
+# Google's connectivity check endpoint returns HTTP 204 (No Content) when
+# online, which is a lightweight test that doesn't consume bandwidth.
+################################################################################
+http_request:
+  id: http_client
+  useragent: esphome/plantOS
+  timeout: 5s
+  verify_ssl: false  # Skip SSL verification for simple connectivity test
 
 ################################################################################
 # Time Synchronization: NTP
@@ -2079,4 +2111,48 @@ interval:
           ESP_LOGD("gpio_status", "=========================");
           ESP_LOGD("gpio_status", "");
 
+################################################################################
+# Scripts - Reusable Automation Sequences
+#
+# Scripts are reusable sequences of actions that can be called from anywhere.
+################################################################################
+script:
+  # Connectivity Check Timeout Handler
+  # Called when HTTP request times out (no response received)
+  # Waits for the HTTP request timeout, then checks if we got a response
+  - id: connectivity_check_timeout
+    mode: single  # Only one instance can run at a time
+    then:
+      # Wait for HTTP request to timeout (5s configured in http_request component)
+      - delay: 6s
+
+      # If we reach here, the HTTP request timed out without calling on_response
+      - logger.log:
+          format: "✗ Online connectivity check TIMEOUT - No response from www.google.com"
+          level: WARN
+          tag: wifi
+      - logger.log:
+          format: "Possible mesh network issue - Reconnecting WiFi..."
+          level: WARN
+          tag: wifi
+      - wifi.disable:
+      - delay: 2s
+      - logger.log:
+          format: "Reconnecting WiFi..."
+          level: INFO
+          tag: wifi
+      - wifi.enable:
+
+  # WiFi Reconnect Script
+  # Reconnects WiFi when online check fails
+  - id: wifi_reconnect
+    mode: single
+    then:
+      - wifi.disable:
+      - delay: 2s
+      - logger.log:
+          format: "Reconnecting WiFi..."
+          level: INFO
+          tag: wifi
+      - wifi.enable:
 

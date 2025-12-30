@@ -2,6 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/output/float_output.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 

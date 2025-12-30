@@ -178,6 +178,20 @@ public:
     void updatePumpConfigurations(const std::vector<PumpConfigInfo>& configs);
 
     /**
+     * Update calendar status
+     * @param currentDay Current day in the grow cycle (1-120)
+     * @param phMin Target pH minimum for current day
+     * @param phMax Target pH maximum for current day
+     * @param nutrientA Nutrient A dose in mL/L
+     * @param nutrientB Nutrient B dose in mL/L
+     * @param nutrientC Nutrient C dose in mL/L
+     * @param safeMode Whether calendar automation is disabled
+     */
+    void updateCalendarStatus(uint8_t currentDay, float phMin, float phMax,
+                             float nutrientA, float nutrientB, float nutrientC,
+                             bool safeMode);
+
+    /**
      * Set 420 mode for easter egg logging
      * @param enabled Whether 420 mode is enabled
      */
@@ -268,6 +282,16 @@ private:
     // Pump Configuration status
     std::vector<PumpConfigInfo> pumpConfigs;
     bool pumpConfigsUpdated;
+
+    // Calendar status
+    uint8_t calendarCurrentDay;
+    float calendarPhMin;
+    float calendarPhMax;
+    float calendarNutrientA;
+    float calendarNutrientB;
+    float calendarNutrientC;
+    bool calendarSafeMode;
+    bool calendarStatusUpdated;
 
     // Easter egg mode
     bool mode420_;

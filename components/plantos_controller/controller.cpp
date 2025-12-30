@@ -161,6 +161,21 @@ void PlantOSController::loop() {
             }
         }
 
+        // Update calendar status in status logger
+        if (calendar_manager_) {
+            uint8_t currentDay = getCurrentGrowDay();
+            esphome::calendar_manager::DailySchedule schedule = calendar_manager_->get_today_schedule();
+            status_logger_.updateCalendarStatus(
+                currentDay,
+                schedule.target_ph_min,
+                schedule.target_ph_max,
+                schedule.nutrient_A_ml_per_liter,
+                schedule.nutrient_B_ml_per_liter,
+                schedule.nutrient_C_ml_per_liter,
+                calendar_manager_->is_safe_mode()
+            );
+        }
+
         status_logger_.logStatus();
     }
 

@@ -21,6 +21,14 @@ CentralStatusLogger::CentralStatusLogger()
       uartStatusUpdated(false),
       oneWireStatusUpdated(false),
       pumpConfigsUpdated(false),
+      calendarCurrentDay(1),
+      calendarPhMin(5.8f),
+      calendarPhMax(6.2f),
+      calendarNutrientA(0.0f),
+      calendarNutrientB(0.0f),
+      calendarNutrientC(0.0f),
+      calendarSafeMode(false),
+      calendarStatusUpdated(false),
       mode420_(true) {
 }
 
@@ -155,6 +163,19 @@ void CentralStatusLogger::updateOneWireHardwareStatus(const std::vector<OneWireD
 void CentralStatusLogger::updatePumpConfigurations(const std::vector<PumpConfigInfo>& configs) {
     pumpConfigs = configs;
     pumpConfigsUpdated = true;
+}
+
+void CentralStatusLogger::updateCalendarStatus(uint8_t currentDay, float phMin, float phMax,
+                                               float nutrientA, float nutrientB, float nutrientC,
+                                               bool safeMode) {
+    calendarCurrentDay = currentDay;
+    calendarPhMin = phMin;
+    calendarPhMax = phMax;
+    calendarNutrientA = nutrientA;
+    calendarNutrientB = nutrientB;
+    calendarNutrientC = nutrientC;
+    calendarSafeMode = safeMode;
+    calendarStatusUpdated = true;
 }
 
 void CentralStatusLogger::logStatus() {
@@ -355,6 +376,22 @@ void CentralStatusLogger::logStatus() {
         ESP_LOGI(TAG, "  pH: %.2f", filteredPH);
     } else {
         ESP_LOGW(TAG, "  pH: No reading available");
+    }
+
+    ESP_LOGI(TAG, "");
+
+    // Calendar Status
+    ESP_LOGI(TAG, "--- CALENDAR STATUS ---");
+    if (calendarStatusUpdated) {
+        ESP_LOGI(TAG, "  Current Day:      %d / 120", calendarCurrentDay);
+        ESP_LOGI(TAG, "  Target pH Range:  %.1f - %.1f", calendarPhMin, calendarPhMax);
+        ESP_LOGI(TAG, "  Nutrient Doses (mL/L):");
+        ESP_LOGI(TAG, "    Nutrient A:     %.2f mL/L", calendarNutrientA);
+        ESP_LOGI(TAG, "    Nutrient B:     %.2f mL/L", calendarNutrientB);
+        ESP_LOGI(TAG, "    Nutrient C:     %.2f mL/L", calendarNutrientC);
+        ESP_LOGI(TAG, "  Automation:       %s", calendarSafeMode ? "DISABLED (Safe Mode)" : "ENABLED");
+    } else {
+        ESP_LOGW(TAG, "  Calendar not yet configured");
     }
 
     ESP_LOGI(TAG, "");

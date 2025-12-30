@@ -321,9 +321,9 @@ light:
 # Five actuators controlled by 3.3V logic level MOSFETs with PWM support:
 # - GPIO18: Magnetic Valve (fresh water inlet)
 # - GPIO19: pH Pump (acid dosing for pH down)
-# - GPIO20: Grow Pump (grow phase nutrients)
-# - GPIO21: Micro Pump (micronutrients)
-# - GPIO22: Bloom Pump (bloom phase nutrients)
+# - GPIO20: Grow Pump (grow phase nutrients)       → HAL: NutrientPumpA → Calendar: nutrient_A_ml_per_liter
+# - GPIO21: Micro Pump (micronutrients)            → HAL: NutrientPumpB → Calendar: nutrient_B_ml_per_liter
+# - GPIO22: Bloom Pump (bloom phase nutrients)     → HAL: NutrientPumpC → Calendar: nutrient_C_ml_per_liter
 #
 # Using LEDC (LED PWM Controller) for both on/off and PWM control
 # Frequency: 1000 Hz (1 kHz) - suitable for most pumps and valves
@@ -961,12 +961,13 @@ plantos_hal:
 
   # Actuator GPIO Outputs (Phase 2: Hardware Control - 6 actuators)
   # NOTE: Using outputs instead of switches to avoid circular dependency
-  # NOTE: Air pump removed - future Zigbee implementation
+  # NOTE: Air pump removed - future Zigbé implementation
+  # Pump Mapping: Grow=NutrientPumpA, Micro=NutrientPumpB, Bloom=NutrientPumpC
   mag_valve_output: mag_valve_output        # GPIO18 - Magnetic valve (fresh water inlet)
   pump_ph_output: pump_ph_output            # GPIO19 - pH pump (acid dosing)
-  pump_grow_output: pump_grow_output        # GPIO20 - Grow pump (grow nutrients)
-  pump_micro_output: pump_micro_output      # GPIO21 - Micro pump (micronutrients)
-  pump_bloom_output: pump_bloom_output      # GPIO22 - Bloom pump (bloom nutrients)
+  pump_grow_output: pump_grow_output        # GPIO20 - Grow pump (NutrientPumpA → nutrient_A_ml_per_liter)
+  pump_micro_output: pump_micro_output      # GPIO21 - Micro pump (NutrientPumpB → nutrient_B_ml_per_liter)
+  pump_bloom_output: pump_bloom_output      # GPIO22 - Bloom pump (NutrientPumpC → nutrient_C_ml_per_liter)
   # pump_wastewater_output: pump_wastewater_output  # GPIO23 - Removed (not MVP, GPIO23 now DS18B20)
 
   # Tank Volume Configuration (for mL/L dosing calculations)
@@ -980,14 +981,15 @@ plantos_hal:
   # Pump Calibration Configuration (flow rates and PWM intensities)
   # IMPORTANT: Update these values after calibration using 10s test buttons
   # Formula: flow_rate_ml_s = (measured_mL) / 10
+  # Pump Mapping: Grow=NutrientPumpA, Micro=NutrientPumpB, Bloom=NutrientPumpC
   pump_ph_flow_rate_ml_s: 1.0        # pH pump: mL/second @ configured PWM (default: 1.0)
   pump_ph_pwm_intensity: 100%        # pH pump: PWM intensity (0-100%, default: 100%)
-  pump_grow_flow_rate_ml_s: 0.45     # Grow pump: mL/second @ configured PWM (CALIBRATED: 4.0mL/10s @ 60%)
-  pump_grow_pwm_intensity: 60%       # Grow pump: PWM intensity (0-100%, CALIBRATED: 60%)
-  pump_micro_flow_rate_ml_s: 1.0     # Micro pump: mL/second @ configured PWM (default: 1.0)
-  pump_micro_pwm_intensity: 100%     # Micro pump: PWM intensity (0-100%, default: 100%)
-  pump_bloom_flow_rate_ml_s: 1.0     # Bloom pump: mL/second @ configured PWM (default: 1.0)
-  pump_bloom_pwm_intensity: 100%     # Bloom pump: PWM intensity (0-100%, default: 100%)
+  pump_grow_flow_rate_ml_s: 0.45     # Grow pump (NutrientPumpA): mL/second @ configured PWM (CALIBRATED: 4.0mL/10s @ 60%)
+  pump_grow_pwm_intensity: 60%       # Grow pump (NutrientPumpA): PWM intensity (0-100%, CALIBRATED: 60%)
+  pump_micro_flow_rate_ml_s: 1.0     # Micro pump (NutrientPumpB): mL/second @ configured PWM (default: 1.0)
+  pump_micro_pwm_intensity: 100%     # Micro pump (NutrientPumpB): PWM intensity (0-100%, default: 100%)
+  pump_bloom_flow_rate_ml_s: 1.0     # Bloom pump (NutrientPumpC): mL/second @ configured PWM (default: 1.0)
+  pump_bloom_pwm_intensity: 100%     # Bloom pump (NutrientPumpC): PWM intensity (0-100%, default: 100%)
 
   # pH Reading Configuration
   ph_reading_interval: 2h     # How often to check pH (default: 2 hours)
@@ -1447,9 +1449,10 @@ switch:
             ESP_LOGW("switch", "pH Pump: OFF command REJECTED by safety gate");
           }
 
+  # Nutrient Pump Switches (Grow = NutrientPumpA, Micro = NutrientPumpB, Bloom = NutrientPumpC)
   - platform: template
     id: pump_grow_switch
-    name: "10_03_Grow Pump"
+    name: "10_03_Grow Pump"    # NutrientPumpA → nutrient_A_ml_per_liter (GPIO20)
     optimistic: true
     restore_mode: ALWAYS_OFF
     turn_on_action:
@@ -1465,7 +1468,7 @@ switch:
 
   - platform: template
     id: pump_micro_switch
-    name: "10_04_Micro Pump"
+    name: "10_04_Micro Pump"   # NutrientPumpB → nutrient_B_ml_per_liter (GPIO21)
     optimistic: true
     restore_mode: ALWAYS_OFF
     turn_on_action:
@@ -1481,7 +1484,7 @@ switch:
 
   - platform: template
     id: pump_bloom_switch
-    name: "10_05_Bloom Pump"
+    name: "10_05_Bloom Pump"   # NutrientPumpC → nutrient_C_ml_per_liter (GPIO22)
     optimistic: true
     restore_mode: ALWAYS_OFF
     turn_on_action:

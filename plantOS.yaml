@@ -102,6 +102,8 @@ wifi:
 
     # Perform online connectivity check
     - logger.log: "Performing online connectivity check (ping www.google.com)..."
+    # Start timeout handler first (will be stopped if HTTP succeeds)
+    - script.execute: connectivity_check_timeout
     - http_request.get:
         url: http://www.google.com/generate_204
         on_response:
@@ -111,9 +113,8 @@ wifi:
                 // Only timeouts indicate mesh network issues
                 ESP_LOGI("wifi", "✓ Online connectivity check PASSED - HTTP response received");
                 id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
-
-    # Handle connection timeout/error (no response received)
-    - script.execute: connectivity_check_timeout
+            # Stop the timeout script since we got a response
+            - script.stop: connectivity_check_timeout
 
   # ==============================================================
   # FALLBACK ACCESS POINT (AP) FOR DEBUGGING

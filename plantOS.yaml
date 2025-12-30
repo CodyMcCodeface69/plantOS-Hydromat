@@ -104,13 +104,19 @@ wifi:
     - logger.log: "Performing online connectivity check (ping www.google.com)..."
     - http_request.get:
         url: http://www.google.com/generate_204
+        verify_ssl: false
         on_response:
           then:
             - lambda: |-
-                // Note: Any successful response (even error codes) means network is working
-                // Only timeouts indicate mesh network issues
-                ESP_LOGI("wifi", "✓ Online connectivity check PASSED - HTTP response received");
-                id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
+                if (status_code == 204 || (status_code >= 200 && status_code < 400)) {
+                  ESP_LOGI("wifi", "✓ Online connectivity check PASSED (HTTP %d)", status_code);
+                  id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
+                } else {
+                  ESP_LOGW("wifi", "✗ Online connectivity check FAILED (HTTP %d) - Reconnecting WiFi...", status_code);
+                  // Disconnect and reconnect WiFi
+                  wifi::global_wifi_component->set_sta(false);
+                  wifi::global_wifi_component->set_sta(true);
+                }
 
     # Handle connection timeout/error (no response received)
     - script.execute: connectivity_check_timeout

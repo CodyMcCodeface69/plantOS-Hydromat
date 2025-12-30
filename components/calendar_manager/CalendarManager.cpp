@@ -41,13 +41,13 @@ void CalendarManager::setup() {
 
     // Log current schedule
     DailySchedule today = this->get_today_schedule();
-    ESP_LOGI(TAG, "Day %d schedule: pH %.2f-%.2f, Nutrient A: %dms, B: %dms, C: %dms",
+    ESP_LOGI(TAG, "Day %d schedule: pH %.2f-%.2f, Nutrient A: %.2f mL/L, B: %.2f mL/L, C: %.2f mL/L",
              today.day_number,
              today.target_ph_min,
              today.target_ph_max,
-             today.nutrient_A_duration_ms,
-             today.nutrient_B_duration_ms,
-             today.nutrient_C_duration_ms);
+             today.nutrient_A_ml_per_liter,
+             today.nutrient_B_ml_per_liter,
+             today.nutrient_C_ml_per_liter);
 
     ESP_LOGI(TAG, "CalendarManager initialized successfully");
 }
@@ -97,9 +97,9 @@ bool CalendarManager::parse_schedule_json() {
         uint8_t day = obj["day"] | 0;
         float ph_min = obj["ph_min"] | 5.8f;
         float ph_max = obj["ph_max"] | 6.2f;
-        uint32_t dose_a = obj["dose_A_ms"] | 0;
-        uint32_t dose_b = obj["dose_B_ms"] | 0;
-        uint32_t dose_c = obj["dose_C_ms"] | 0;
+        float dose_a = obj["dose_A_ml_per_L"] | 0.0f;
+        float dose_b = obj["dose_B_ml_per_L"] | 0.0f;
+        float dose_c = obj["dose_C_ml_per_L"] | 0.0f;
 
         // Validate day number
         if (day < 1 || day > 120) {
@@ -112,7 +112,7 @@ bool CalendarManager::parse_schedule_json() {
         parsed_count++;
 
         if (this->verbose_) {
-            ESP_LOGD(TAG, "Day %d: pH %.2f-%.2f, A:%dms B:%dms C:%dms",
+            ESP_LOGD(TAG, "Day %d: pH %.2f-%.2f, A:%.2f mL/L B:%.2f mL/L C:%.2f mL/L",
                      day, ph_min, ph_max, dose_a, dose_b, dose_c);
         }
     }
@@ -129,7 +129,7 @@ DailySchedule CalendarManager::get_schedule(uint8_t day) const {
 
     // Return default schedule if day not found
     ESP_LOGW(TAG, "Schedule for day %d not found - using defaults", day);
-    return DailySchedule(day, 5.8, 6.2, 0, 0, 0);
+    return DailySchedule(day, 5.8, 6.2, 0.0f, 0.0f, 0.0f);
 }
 
 bool CalendarManager::set_current_day(uint8_t day) {
@@ -209,9 +209,9 @@ void CalendarManager::log_status() {
     ESP_LOGI(TAG, "Current Day: %d/120", this->current_day_);
     ESP_LOGI(TAG, "Safe Mode: %s", this->safe_mode_ ? "ENABLED" : "DISABLED");
     ESP_LOGI(TAG, "Target pH Range: %.2f - %.2f", today.target_ph_min, today.target_ph_max);
-    ESP_LOGI(TAG, "Nutrient A Duration: %d ms", today.nutrient_A_duration_ms);
-    ESP_LOGI(TAG, "Nutrient B Duration: %d ms", today.nutrient_B_duration_ms);
-    ESP_LOGI(TAG, "Nutrient C Duration: %d ms", today.nutrient_C_duration_ms);
+    ESP_LOGI(TAG, "Nutrient A: %.2f mL/L", today.nutrient_A_ml_per_liter);
+    ESP_LOGI(TAG, "Nutrient B: %.2f mL/L", today.nutrient_B_ml_per_liter);
+    ESP_LOGI(TAG, "Nutrient C: %.2f mL/L", today.nutrient_C_ml_per_liter);
     ESP_LOGI(TAG, "==============================");
 }
 

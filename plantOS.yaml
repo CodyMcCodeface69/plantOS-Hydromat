@@ -917,7 +917,7 @@ plantos_hal:
   # Formula: flow_rate_ml_s = (measured_mL) / 10
   pump_ph_flow_rate_ml_s: 1.0        # pH pump: mL/second @ configured PWM (default: 1.0)
   pump_ph_pwm_intensity: 100%        # pH pump: PWM intensity (0-100%, default: 100%)
-  pump_grow_flow_rate_ml_s: 0.31     # Grow pump: mL/second @ configured PWM (CALIBRATED: 3.1mL/10s @ 60%)
+  pump_grow_flow_rate_ml_s: 0.45     # Grow pump: mL/second @ configured PWM (CALIBRATED: 4.0mL/10s @ 60%)
   pump_grow_pwm_intensity: 60%       # Grow pump: PWM intensity (0-100%, CALIBRATED: 60%)
   pump_micro_flow_rate_ml_s: 1.0     # Micro pump: mL/second @ configured PWM (default: 1.0)
   pump_micro_pwm_intensity: 100%     # Micro pump: PWM intensity (0-100%, default: 100%)
@@ -951,6 +951,7 @@ plantos_controller:
   safety_gate: actuator_safety   # Actuator control with safety enforcement
   persistence: psm               # Persistent state manager for crash recovery
   ph_sensor: ezo_ph_uart_component  # pH sensor for calibration control
+  calendar: plant_calendar       # Calendar manager for grow schedule and nutrient dosing
 
   # Status Logger Configuration
   enable_status_reports: false  # Enable/disable periodic status reports (default: false, use switch 11_10)
@@ -1302,13 +1303,18 @@ calendar_manager:
   # Status log interval: How often to report current day and schedule
   status_log_interval: 30s
 
-  # Schedule JSON: 120-day schedule (currently showing days 1-3 as example)
+  # Schedule JSON: 120-day schedule (currently showing days 1-5 as example)
   # Full production schedule would contain all 120 days
+  # Doses are specified in mL per liter of tank volume (mL/L)
+  # Actual mL dose = dose_mL_per_L × tank_volume_L
+  # Example: For 10L tank with dose_A_ml_per_L = 1.5 → 15 mL actual dose
   schedule_json: >-
     [
-      {"day": 1, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ms": 500, "dose_B_ms": 1200, "dose_C_ms": 800},
-      {"day": 2, "ph_min": 5.8, "ph_max": 6.3, "dose_A_ms": 600, "dose_B_ms": 1300, "dose_C_ms": 900},
-      {"day": 3, "ph_min": 5.9, "ph_max": 6.3, "dose_A_ms": 700, "dose_B_ms": 1400, "dose_C_ms": 1000}
+      {"day": 1, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.0, "dose_B_ml_per_L": 0.5, "dose_C_ml_per_L": 0.0},
+      {"day": 2, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.2, "dose_B_ml_per_L": 0.6, "dose_C_ml_per_L": 0.0},
+      {"day": 3, "ph_min": 5.8, "ph_max": 6.3, "dose_A_ml_per_L": 1.5, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.0},
+      {"day": 4, "ph_min": 5.9, "ph_max": 6.3, "dose_A_ml_per_L": 1.8, "dose_B_ml_per_L": 1.0, "dose_C_ml_per_L": 0.2},
+      {"day": 5, "ph_min": 5.9, "ph_max": 6.3, "dose_A_ml_per_L": 2.0, "dose_B_ml_per_L": 1.2, "dose_C_ml_per_L": 0.5}
     ]
 
 ################################################################################

@@ -27,6 +27,9 @@ namespace esphome {
 namespace ezo_ph_uart {
 class EZOPHUARTComponent;
 }
+namespace calendar_manager {
+class CalendarManager;
+}
 }
 
 namespace plantos_controller {
@@ -108,6 +111,14 @@ public:
      */
     void setPhSensor(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor) {
         ph_sensor_ = ph_sensor;
+    }
+
+    /**
+     * Set Calendar Manager
+     * OPTIONAL - Used for grow schedule and nutrient dosing
+     */
+    void setCalendarManager(esphome::calendar_manager::CalendarManager* calendar) {
+        calendar_manager_ = calendar;
     }
 
     // ========================================================================
@@ -208,6 +219,7 @@ private:
     esphome::actuator_safety_gate::ActuatorSafetyGate* safety_gate_{nullptr};
     esphome::persistent_state_manager::PersistentStateManager* psm_{nullptr};
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_{nullptr};
+    esphome::calendar_manager::CalendarManager* calendar_manager_{nullptr};
 
     // Status logger (owned by controller, not injected)
     CentralStatusLogger status_logger_;

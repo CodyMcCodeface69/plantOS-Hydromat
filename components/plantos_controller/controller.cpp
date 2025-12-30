@@ -3,6 +3,7 @@
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
+#include "esphome/components/calendar_manager/CalendarManager.h"
 #include <algorithm> // for std::sort, std::min, std::max
 
 namespace plantos_controller {
@@ -1067,25 +1068,46 @@ void PlantOSController::handleFeeding() {
         sendTemperatureCompensation();
     }
 
-    // Phase 7 TODO: Get durations from CalendarManager
-    // For now, use hardcoded example durations (in milliseconds)
-    static constexpr uint32_t NUTRIENT_A_DURATION = 5000;  // 5 seconds
-    static constexpr uint32_t NUTRIENT_B_DURATION = 4000;  // 4 seconds
-    static constexpr uint32_t NUTRIENT_C_DURATION = 3000;  // 3 seconds
+    // Get nutrient doses from CalendarManager (mL/L) and convert to actual mL
+    // Then use HAL pumpflow() to convert mL to seconds
+    float dose_a_ml = 0.0f;
+    float dose_b_ml = 0.0f;
+    float dose_c_ml = 0.0f;
+
+    if (calendar_manager_ && hal_) {
+        // Get today's schedule from calendar
+        auto schedule = calendar_manager_->get_today_schedule();
+        float tank_volume_liters = hal_->getTankVolume();
+
+        // Calculate actual mL doses from mL/L concentrations
+        dose_a_ml = schedule.nutrient_A_ml_per_liter * tank_volume_liters;
+        dose_b_ml = schedule.nutrient_B_ml_per_liter * tank_volume_liters;
+        dose_c_ml = schedule.nutrient_C_ml_per_liter * tank_volume_liters;
+
+        ESP_LOGI(TAG, "Calendar day %d: Tank %.1fL, A:%.2f mL, B:%.2f mL, C:%.2f mL",
+                 schedule.day_number, tank_volume_liters, dose_a_ml, dose_b_ml, dose_c_ml);
+    } else {
+        // Fallback: use hardcoded values if calendar not available
+        dose_a_ml = 5.0f;  // 5 mL
+        dose_b_ml = 4.0f;  // 4 mL
+        dose_c_ml = 3.0f;  // 3 mL
+        ESP_LOGW(TAG, "Calendar not available - using fallback doses");
+    }
 
     // Use state_counter to track which pump we're on (0=A, 1=B, 2=C, 3=done)
     const char* pump_name = nullptr;
+    float dose_ml = 0.0f;
     uint32_t duration_ms = 0;
 
     if (state_counter_ == 0) {
         pump_name = NUTRIENT_PUMP_A;
-        duration_ms = NUTRIENT_A_DURATION;
+        dose_ml = dose_a_ml;
     } else if (state_counter_ == 1) {
         pump_name = NUTRIENT_PUMP_B;
-        duration_ms = NUTRIENT_B_DURATION;
+        dose_ml = dose_b_ml;
     } else if (state_counter_ == 2) {
         pump_name = NUTRIENT_PUMP_C;
-        duration_ms = NUTRIENT_C_DURATION;
+        dose_ml = dose_c_ml;
     } else {
         // All pumps complete
         ESP_LOGI(TAG, "Feeding sequence complete");
@@ -1097,6 +1119,16 @@ void PlantOSController::handleFeeding() {
 
         transitionTo(ControllerState::IDLE);
         return;
+    }
+
+    // Convert mL to duration using HAL pumpflow
+    if (dose_ml > 0.0f && hal_) {
+        float duration_sec = hal_->pumpflow(pump_name, dose_ml);
+        duration_ms = static_cast<uint32_t>(duration_sec * 1000.0f);
+        ESP_LOGI(TAG, "%s dose: %.2f mL = %.2f sec (%d ms)",
+                 pump_name, dose_ml, duration_sec, duration_ms);
+    } else {
+        duration_ms = 0;
     }
 
     // On entry for this pump: activate it
@@ -1120,7 +1152,7 @@ void PlantOSController::handleFeeding() {
                 }
             }
 
-            ESP_LOGI(TAG, "%s ON for %d ms", pump_name, duration_ms);
+            ESP_LOGI(TAG, "%s ON for %.2f mL (%d ms)", pump_name, dose_ml, duration_ms);
         } else {
             ESP_LOGI(TAG, "%s duration is 0 - skipping", pump_name);
             // Immediately move to next pump

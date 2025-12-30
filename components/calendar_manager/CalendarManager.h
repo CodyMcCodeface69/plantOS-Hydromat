@@ -20,26 +20,26 @@ struct DailySchedule {
     uint8_t day_number;                 // Current day in the grow cycle (1-120)
     float target_ph_min;                // Lower bound for pH target (e.g., 5.8)
     float target_ph_max;                // Upper bound for pH target (e.g., 6.2)
-    uint32_t nutrient_A_duration_ms;    // Dosing time for Nutrient A (milliseconds)
-    uint32_t nutrient_B_duration_ms;    // Dosing time for Nutrient B (milliseconds)
-    uint32_t nutrient_C_duration_ms;    // Dosing time for Nutrient C (milliseconds)
+    float nutrient_A_ml_per_liter;      // Nutrient A concentration (mL per liter of tank volume)
+    float nutrient_B_ml_per_liter;      // Nutrient B concentration (mL per liter of tank volume)
+    float nutrient_C_ml_per_liter;      // Nutrient C concentration (mL per liter of tank volume)
 
     DailySchedule()
         : day_number(0),
           target_ph_min(5.8),
           target_ph_max(6.2),
-          nutrient_A_duration_ms(0),
-          nutrient_B_duration_ms(0),
-          nutrient_C_duration_ms(0) {}
+          nutrient_A_ml_per_liter(0.0f),
+          nutrient_B_ml_per_liter(0.0f),
+          nutrient_C_ml_per_liter(0.0f) {}
 
     DailySchedule(uint8_t day, float ph_min, float ph_max,
-                  uint32_t dose_a, uint32_t dose_b, uint32_t dose_c)
+                  float dose_a, float dose_b, float dose_c)
         : day_number(day),
           target_ph_min(ph_min),
           target_ph_max(ph_max),
-          nutrient_A_duration_ms(dose_a),
-          nutrient_B_duration_ms(dose_b),
-          nutrient_C_duration_ms(dose_c) {}
+          nutrient_A_ml_per_liter(dose_a),
+          nutrient_B_ml_per_liter(dose_b),
+          nutrient_C_ml_per_liter(dose_c) {}
 };
 
 /**
@@ -95,16 +95,21 @@ struct DailySchedule {
  * JSON FORMAT
  * ============================================================================
  *
- * The schedule_json parameter must contain a JSON array with 120 objects:
+ * The schedule_json parameter must contain a JSON array with 120 objects.
+ * Nutrient doses are specified in mL per liter of tank volume (mL/L).
+ * Actual mL doses are calculated by: dose_mL = dose_mL_per_L × tank_volume_L
+ *
+ * Example: For a 10L tank with dose_A_ml_per_L = 1.5:
+ *   Actual dose = 1.5 mL/L × 10L = 15 mL
  *
  * [
  *   {
  *     "day": 1,
  *     "ph_min": 5.8,
  *     "ph_max": 6.2,
- *     "dose_A_ms": 500,
- *     "dose_B_ms": 1200,
- *     "dose_C_ms": 800
+ *     "dose_A_ml_per_L": 1.5,
+ *     "dose_B_ml_per_L": 2.0,
+ *     "dose_C_ml_per_L": 1.0
  *   },
  *   ...
  * ]

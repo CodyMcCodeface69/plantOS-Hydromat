@@ -57,7 +57,8 @@ enum class ControllerState {
     PH_CALIBRATING,    // pH sensor calibration (Yellow Fast Blink)
     FEEDING,           // Nutrient dosing (Orange Pulse)
     WATER_FILLING,     // Fresh water addition (Blue Solid)
-    WATER_EMPTYING     // Wastewater removal (Purple Pulse)
+    WATER_EMPTYING,    // Wastewater removal (Purple Pulse)
+    FEED_FILLING       // Fill tank before feeding (part of Feed operation) (Blue Solid)
 };
 
 /**
@@ -177,6 +178,19 @@ public:
     void startEmptyTank();
 
     /**
+     * Start feed operation: Fill tank + add nutrients + pH correction
+     * Sequence: FEED_FILLING → FEEDING → PH_PROCESSING
+     */
+    void startFeed();
+
+    /**
+     * Start complete reservoir change sequence
+     * Sequence: Empty → Fill → Nutrients → pH correction
+     * MVP: WastewaterPump not available, so skips empty phase (warns user)
+     */
+    void startReservoirChange();
+
+    /**
      * Set controller to SHUTDOWN state
      * Turns off all actuators and disables time-based events
      * Persists to NVS - will resume in SHUTDOWN if power cycled
@@ -272,6 +286,18 @@ private:
     bool boot_restore_pending_{false};
 
     // ========================================================================
+    // Periodic pH Monitoring State
+    // ========================================================================
+
+    uint32_t last_ph_check_time_{0};     // Last time we checked pH (millis())
+
+    // ========================================================================
+    // Feed Operation State (Fill + Nutrients + pH)
+    // ========================================================================
+
+    bool auto_ph_correction_pending_{false};  // Flag: trigger pH correction after current operation
+
+    // ========================================================================
     // pH Correction State
     // ========================================================================
 
@@ -355,6 +381,7 @@ private:
     void handleFeeding();
     void handleWaterFilling();
     void handleWaterEmptying();
+    void handleFeedFilling();
 
     // Helper methods for calibration
     void resetCalibrationBatch();

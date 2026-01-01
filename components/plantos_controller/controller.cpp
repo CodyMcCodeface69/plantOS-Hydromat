@@ -52,6 +52,11 @@ void PlantOSController::setup() {
         ESP_LOGW(TAG, "Temperature sensor not available - temperature compensation disabled");
     }
 
+    // Initialize periodic pH check timer
+    last_ph_check_time_ = esphome::millis();
+    uint32_t ph_interval_hours = hal_->get_ph_reading_interval() / 3600000;  // Convert ms to hours
+    ESP_LOGI(TAG, "Periodic pH monitoring configured: every %u hours", ph_interval_hours);
+
     // Always start in INIT state for boot sequence
     ESP_LOGI(TAG, "Controller initialized - Starting INIT boot sequence");
     transitionTo(ControllerState::INIT);
@@ -261,6 +266,10 @@ void PlantOSController::loop() {
         case ControllerState::WATER_EMPTYING:
             handleWaterEmptying();
             break;
+
+        case ControllerState::FEED_FILLING:
+            handleFeedFilling();
+            break;
     }
 }
 
@@ -395,7 +404,22 @@ void PlantOSController::handleIdle() {
         }
     }
 
-    // Future: Check for scheduled tasks, sensor thresholds, etc.
+    // Periodic pH monitoring (every ph_reading_interval from HAL)
+    uint32_t ph_interval = hal_->get_ph_reading_interval();  // Default: 2 hours (7200000 ms)
+
+    if (now - last_ph_check_time_ >= ph_interval) {
+        last_ph_check_time_ = now;
+
+        ESP_LOGI(TAG, "========================================================");
+        ESP_LOGI(TAG, "  AUTOMATIC pH CHECK (every %u hours)", ph_interval / 3600000);
+        ESP_LOGI(TAG, "========================================================");
+
+        // Transition to PH_PROCESSING to check if correction needed
+        transitionTo(ControllerState::PH_PROCESSING);
+        return;  // Exit IDLE immediately
+    }
+
+    // Future: Check for other scheduled tasks, sensor thresholds, etc.
 }
 
 void PlantOSController::handleShutdown() {
@@ -660,7 +684,7 @@ void PlantOSController::handlePhCalculating() {
 
 void PlantOSController::handlePhInjecting() {
     // Cyan pulse - acid dosing in progress
-    // Acid pump + Air pump active
+    // Air pump + Acid pump active (or acid pump only if no air pump)
 
     uint32_t elapsed = getStateElapsed();
 
@@ -671,18 +695,23 @@ void PlantOSController::handlePhInjecting() {
 
         ESP_LOGI(TAG, "Starting acid injection: %.1f mL (%.2f sec)", ph_dose_ml_, duration_sec / 1.0f);
 
-        // Start air pump first for immediate mixing
-        requestPump(AIR_PUMP, true, 0); // Continuous during injection
+        // Try to start air pump for mixing (no-op if not configured)
+        // MVP: AirPump not implemented - request will be no-op
+        if (!requestPump(AIR_PUMP, true, 0)) {
+            ESP_LOGD(TAG, "Air pump not available - relying on natural mixing");
+        } else {
+            ESP_LOGI(TAG, "Air pump active for mixing during injection");
+        }
 
         // Request acid pump via SafetyGate
         if (!requestPump(ACID_PUMP, true, duration_sec)) {
             ESP_LOGE(TAG, "Acid pump rejected by SafetyGate - aborting");
-            requestPump(AIR_PUMP, false); // Stop air pump too
+            requestPump(AIR_PUMP, false); // Stop air pump too (if it was started)
             transitionTo(ControllerState::ERROR);
             return;
         }
 
-        ESP_LOGI(TAG, "Acid pump active - dosing %.1f mL (Air pump mixing)", ph_dose_ml_);
+        ESP_LOGI(TAG, "Acid pump active - dosing %.1f mL", ph_dose_ml_);
         return;
     }
 
@@ -701,9 +730,20 @@ void PlantOSController::handlePhInjecting() {
 void PlantOSController::handlePhMixing() {
     // Blue pulse - mixing after acid injection
     // Air pump runs for 2 minutes to distribute acid throughout tank
+    // MVP: AirPump not implemented - skip mixing phase but keep timing
 
-    if (getStateElapsed() >= PH_MIXING_DURATION) {
-        // Mixing complete - stop air pump
+    uint32_t elapsed = getStateElapsed();
+
+    // On entry: Verify air pump state
+    if (elapsed < 100) {
+        if (!requestPump(AIR_PUMP, true, PH_MIXING_DURATION / 1000)) {
+            ESP_LOGW(TAG, "Air pump not available - using passive mixing period");
+            ESP_LOGI(TAG, "Waiting 2 minutes for acid to distribute naturally");
+        }
+    }
+
+    if (elapsed >= PH_MIXING_DURATION) {
+        // Mixing complete - stop air pump (no-op if not configured)
         requestPump(AIR_PUMP, false);
         ESP_LOGI(TAG, "pH mixing complete (2 minutes)");
 
@@ -1189,7 +1229,27 @@ void PlantOSController::handleFeeding() {
             psm_->clearEvent();
         }
 
-        transitionTo(ControllerState::IDLE);
+        // Check if auto pH correction should follow
+        if (auto_ph_correction_pending_) {
+            ESP_LOGI(TAG, "Auto pH correction pending - starting pH check");
+            auto_ph_correction_pending_ = false;
+
+            // Reset pH correction state
+            ph_attempt_count_ = 0;
+            ph_readings_.clear();
+            ph_current_ = 0.0f;
+            ph_dose_ml_ = 0.0f;
+            ph_dose_duration_ms_ = 0;
+
+            // Log event for crash recovery
+            if (psm_) {
+                psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+            }
+
+            transitionTo(ControllerState::PH_PROCESSING);
+        } else {
+            transitionTo(ControllerState::IDLE);
+        }
         return;
     }
 
@@ -1251,15 +1311,94 @@ void PlantOSController::handleFeeding() {
     state_start_time_ = hal_->getSystemTime();
 }
 
+void PlantOSController::handleFeedFilling() {
+    // Blue solid LED handled by LedBehaviorSystem (same as WATER_FILLING)
+    // This is the first phase of the Feed operation
+
+    uint32_t elapsed = getStateElapsed();
+    static constexpr uint32_t FILL_DURATION_MS = 600000;  // 10 min fallback
+
+    // ENTRY: Log and activate water valve
+    if (elapsed < 100) {
+        ESP_LOGI(TAG, "[FEED_FILLING] Starting tank fill before nutrient dosing");
+
+        // Request water valve open (600s = 10 min max duration as safety backup)
+        if (safety_gate_) {
+            bool approved = safety_gate_->executeCommand(WATER_VALVE, true, 600);
+
+            if (!approved) {
+                ESP_LOGE(TAG, "[FEED_FILLING] SafetyGate rejected WaterValve command");
+
+                // Clear flags
+                auto_ph_correction_pending_ = false;
+
+                // Clear PSM event
+                if (psm_) {
+                    psm_->clearEvent();
+                }
+
+                transitionTo(ControllerState::IDLE);
+                return;
+            }
+        }
+
+        ESP_LOGI(TAG, "[FEED_FILLING] Water valve OPENED");
+        return;
+    }
+
+    // MONITOR: Check water level sensors (if available)
+    if (hal_->hasWaterLevelSensors()) {
+        bool high_sensor = hal_->readWaterLevelHigh();
+
+        // SUCCESS: High level reached
+        if (high_sensor) {
+            ESP_LOGI(TAG, "[FEED_FILLING] HIGH sensor triggered - tank full");
+
+            // Close water valve
+            if (safety_gate_) {
+                safety_gate_->executeCommand(WATER_VALVE, false, 0);
+            }
+
+            ESP_LOGI(TAG, "[FEED_FILLING] Fill complete - proceeding to nutrient dosing");
+
+            // Transition to FEEDING (nutrients)
+            // Note: auto_ph_correction_pending_ flag is already set
+            transitionTo(ControllerState::FEEDING);
+            return;
+        }
+    }
+
+    // TIMEOUT: Safety backup - 10min max fill time
+    if (elapsed >= FILL_DURATION_MS) {
+        ESP_LOGW(TAG, "[FEED_FILLING] 10min timeout reached - closing valve");
+
+        // Close water valve
+        if (safety_gate_) {
+            safety_gate_->executeCommand(WATER_VALVE, false, 0);
+        }
+
+        // Alert if sensors were expected but didn't trigger
+        if (hal_->hasWaterLevelSensors()) {
+            ESP_LOGE(TAG, "[FEED_FILLING] HIGH sensor never triggered - possible sensor failure or low water pressure");
+        }
+
+        ESP_LOGI(TAG, "[FEED_FILLING] Proceeding to nutrient dosing despite timeout");
+        transitionTo(ControllerState::FEEDING);
+        return;
+    }
+}
+
 void PlantOSController::handleWaterFilling() {
     // Blue solid LED handled by LedBehaviorSystem
     uint32_t elapsed = getStateElapsed();
 
-    // Fill duration: 30 seconds (fallback if sensors unavailable)
-    static constexpr uint32_t FILL_DURATION_MS = 30000;
+    // FILL DURATION: 10 minutes (fallback if sensors unavailable - CONFIGURE ACCORDING TO: tank volume and Mag Valve flowspeed )
+    static constexpr uint32_t FILL_DURATION_MS = 600000;
 
-    // ENTRY: Log and activate water valve
-    if (elapsed < 100) {
+    // ENTRY: Log and activate water valve (only once per state entry)
+    static bool valve_command_sent = false;
+
+    if (elapsed < 100 && !valve_command_sent) {
         ESP_LOGI(TAG, "[WATER_FILLING] Starting tank fill sequence");
 
         // Request water valve open (30s max duration as safety backup)
@@ -1274,12 +1413,14 @@ void PlantOSController::handleWaterFilling() {
                     psm_->clearEvent();
                 }
 
+                valve_command_sent = false;  // Reset for next attempt
                 transitionTo(ControllerState::IDLE);
                 return;
             }
         }
 
         ESP_LOGI(TAG, "[WATER_FILLING] Water valve OPENED");
+        valve_command_sent = true;  // Mark as sent
         return;
     }
 
@@ -1302,8 +1443,31 @@ void PlantOSController::handleWaterFilling() {
                 psm_->clearEvent();
             }
 
-            ESP_LOGI(TAG, "[WATER_FILLING] Fill complete - returning to IDLE");
-            transitionTo(ControllerState::IDLE);
+            valve_command_sent = false;  // Reset for next fill cycle
+            ESP_LOGI(TAG, "[WATER_FILLING] Fill complete");
+
+            // Check if auto pH correction should follow
+            if (auto_ph_correction_pending_) {
+                ESP_LOGI(TAG, "Auto pH correction pending - starting pH check");
+                auto_ph_correction_pending_ = false;
+
+                // Reset pH correction state
+                ph_attempt_count_ = 0;
+                ph_readings_.clear();
+                ph_current_ = 0.0f;
+                ph_dose_ml_ = 0.0f;
+                ph_dose_duration_ms_ = 0;
+
+                // Log event for crash recovery
+                if (psm_) {
+                    psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+                }
+
+                transitionTo(ControllerState::PH_PROCESSING);
+            } else {
+                ESP_LOGI(TAG, "Returning to IDLE");
+                transitionTo(ControllerState::IDLE);
+            }
             return;
         }
 
@@ -1344,8 +1508,31 @@ void PlantOSController::handleWaterFilling() {
             ESP_LOGE(TAG, "[WATER_FILLING] HIGH sensor never triggered - possible sensor failure or low water pressure");
         }
 
-        ESP_LOGI(TAG, "[WATER_FILLING] Timeout complete - returning to IDLE");
-        transitionTo(ControllerState::IDLE);
+        valve_command_sent = false;  // Reset for next fill cycle
+        ESP_LOGI(TAG, "[WATER_FILLING] Timeout complete");
+
+        // Check if auto pH correction should follow
+        if (auto_ph_correction_pending_) {
+            ESP_LOGI(TAG, "Auto pH correction pending - starting pH check");
+            auto_ph_correction_pending_ = false;
+
+            // Reset pH correction state
+            ph_attempt_count_ = 0;
+            ph_readings_.clear();
+            ph_current_ = 0.0f;
+            ph_dose_ml_ = 0.0f;
+            ph_dose_duration_ms_ = 0;
+
+            // Log event for crash recovery
+            if (psm_) {
+                psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+            }
+
+            transitionTo(ControllerState::PH_PROCESSING);
+        } else {
+            ESP_LOGI(TAG, "Returning to IDLE");
+            transitionTo(ControllerState::IDLE);
+        }
         return;
     }
 }
@@ -1357,8 +1544,10 @@ void PlantOSController::handleWaterEmptying() {
     // Empty duration: 30 seconds (fallback if sensors unavailable)
     static constexpr uint32_t EMPTY_DURATION_MS = 30000;
 
-    // ENTRY: Log and activate wastewater pump
-    if (elapsed < 100) {
+    // ENTRY: Log and activate wastewater pump (only once per state entry)
+    static bool pump_command_sent = false;
+
+    if (elapsed < 100 && !pump_command_sent) {
         ESP_LOGI(TAG, "[WATER_EMPTYING] Starting tank drain sequence");
 
         // Check LOW sensor before starting (prevent dry-pump immediately)
@@ -1370,6 +1559,7 @@ void PlantOSController::handleWaterEmptying() {
                 psm_->clearEvent();
             }
 
+            pump_command_sent = false;  // Reset for next attempt
             transitionTo(ControllerState::IDLE);
             return;
         }
@@ -1386,12 +1576,14 @@ void PlantOSController::handleWaterEmptying() {
                     psm_->clearEvent();
                 }
 
+                pump_command_sent = false;  // Reset for next attempt
                 transitionTo(ControllerState::IDLE);
                 return;
             }
         }
 
         ESP_LOGI(TAG, "[WATER_EMPTYING] Wastewater pump ACTIVATED");
+        pump_command_sent = true;  // Mark as sent
         return;
     }
 
@@ -1414,6 +1606,7 @@ void PlantOSController::handleWaterEmptying() {
                 psm_->clearEvent();
             }
 
+            pump_command_sent = false;  // Reset for next drain cycle
             ESP_LOGI(TAG, "[WATER_EMPTYING] Drain complete - returning to IDLE");
             transitionTo(ControllerState::IDLE);
             return;
@@ -1456,6 +1649,7 @@ void PlantOSController::handleWaterEmptying() {
             ESP_LOGE(TAG, "[WATER_EMPTYING] LOW sensor never cleared - possible sensor failure or clog");
         }
 
+        pump_command_sent = false;  // Reset for next drain cycle
         ESP_LOGI(TAG, "[WATER_EMPTYING] Timeout complete - returning to IDLE");
         transitionTo(ControllerState::IDLE);
         return;
@@ -1690,7 +1884,10 @@ void PlantOSController::startFeeding() {
 
 void PlantOSController::startFillTank() {
     if (current_state_ == ControllerState::IDLE) {
-        ESP_LOGI(TAG, "Starting tank fill");
+        ESP_LOGI(TAG, "Starting tank fill with auto pH correction");
+
+        // Set flag for auto pH correction after fill
+        auto_ph_correction_pending_ = true;
 
         // Log event for crash recovery persistence
         if (psm_) {
@@ -1704,18 +1901,88 @@ void PlantOSController::startFillTank() {
 }
 
 void PlantOSController::startEmptyTank() {
+    // MVP: WastewaterPump not implemented - warn user
+    ESP_LOGW(TAG, "========================================================");
+    ESP_LOGW(TAG, "  TANK DRAIN NOT AVAILABLE IN MVP");
+    ESP_LOGW(TAG, "========================================================");
+    ESP_LOGW(TAG, "WastewaterPump not configured in current hardware setup");
+    ESP_LOGW(TAG, "Please manually drain tank using external pump or drain valve");
+    ESP_LOGW(TAG, "");
+
+    // Do not transition to WATER_EMPTYING state
+    // Stay in IDLE
+
+    /* FUTURE: When WastewaterPump is available:
     if (current_state_ == ControllerState::IDLE) {
         ESP_LOGI(TAG, "Starting tank drain");
 
-        // Log event for crash recovery persistence
         if (psm_) {
-            psm_->logEvent("WATER_EMPTY", 0);  // 0 = STARTED
+            psm_->logEvent("WATER_EMPTY", 0);
         }
 
         transitionTo(ControllerState::WATER_EMPTYING);
     } else {
         ESP_LOGW(TAG, "Cannot start drain - system busy");
     }
+    */
+}
+
+void PlantOSController::startFeed() {
+    if (current_state_ == ControllerState::IDLE) {
+        ESP_LOGI(TAG, "===============================================");
+        ESP_LOGI(TAG, "  STARTING FEED OPERATION");
+        ESP_LOGI(TAG, "===============================================");
+        ESP_LOGI(TAG, "Sequence: Fill tank → Add nutrients → pH correction");
+
+        // Set flag for auto pH correction after feeding
+        auto_ph_correction_pending_ = true;
+
+        // Log event for crash recovery persistence
+        if (psm_) {
+            psm_->logEvent("FEED_OPERATION", 0);  // 0 = STARTED
+        }
+
+        // Start with filling
+        transitionTo(ControllerState::FEED_FILLING);
+    } else {
+        ESP_LOGW(TAG, "Cannot start Feed operation - system busy");
+    }
+}
+
+void PlantOSController::startReservoirChange() {
+    if (current_state_ != ControllerState::IDLE) {
+        ESP_LOGW(TAG, "Cannot start Reservoir Change - system busy");
+        return;
+    }
+
+    ESP_LOGI(TAG, "========================================================");
+    ESP_LOGI(TAG, "  STARTING RESERVOIR CHANGE SEQUENCE");
+    ESP_LOGI(TAG, "========================================================");
+    ESP_LOGI(TAG, "Sequence: Empty tank → Fill → Add nutrients → pH correction");
+    ESP_LOGI(TAG, "");
+
+    // Check if WastewaterPump is available
+    // For MVP: WastewaterPump not implemented, so skip WATER_EMPTYING
+    ESP_LOGW(TAG, "⚠️  WastewaterPump not available in MVP - skipping empty phase");
+    ESP_LOGW(TAG, "⚠️  Please manually empty tank before starting Reservoir Change");
+    ESP_LOGI(TAG, "");
+
+    // Set flag for auto pH correction after feeding
+    auto_ph_correction_pending_ = true;
+
+    // Log event for crash recovery persistence
+    if (psm_) {
+        psm_->logEvent("RESERVOIR_CHANGE", 0);  // 0 = STARTED
+    }
+
+    // Start with filling (skip empty for MVP since no wastewater pump)
+    ESP_LOGI(TAG, "Starting fill phase (tank should already be empty)");
+    transitionTo(ControllerState::FEED_FILLING);
+
+    // FUTURE: When WastewaterPump is available:
+    // transitionTo(ControllerState::WATER_EMPTYING);
+    // In handleWaterEmptying(), check auto_feed_pending_ flag
+    // and transition to FEED_FILLING instead of IDLE
 }
 
 void PlantOSController::setToShutdown() {
@@ -1763,11 +2030,11 @@ std::string PlantOSController::getStateAsString() const {
     const char* state_names[] = {
         "INIT", "IDLE", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
-        "FEEDING", "WATER_FILLING", "WATER_EMPTYING"
+        "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING"
     };
 
     int state_index = static_cast<int>(current_state_);
-    if (state_index >= 0 && state_index < 14) {
+    if (state_index >= 0 && state_index < 15) {  // Updated from 14 to 15
         return std::string(state_names[state_index]);
     }
 
@@ -1787,7 +2054,7 @@ void PlantOSController::transitionTo(ControllerState newState) {
     const char* state_names[] = {
         "INIT", "IDLE", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
-        "FEEDING", "WATER_FILLING", "WATER_EMPTYING"
+        "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING"
     };
 
     const char* oldStateName = state_names[static_cast<int>(current_state_)];
@@ -1826,6 +2093,12 @@ bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint3
     if (!safety_gate_) {
         ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", pumpId.c_str());
         return false;
+    }
+
+    // MVP: AirPump and WastewaterPump not implemented - make them no-ops
+    if (pumpId == "AirPump" || pumpId == "WastewaterPump") {
+        ESP_LOGD(TAG, "[NO-OP] %s not available in MVP hardware", pumpId.c_str());
+        return false;  // Not an error - just not available
     }
 
     // Verbose mode: Log actuator commands

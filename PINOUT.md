@@ -14,8 +14,8 @@ Firmware: PlantOS v0.9 (MVP)
 | GPIO | Function | Component | Direction | Baud/Freq | HAL Mapping | Pull-up Required |
 |------|----------|-----------|-----------|-----------|-------------|------------------|
 | GPIO0 | Light Sensor | ADC (KY-046) | Input (Analog) | - | `light_sensor_` | No |
-| GPIO4 | EZO pH TX | UART | Output | 9600 | `ph_sensor_component_` | No |
-| GPIO5 | EZO pH RX | UART | Input | 9600 | `ph_sensor_component_` | No |
+| GPIO4 | ESP's TX (connect with EZO pH RX)  | UART | Output | 9600 | `ph_sensor_component_` | No |
+| GPIO5 | ESP's RX (connect with EZO pH TX) | UART | Input | 9600 | `ph_sensor_component_` | No |
 | GPIO6 | I2C SDA | I2C Bus | Bidirectional | 100kHz | - | ✅ 4.7kΩ to 3.3V |
 | GPIO7 | I2C SCL | I2C Bus | Output | 100kHz | - | ✅ 4.7kΩ to 3.3V |
 | GPIO8 | System LED | WS2812 RGB (RMT) | Output | - | `led_` | No |

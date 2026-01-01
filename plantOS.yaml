@@ -8,13 +8,13 @@
 esphome:
   name: plantos
   on_boot:
-    # Configure actuator safety gate max durations on boot
+    # Configure actuator safety gate max durations (in seconds) on boot
     # All actuators limited to 10 seconds maximum runtime
     priority: -100  # Run after all components are initialized
     then:
       - lambda: |-
           ESP_LOGI("esphome", "Configuring actuator safety gate max durations (10s limit)");
-          id(actuator_safety)->setMaxDuration("WaterValve", 10);
+          id(actuator_safety)->setMaxDuration("WaterValve", 600);
           id(actuator_safety)->setMaxDuration("AcidPump", 10);
           id(actuator_safety)->setMaxDuration("NutrientPumpA", 10);
           id(actuator_safety)->setMaxDuration("NutrientPumpB", 10);
@@ -446,23 +446,23 @@ sensor:
   # ESP32-C6 ADC Fix: Using lboue's fork with adc_oneshot API
   # Official ESPHome has bugs with ESP32-C6 ADC (no ADC2 support)
   # This fork currently works on GPIO0 only
-  - platform: adc
-    id: light_intensity_raw
-    name: "Light Intensity Raw"
-    pin: GPIO0              # ADC1_CH0 (currently only supported pin in fork)
-    update_interval: 5s     # Read light level every 5 seconds
-    accuracy_decimals: 2
-    # Note: attenuation parameter not supported in lboue's fork
-    # The fork may use a fixed attenuation (likely 11/12dB for 0-3.3V range)
-    filters:
-      # Convert raw voltage to percentage (0-100%)
-      # Multiply by 100/3.3 to convert voltage to percentage
-      - multiply: 30.30303    # 100/3.3 = 30.30303
-      - lambda: |-
-          // Clamp to 0-100% range
-          if (x < 0.0) return 0.0f;
-          if (x > 100.0) return 100.0f;
-          return x;
+  # - platform: adc
+  #   id: light_intensity_raw
+  #   name: "Light Intensity Raw"
+  #   pin: GPIO0              # ADC1_CH0 (currently only supported pin in fork)
+  #   update_interval: 5s     # Read light level every 5 seconds
+  #   accuracy_decimals: 2
+  #   # Note: attenuation parameter not supported in lboue's fork
+  #   # The fork may use a fixed attenuation (likely 11/12dB for 0-3.3V range)
+  #   filters:
+  #     # Convert raw voltage to percentage (0-100%)
+  #     # Multiply by 100/3.3 to convert voltage to percentage
+  #     - multiply: 30.30303    # 100/3.3 = 30.30303
+  #     - lambda: |-
+  #         // Clamp to 0-100% range
+  #         if (x < 0.0) return 0.0f;
+  #         if (x > 100.0) return 100.0f;
+  #         return x;
 
   # Temperature Sensor: DS18B20 Digital Temperature Sensor
   #
@@ -581,20 +581,20 @@ text_sensor:
     # Update every 500ms to show real-time state changes
     update_interval: 500ms
 
-  - platform: template
-    name: "Light Intensity"
-    id: light_intensity_text
-    # Lambda returns current light intensity value from HAL
-    lambda: |-
-      if (id(hal)->hasLightIntensity()) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%.1f%%", id(hal)->readLightIntensity());
-        return {buf};
-      } else {
-        return {"N/A"};
-      }
-    # Update every 5 seconds to match sensor update interval
-    update_interval: 5s
+  # - platform: template
+  #   name: "Light Intensity"
+  #   id: light_intensity_text
+  #   # Lambda returns current light intensity value from HAL
+  #   lambda: |-
+  #     if (id(hal)->hasLightIntensity()) {
+  #       char buf[32];
+  #       snprintf(buf, sizeof(buf), "%.1f%%", id(hal)->readLightIntensity());
+  #       return {buf};
+  #     } else {
+  #       return {"N/A"};
+  #     }
+  #   # Update every 5 seconds to match sensor update interval
+  #   update_interval: 5s
 
   - platform: template
     name: "Water Temperature - HAL"
@@ -858,22 +858,48 @@ button:
 
   # === 09 - Water Management ===
   - platform: template
-    name: "09_01_Fill Tank"
+    name: "09_01_Fill Tank (→ pH check)"
     on_press:
-      # Start tank filling sequence
-      # Opens water valve for configured duration
+      # Start tank filling sequence with auto pH correction
+      # Opens water valve → Fill tank → pH correction
       then:
         - lambda: |-
+            ESP_LOGI("button", "Fill tank requested (will auto-check pH after)");
             id(unified_controller)->startFillTank();
 
   - platform: template
     name: "09_02_Empty Tank"
     on_press:
-      # Start tank emptying sequence
-      # Activates wastewater pump for configured duration
+      # Start tank emptying sequence (MVP: Manual empty required)
+      # WastewaterPump not available in MVP
       then:
         - lambda: |-
             id(unified_controller)->startEmptyTank();
+
+  - platform: template
+    name: "09_03_Feed (Fill+Nutrients+pH)"
+    on_press:
+      # Start complete feeding operation
+      # Fill tank → Add nutrients → pH correction
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "FEED OPERATION REQUESTED");
+            ESP_LOGI("button", "Sequence: Fill → Nutrients → pH correction");
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startFeed();
+
+  - platform: template
+    name: "09_04_Reservoir Change (Complete)"
+    on_press:
+      # Start complete reservoir change sequence
+      # Manual empty → Fill → Nutrients → pH correction
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "RESERVOIR CHANGE REQUESTED");
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startReservoirChange();
 
   # === 10 - Actuator Testing (3-Second Auto-Off) ===
   - platform: template
@@ -1047,7 +1073,7 @@ plantos_hal:
   system_led: system_led
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
-  light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0)
+  # light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0) - COMMENTED OUT
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO23
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO10
   water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO11
@@ -1065,7 +1091,7 @@ plantos_hal:
 
   # Tank Volume Configuration (for mL/L dosing calculations)
   # Measured volume between LOW and HIGH water level sensors
-  tank_volume_liters: 10.0           # Tank volume in liters (LOW to HIGH sensor range, default: 10.0L)
+  tank_volume_liters: 1.7           # Tank volume in liters (LOW to HIGH sensor range, default: 10.0L)
 
   # Magnetic Valve Flow Rate (for automated water addition)
   # IMPORTANT: Calibrate using 10s test button (even though valve is ON/OFF only)

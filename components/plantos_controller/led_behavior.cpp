@@ -15,6 +15,7 @@
 #include "orange_pulse.h"
 #include "blue_solid.h"
 #include "purple_pulse.h"
+#include "FeedFillingBehavior.h"
 
 namespace plantos_controller {
 
@@ -36,7 +37,8 @@ enum class ControllerState {
     PH_CALIBRATING,
     FEEDING,
     WATER_FILLING,
-    WATER_EMPTYING
+    WATER_EMPTYING,
+    FEED_FILLING
 };
 
 LedBehaviorSystem::LedBehaviorSystem()
@@ -162,6 +164,11 @@ void LedBehaviorSystem::transitionToBehavior(ControllerState newState) {
         case ControllerState::WATER_EMPTYING:
             newBehavior = std::make_unique<PurplePulseBehavior>();
             ESP_LOGI(TAG, "LED: Purple Pulse (Water Emptying)");
+            break;
+
+        case ControllerState::FEED_FILLING:
+            newBehavior = std::make_unique<FeedFillingBehavior>();
+            ESP_LOGI(TAG, "LED: Blue Solid (Feed Filling)");
             break;
 
         default:

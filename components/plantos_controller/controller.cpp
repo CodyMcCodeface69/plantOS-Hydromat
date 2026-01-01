@@ -106,9 +106,10 @@ void PlantOSController::loop() {
 
         bool hasReading = hal_->hasTemperature();
         std::string status;
+        float temp = 0.0f;
 
         if (hasReading) {
-            float temp = hal_->readTemperature();
+            temp = hal_->readTemperature();
             char statusBuf[32];
             snprintf(statusBuf, sizeof(statusBuf), "%.1f°C", temp);
             status = std::string(statusBuf);
@@ -125,6 +126,21 @@ void PlantOSController::loop() {
         ));
 
         status_logger_.updateOneWireHardwareStatus(oneWireDevices);
+
+        // Update water temperature in sensor data section
+        status_logger_.updateWaterTemperature(temp, hasReading);
+
+        // Update water level sensors in sensor data section
+        bool hasWaterLevelSensors = hal_->hasWaterLevelSensors();
+        bool highSensor = false;
+        bool lowSensor = false;
+
+        if (hasWaterLevelSensors) {
+            highSensor = hal_->readWaterLevelHigh();
+            lowSensor = hal_->readWaterLevelLow();
+        }
+
+        status_logger_.updateWaterLevelSensors(highSensor, lowSensor, hasWaterLevelSensors);
 
         // Update pump configurations in status logger
         std::vector<PumpConfigInfo> pumpConfigs;

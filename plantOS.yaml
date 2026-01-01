@@ -56,7 +56,8 @@ logger:
     plantos_controller: INFO  # Suppress controller PSM check logs (toggle via 11_06)
     gpio_status: INFO      # Suppress GPIO status logs (toggle via 11_07)
     component: ERROR       # Suppress component timing warnings (toggle via 11_08)
-    esp-idf: WARN          # Suppress ESP-IDF GPIO logs (toggle via 11_09) 
+    esp-idf: WARN          # Suppress ESP-IDF GPIO logs (toggle via 11_09)
+    time: INFO             # Suppress time synchronization logs (toggle via 11_11) 
 
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security
@@ -1654,6 +1655,7 @@ switch:
       - switch.turn_on: verbose_gpio_status
       - switch.turn_on: verbose_component
       - switch.turn_on: verbose_esp_idf
+      - switch.turn_on: verbose_time
     turn_off_action:
       - logger.log:
           format: "Disabling ALL verbose logging"
@@ -1667,6 +1669,7 @@ switch:
       - switch.turn_off: verbose_gpio_status
       - switch.turn_off: verbose_component
       - switch.turn_off: verbose_esp_idf
+      - switch.turn_off: verbose_time
 
   - platform: template
     name: "11_01_Verbose: Sensor State Updates"
@@ -1865,6 +1868,25 @@ switch:
           if (logger) {
             logger->configure(false, 10000, false);
           }
+
+  - platform: template
+    name: "11_11_Verbose: Time Synchronization"
+    id: verbose_time
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: time synchronization"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("time", ESP_LOG_DEBUG);
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: time synchronization"
+          level: INFO
+      - lambda: |-
+          esp_log_level_set("time", ESP_LOG_INFO);
 
   ################################################################################
   # === 12 - DIRECT GPIO CONTROL (HARDWARE TESTING ONLY) ===

@@ -119,8 +119,8 @@ void EZOPHUARTComponent::update() {
       this->ph_sensor_->publish_state(ph_value);
     }
 
-    // Log each reading prominently in continuous mode
-    ESP_LOGI(TAG, "📊 Continuous pH Reading: %.2f", ph_value);
+    // Log each reading in continuous mode (DEBUG level - controlled by verbose toggle)
+    ESP_LOGD(TAG, "📊 Continuous pH Reading: %.2f", ph_value);
     return;
   }
 

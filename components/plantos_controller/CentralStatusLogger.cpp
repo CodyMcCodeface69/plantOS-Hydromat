@@ -7,6 +7,11 @@ CentralStatusLogger::CentralStatusLogger()
       lastLogTimestamp(0),
       filteredPH(7.0),
       activeRoutine("INIT"),
+      waterTemperature(0.0f),
+      waterTempAvailable(false),
+      waterLevelHighSensor(false),
+      waterLevelLowSensor(false),
+      waterLevelSensorsAvailable(false),
       webServerOnline(false),
       webServerClientConnected(false),
       controllerState("UNKNOWN"),
@@ -66,6 +71,17 @@ void CentralStatusLogger::updateStatus(float ph, const std::string& routine) {
 
 void CentralStatusLogger::updateStatus(float ph, const char* routine) {
     updateStatus(ph, std::string(routine));
+}
+
+void CentralStatusLogger::updateWaterTemperature(float temp, bool available) {
+    waterTemperature = temp;
+    waterTempAvailable = available;
+}
+
+void CentralStatusLogger::updateWaterLevelSensors(bool high_sensor, bool low_sensor, bool available) {
+    waterLevelHighSensor = high_sensor;
+    waterLevelLowSensor = low_sensor;
+    waterLevelSensorsAvailable = available;
 }
 
 void CentralStatusLogger::updateControllerState(const std::string& state) {
@@ -378,6 +394,19 @@ void CentralStatusLogger::logStatus() {
         ESP_LOGW(TAG, "  pH: No reading available");
     }
 
+    if (waterTempAvailable) {
+        ESP_LOGI(TAG, "  Water Temperature: %.1f°C", waterTemperature);
+    } else {
+        ESP_LOGW(TAG, "  Water Temperature: No reading available");
+    }
+
+    if (waterLevelSensorsAvailable) {
+        ESP_LOGI(TAG, "  Water Level HIGH: %s", waterLevelHighSensor ? "ON" : "OFF");
+        ESP_LOGI(TAG, "  Water Level LOW: %s", waterLevelLowSensor ? "ON" : "OFF");
+    } else {
+        ESP_LOGW(TAG, "  Water Level Sensors: OFFLINE");
+    }
+
     ESP_LOGI(TAG, "");
 
     // Calendar Status
@@ -397,18 +426,19 @@ void CentralStatusLogger::logStatus() {
     ESP_LOGI(TAG, "");
 
     // Pump Configurations
-    ESP_LOGI(TAG, "--- PUMP CONFIGURATION ---");
-    if (pumpConfigsUpdated && !pumpConfigs.empty()) {
-        for (const auto& pump : pumpConfigs) {
-            ESP_LOGI(TAG, "  %s:", pump.pump_name.c_str());
-            ESP_LOGI(TAG, "    Flow Rate:    %.3f mL/s", pump.flow_rate_ml_s);
-            ESP_LOGI(TAG, "    PWM Intensity: %.0f%%", pump.pwm_intensity * 100.0f);
-        }
-    } else {
-        ESP_LOGW(TAG, "  Pump configurations not yet loaded");
-    }
-
-    ESP_LOGI(TAG, "");
+    // NOTE: Commented out - not needed right now but might be reactivated or repurposed later
+    // ESP_LOGI(TAG, "--- PUMP CONFIGURATION ---");
+    // if (pumpConfigsUpdated && !pumpConfigs.empty()) {
+    //     for (const auto& pump : pumpConfigs) {
+    //         ESP_LOGI(TAG, "  %s:", pump.pump_name.c_str());
+    //         ESP_LOGI(TAG, "    Flow Rate:    %.3f mL/s", pump.flow_rate_ml_s);
+    //         ESP_LOGI(TAG, "    PWM Intensity: %.0f%%", pump.pwm_intensity * 100.0f);
+    //     }
+    // } else {
+    //     ESP_LOGW(TAG, "  Pump configurations not yet loaded");
+    // }
+    //
+    // ESP_LOGI(TAG, "");
 
     // System State - Unified controller architecture
     ESP_LOGI(TAG, "--- SYSTEM STATE ---");
@@ -515,7 +545,6 @@ void CentralStatusLogger::logWaterLevelStatus(bool high_sensor, bool low_sensor,
     ESP_LOGI(TAG, "--- WATER LEVEL STATUS ---");
 
     if (!sensors_available) {
-        ESP_LOGI(TAG, "  Water Level Sensors: OFFLINE");
         ESP_LOGI(TAG, "  Status: Using time-based fill/drain limits");
         return;
     }
@@ -559,9 +588,6 @@ void CentralStatusLogger::logWaterLevelStatus(bool high_sensor, bool low_sensor,
     }
 
     ESP_LOGI(TAG, "  Water Level: %s", level_status.c_str());
-    ESP_LOGI(TAG, "  Sensors: HIGH=%s, LOW=%s",
-             high_sensor ? "ON" : "OFF",
-             low_sensor ? "ON" : "OFF");
 }
 
 void CentralStatusLogger::configure(bool enableReports, uint32_t reportIntervalMs, bool verboseMode) {

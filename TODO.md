@@ -107,11 +107,10 @@ This document tracks tasks organized into three phases:
 **Hardware**: 2x XKC-Y23-V 5V capacitive level sensors
 
 **Tasks**:
-- [ ] Configure 2x XKC-Y23-V as binary sensors (GPIO18=high, GPIO19=low)
-- [ ] Add voltage dividers (5V → 3.3V logic) or level shifters (74LVC245)
-- [ ] Add water level checking to WATER_FILLING handler (abort on HIGH)
-- [ ] Add water level checking to WATER_EMPTYING handler (abort on LOW)
-- [ ] Add level status to CentralStatusLogger
+- ✅ Configure 2x XKC-Y23-V as binary sensors (GPIO18=high, GPIO19=low)
+- ✅ Add water level checking to WATER_FILLING handler (abort on HIGH)
+- ✅ Add water level checking to WATER_EMPTYING handler (abort on LOW)
+- ✅ Add level status to CentralStatusLogger
 - [ ] Test fill operation with high level abort
 - [ ] Test empty operation with low level abort
 

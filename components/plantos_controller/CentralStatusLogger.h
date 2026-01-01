@@ -98,6 +98,21 @@ public:
     void updateStatus(float ph, const char* routine);
 
     /**
+     * Update water temperature reading
+     * @param temp Current water temperature in °C
+     * @param available Whether temperature reading is available
+     */
+    void updateWaterTemperature(float temp, bool available);
+
+    /**
+     * Update water level sensor states
+     * @param high_sensor State of HIGH water level sensor (true = water present)
+     * @param low_sensor State of LOW water level sensor (true = water present)
+     * @param available Whether water level sensors are configured
+     */
+    void updateWaterLevelSensors(bool high_sensor, bool low_sensor, bool available);
+
+    /**
      * Update unified controller state
      * @param state Current controller state (INIT, IDLE, PH_MEASURING, FEEDING, etc.)
      */
@@ -255,6 +270,13 @@ private:
     uint32_t lastLogTimestamp;
     float filteredPH;
     std::string activeRoutine;
+
+    // Additional sensor data
+    float waterTemperature;              // Water temperature (DS18B20)
+    bool waterTempAvailable;             // Whether temperature reading is available
+    bool waterLevelHighSensor;           // HIGH water level sensor state
+    bool waterLevelLowSensor;            // LOW water level sensor state
+    bool waterLevelSensorsAvailable;     // Whether water level sensors are configured
 
     // Web server status
     bool webServerOnline;

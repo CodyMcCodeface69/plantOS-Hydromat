@@ -169,12 +169,91 @@ void ActuatorSafetyGate::setMaxDuration(const char* actuatorID, int maxSeconds) 
     }
 }
 
+void ActuatorSafetyGate::enableCycling(const char* actuatorID, bool enabled) {
+    if (actuatorID == nullptr || strlen(actuatorID) == 0) {
+        ESP_LOGE(TAG, "Cannot enable cycling: Invalid actuator ID");
+        return;
+    }
+
+    std::string id(actuatorID);
+    ActuatorState& state = getOrCreateState(id);
+
+    state.cyclingEnabled = enabled;
+
+    if (enabled) {
+        ESP_LOGI(TAG, "Intermittent cycling ENABLED for %s (ON: %us, OFF: %us)",
+                 actuatorID,
+                 state.cyclingOnPeriod / 1000,
+                 state.cyclingOffPeriod / 1000);
+        // Initialize cycling state
+        state.cyclingCurrentState = false;  // Start with OFF
+        state.cyclingLastToggle = esphome::millis();
+    } else {
+        ESP_LOGI(TAG, "Intermittent cycling DISABLED for %s", actuatorID);
+        // Turn off the actuator when cycling is disabled
+        executeCommand(actuatorID, false);
+    }
+}
+
+void ActuatorSafetyGate::setCyclingPeriods(const char* actuatorID, uint32_t onPeriodSec, uint32_t offPeriodSec) {
+    if (actuatorID == nullptr || strlen(actuatorID) == 0) {
+        ESP_LOGE(TAG, "Cannot set cycling periods: Invalid actuator ID");
+        return;
+    }
+
+    std::string id(actuatorID);
+    ActuatorState& state = getOrCreateState(id);
+
+    // Convert seconds to milliseconds
+    state.cyclingOnPeriod = onPeriodSec * 1000;
+    state.cyclingOffPeriod = offPeriodSec * 1000;
+
+    ESP_LOGI(TAG, "Cycling periods set for %s: ON=%us, OFF=%us",
+             actuatorID, onPeriodSec, offPeriodSec);
+
+    // If cycling is already enabled, log a reminder
+    if (state.cyclingEnabled) {
+        ESP_LOGI(TAG, "Note: Cycling is currently active for %s with new periods", actuatorID);
+    }
+}
+
 void ActuatorSafetyGate::loop() {
     uint32_t currentTime = esphome::millis();
 
     for (auto& pair : actuators_) {
         const std::string& id = pair.first;
         ActuatorState& state = pair.second;
+
+        // ====================================================================
+        // INTERMITTENT CYCLING
+        // ====================================================================
+        // Check if intermittent cycling is enabled for this actuator
+        if (state.cyclingEnabled &&
+            state.cyclingOnPeriod > 0 &&
+            state.cyclingOffPeriod > 0) {
+
+            uint32_t elapsed = currentTime - state.cyclingLastToggle;
+            uint32_t period = state.cyclingCurrentState ? state.cyclingOnPeriod : state.cyclingOffPeriod;
+
+            // Time to toggle?
+            if (elapsed >= period) {
+                // Toggle cycling state
+                state.cyclingCurrentState = !state.cyclingCurrentState;
+                state.cyclingLastToggle = currentTime;
+
+                // Execute the toggle via executeCommand
+                // This respects all safety rules (max duration, debouncing, etc.)
+                const char* id_cstr = id.c_str();
+                uint32_t duration_sec = state.cyclingCurrentState ? (state.cyclingOnPeriod / 1000) : 0;
+
+                ESP_LOGD(TAG, "[CYCLING] %s → %s (period elapsed: %u ms)",
+                         id_cstr,
+                         state.cyclingCurrentState ? "ON" : "OFF",
+                         elapsed);
+
+                executeCommand(id_cstr, state.cyclingCurrentState, duration_sec);
+            }
+        }
 
         // Update ramping state and duty cycle for this actuator
         updateRamping(id, state, currentTime);

@@ -23,6 +23,8 @@ struct DailySchedule {
     float nutrient_A_ml_per_liter;      // Nutrient A concentration (mL per liter of tank volume)
     float nutrient_B_ml_per_liter;      // Nutrient B concentration (mL per liter of tank volume)
     float nutrient_C_ml_per_liter;      // Nutrient C concentration (mL per liter of tank volume)
+    uint16_t light_on_time;             // Light ON time (minutes since midnight, e.g., 960 = 16:00)
+    uint16_t light_off_time;            // Light OFF time (minutes since midnight, e.g., 480 = 08:00)
 
     DailySchedule()
         : day_number(0),
@@ -30,16 +32,21 @@ struct DailySchedule {
           target_ph_max(6.2),
           nutrient_A_ml_per_liter(0.0f),
           nutrient_B_ml_per_liter(0.0f),
-          nutrient_C_ml_per_liter(0.0f) {}
+          nutrient_C_ml_per_liter(0.0f),
+          light_on_time(960),             // Default: 16:00
+          light_off_time(480) {}          // Default: 08:00
 
     DailySchedule(uint8_t day, float ph_min, float ph_max,
-                  float dose_a, float dose_b, float dose_c)
+                  float dose_a, float dose_b, float dose_c,
+                  uint16_t light_on = 960, uint16_t light_off = 480)
         : day_number(day),
           target_ph_min(ph_min),
           target_ph_max(ph_max),
           nutrient_A_ml_per_liter(dose_a),
           nutrient_B_ml_per_liter(dose_b),
-          nutrient_C_ml_per_liter(dose_c) {}
+          nutrient_C_ml_per_liter(dose_c),
+          light_on_time(light_on),
+          light_off_time(light_off) {}
 };
 
 /**
@@ -109,10 +116,17 @@ struct DailySchedule {
  *     "ph_max": 6.2,
  *     "dose_A_ml_per_L": 1.5,
  *     "dose_B_ml_per_L": 2.0,
- *     "dose_C_ml_per_L": 1.0
+ *     "dose_C_ml_per_L": 1.0,
+ *     "light_on_time": 960,
+ *     "light_off_time": 480
  *   },
  *   ...
  * ]
+ *
+ * Light times are in minutes since midnight (0-1439):
+ *   - 16:00 = 16 * 60 = 960
+ *   - 08:00 = 8 * 60 = 480
+ *   - 04:00 = 4 * 60 = 240
  */
 class CalendarManager : public Component {
 public:
@@ -211,6 +225,14 @@ public:
      * @return true if successfully saved to NVS
      */
     bool advance_day();
+
+    /**
+     * Go back to the previous day (and save to NVS)
+     *
+     * Decrements current day and wraps around to day 120 if at day 1.
+     * @return true if successfully saved to NVS
+     */
+    bool go_back_day();
 
     /**
      * Reset to day 1 (and save to NVS)

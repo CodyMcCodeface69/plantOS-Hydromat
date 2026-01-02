@@ -271,6 +271,63 @@ void PlantOSController::loop() {
             handleFeedFilling();
             break;
     }
+
+    // ========================================================================
+    // Time-based Light Control
+    // ========================================================================
+    // Check if we should update grow light based on calendar schedule
+    // Only run when system is operational (not in SHUTDOWN, PAUSE, or ERROR)
+    if (calendar_manager_ && time_source_ &&
+        current_state_ != ControllerState::SHUTDOWN &&
+        current_state_ != ControllerState::PAUSE &&
+        current_state_ != ControllerState::ERROR) {
+
+        // Get current time
+        auto now = time_source_->now();
+        if (now.is_valid()) {
+            // Get today's schedule
+            auto schedule = calendar_manager_->get_today_schedule();
+
+            // Calculate current time in minutes since midnight
+            uint16_t current_minutes = now.hour * 60 + now.minute;
+
+            // Determine if light should be ON
+            // Handle wraparound case (e.g., ON at 16:00, OFF at 08:00 means light is on overnight)
+            bool should_be_on = false;
+            if (schedule.light_on_time < schedule.light_off_time) {
+                // Normal case: ON and OFF within same day (e.g., ON at 08:00, OFF at 16:00)
+                should_be_on = (current_minutes >= schedule.light_on_time &&
+                               current_minutes < schedule.light_off_time);
+            } else {
+                // Wraparound case: light is on overnight (e.g., ON at 16:00, OFF at 08:00)
+                should_be_on = (current_minutes >= schedule.light_on_time ||
+                               current_minutes < schedule.light_off_time);
+            }
+
+            // Track previous state to avoid redundant commands
+            static bool previous_light_state = false;
+            static bool first_run = true;
+
+            // Update light state if changed (or on first run)
+            if (first_run || previous_light_state != should_be_on) {
+                if (should_be_on) {
+                    ESP_LOGI(TAG, "Grow light schedule: Turning ON (Day %d, Schedule: %02d:%02d ON / %02d:%02d OFF)",
+                             schedule.day_number,
+                             schedule.light_on_time / 60, schedule.light_on_time % 60,
+                             schedule.light_off_time / 60, schedule.light_off_time % 60);
+                    hal_->setPump("GrowLight", true);
+                } else {
+                    ESP_LOGI(TAG, "Grow light schedule: Turning OFF (Day %d, Schedule: %02d:%02d ON / %02d:%02d OFF)",
+                             schedule.day_number,
+                             schedule.light_on_time / 60, schedule.light_on_time % 60,
+                             schedule.light_off_time / 60, schedule.light_off_time % 60);
+                    hal_->setPump("GrowLight", false);
+                }
+                previous_light_state = should_be_on;
+                first_run = false;
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -696,9 +753,9 @@ void PlantOSController::handlePhInjecting() {
         ESP_LOGI(TAG, "Starting acid injection: %.1f mL (%.2f sec)", ph_dose_ml_, duration_sec / 1.0f);
 
         // Try to start air pump for mixing (no-op if not configured)
-        // MVP: AirPump not implemented - request will be no-op
+        // Brief air pump activation during acid injection for initial mixing
         if (!requestPump(AIR_PUMP, true, 0)) {
-            ESP_LOGD(TAG, "Air pump not available - relying on natural mixing");
+            ESP_LOGD(TAG, "Air pump not configured - relying on natural mixing");
         } else {
             ESP_LOGI(TAG, "Air pump active for mixing during injection");
         }
@@ -730,14 +787,12 @@ void PlantOSController::handlePhInjecting() {
 void PlantOSController::handlePhMixing() {
     // Blue pulse - mixing after acid injection
     // Air pump runs for 2 minutes to distribute acid throughout tank
-    // MVP: AirPump not implemented - skip mixing phase but keep timing
-
     uint32_t elapsed = getStateElapsed();
 
     // On entry: Verify air pump state
     if (elapsed < 100) {
         if (!requestPump(AIR_PUMP, true, PH_MIXING_DURATION / 1000)) {
-            ESP_LOGW(TAG, "Air pump not available - using passive mixing period");
+            ESP_LOGW(TAG, "Air pump not configured - using passive mixing period");
             ESP_LOGI(TAG, "Waiting 2 minutes for acid to distribute naturally");
         }
     }
@@ -1929,18 +1984,17 @@ void PlantOSController::startFillTank() {
 }
 
 void PlantOSController::startEmptyTank() {
-    // MVP: WastewaterPump not implemented - warn user
-    ESP_LOGW(TAG, "========================================================");
-    ESP_LOGW(TAG, "  TANK DRAIN NOT AVAILABLE IN MVP");
-    ESP_LOGW(TAG, "========================================================");
-    ESP_LOGW(TAG, "WastewaterPump not configured in current hardware setup");
-    ESP_LOGW(TAG, "Please manually drain tank using external pump or drain valve");
-    ESP_LOGW(TAG, "");
+    ESP_LOGI(TAG, "========================================================");
+    ESP_LOGI(TAG, "  TANK DRAIN via Shelly or Manual");
+    ESP_LOGI(TAG, "========================================================");
+    ESP_LOGI(TAG, "Use button '10_08_Test Wastewater Pump' for automatic drain");
+    ESP_LOGI(TAG, "Or manually drain tank using external pump or drain valve");
+    ESP_LOGI(TAG, "");
 
-    // Do not transition to WATER_EMPTYING state
-    // Stay in IDLE
+    // Do not transition to WATER_EMPTYING state automatically
+    // User must use manual test button or drain manually
 
-    /* FUTURE: When WastewaterPump is available:
+    /* FUTURE: Full automatic WATER_EMPTYING state:
     if (current_state_ == ControllerState::IDLE) {
         ESP_LOGI(TAG, "Starting tank drain");
 
@@ -2007,10 +2061,10 @@ void PlantOSController::startReservoirChange() {
     ESP_LOGI(TAG, "Sequence: Empty tank → Fill → Add nutrients → pH correction");
     ESP_LOGI(TAG, "");
 
-    // Check if WastewaterPump is available
-    // For MVP: WastewaterPump not implemented, so skip WATER_EMPTYING
-    ESP_LOGW(TAG, "⚠️  WastewaterPump not available in MVP - skipping empty phase");
+    // Wastewater pump available via Shelly - but reservoir change still requires manual drain
+    // to ensure complete water removal (wastewater pump may not reach bottom of tank)
     ESP_LOGW(TAG, "⚠️  Please manually empty tank before starting Reservoir Change");
+    ESP_LOGI(TAG, "Or use button '10_08_Test Wastewater Pump' to drain via Shelly");
     ESP_LOGI(TAG, "");
 
     // Set flag for auto pH correction after feeding
@@ -2140,12 +2194,6 @@ bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint3
     if (!safety_gate_) {
         ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", pumpId.c_str());
         return false;
-    }
-
-    // MVP: AirPump and WastewaterPump not implemented - make them no-ops
-    if (pumpId == "AirPump" || pumpId == "WastewaterPump") {
-        ESP_LOGD(TAG, "[NO-OP] %s not available in MVP hardware", pumpId.c_str());
-        return false;  // Not an error - just not available
     }
 
     // Verbose mode: Log actuator commands

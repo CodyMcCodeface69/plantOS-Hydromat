@@ -25,6 +25,9 @@ class FloatOutput;
 namespace ezo_ph_uart {
 class EZOPHUARTComponent;
 }
+namespace http_request {
+class HttpRequestComponent;
+}
 }  // namespace esphome
 
 namespace plantos_hal {
@@ -355,13 +358,19 @@ public:
 
     // Actuator output setters (Phase 2: Hardware Control)
     // NOTE: Using LEDC PWM outputs for pump control with variable intensity
-    // NOTE: Air pump removed - future Zigbee implementation
     void set_mag_valve_output(esphome::output::FloatOutput* output);
     void set_pump_ph_output(esphome::output::FloatOutput* output);
     void set_pump_grow_output(esphome::output::FloatOutput* output);
     void set_pump_micro_output(esphome::output::FloatOutput* output);
     void set_pump_bloom_output(esphome::output::FloatOutput* output);
     void set_pump_wastewater_output(esphome::output::FloatOutput* output);
+
+    // Shelly HTTP switch setters (MVP: AirPump and WastewaterPump via Shelly Plus 4PM)
+    void set_air_pump_switch(esphome::switch_::Switch* sw);
+    void set_wastewater_pump_switch(esphome::switch_::Switch* sw);
+
+    // HTTP request component setter (for direct Shelly control)
+    void set_http_request(esphome::http_request::HttpRequestComponent* http);
 
     // Configuration setters
     void set_ph_reading_interval(uint32_t interval_ms) { ph_reading_interval_ms_ = interval_ms; }
@@ -429,13 +438,22 @@ private:
 
     // Actuator GPIO outputs (Phase 2: Hardware Control - 6 actuators)
     // NOTE: Using FloatOutput (LEDC PWM) for variable pump intensity control
-    // NOTE: Air pump removed - future Zigbee implementation
     esphome::output::FloatOutput* mag_valve_output_{nullptr};
     esphome::output::FloatOutput* pump_ph_output_{nullptr};
     esphome::output::FloatOutput* pump_grow_output_{nullptr};
     esphome::output::FloatOutput* pump_micro_output_{nullptr};
     esphome::output::FloatOutput* pump_bloom_output_{nullptr};
     esphome::output::FloatOutput* pump_wastewater_output_{nullptr};
+
+    // Shelly HTTP switches (MVP: AirPump and WastewaterPump)
+    esphome::switch_::Switch* air_pump_switch_{nullptr};
+    esphome::switch_::Switch* wastewater_pump_switch_{nullptr};
+
+    // HTTP request component for direct Shelly control
+    esphome::http_request::HttpRequestComponent* http_request_{nullptr};
+
+    // Shelly IP address
+    static constexpr const char* SHELLY_IP = "192.168.0.130";
 
     // Actuator state tracking (for getPumpState/getValveState)
     std::map<std::string, bool> pump_states_;

@@ -7,7 +7,7 @@ Provides platform-agnostic hardware interface for the unified Controller.
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import light, sensor, binary_sensor, output
+from esphome.components import light, sensor, binary_sensor, output, switch, http_request
 from esphome.const import (
     CONF_ID,
 )
@@ -34,13 +34,17 @@ CONF_PH_MAX = 'ph_max'
 
 # Actuator GPIO output keys (Phase 2 - 6 actuators)
 # NOTE: Using outputs instead of switches to avoid circular dependency
-# NOTE: Air pump removed - future Zigbee implementation
 CONF_MAG_VALVE_OUTPUT = 'mag_valve_output'
 CONF_PUMP_PH_OUTPUT = 'pump_ph_output'
 CONF_PUMP_GROW_OUTPUT = 'pump_grow_output'
 CONF_PUMP_MICRO_OUTPUT = 'pump_micro_output'
 CONF_PUMP_BLOOM_OUTPUT = 'pump_bloom_output'
 CONF_PUMP_WASTEWATER_OUTPUT = 'pump_wastewater_output'
+
+# Shelly HTTP switch keys (MVP: AirPump and WastewaterPump)
+CONF_AIR_PUMP_SWITCH = 'air_pump_switch'
+CONF_WASTEWATER_PUMP_SWITCH = 'wastewater_pump_switch'
+CONF_HTTP_REQUEST = 'http_request_id'
 
 # Tank volume and valve configuration
 CONF_TANK_VOLUME_LITERS = 'tank_volume_liters'
@@ -72,13 +76,17 @@ CONFIG_SCHEMA = cv.Schema({
 
     # Actuator GPIO outputs (Phase 2: Hardware Control - 6 actuators)
     # NOTE: Using FloatOutput (LEDC PWM) for variable pump intensity control
-    # NOTE: Air pump removed - future Zigbee implementation
     cv.Optional(CONF_MAG_VALVE_OUTPUT): cv.use_id(output.FloatOutput),
     cv.Optional(CONF_PUMP_PH_OUTPUT): cv.use_id(output.FloatOutput),
     cv.Optional(CONF_PUMP_GROW_OUTPUT): cv.use_id(output.FloatOutput),
     cv.Optional(CONF_PUMP_MICRO_OUTPUT): cv.use_id(output.FloatOutput),
     cv.Optional(CONF_PUMP_BLOOM_OUTPUT): cv.use_id(output.FloatOutput),
     cv.Optional(CONF_PUMP_WASTEWATER_OUTPUT): cv.use_id(output.FloatOutput),
+
+    # Shelly HTTP switches (MVP: AirPump and WastewaterPump)
+    cv.Optional(CONF_AIR_PUMP_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_WASTEWATER_PUMP_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_HTTP_REQUEST): cv.use_id(http_request.HttpRequestComponent),
 
     # Tank volume and valve configuration
     cv.Optional(CONF_TANK_VOLUME_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
@@ -167,6 +175,20 @@ async def to_code(config):
     if CONF_PUMP_WASTEWATER_OUTPUT in config:
         pump_wastewater_out = await cg.get_variable(config[CONF_PUMP_WASTEWATER_OUTPUT])
         cg.add(var.set_pump_wastewater_output(pump_wastewater_out))
+
+    # Inject Shelly HTTP switches (MVP: AirPump and WastewaterPump)
+    if CONF_AIR_PUMP_SWITCH in config:
+        air_pump_sw = await cg.get_variable(config[CONF_AIR_PUMP_SWITCH])
+        cg.add(var.set_air_pump_switch(air_pump_sw))
+
+    if CONF_WASTEWATER_PUMP_SWITCH in config:
+        wastewater_pump_sw = await cg.get_variable(config[CONF_WASTEWATER_PUMP_SWITCH])
+        cg.add(var.set_wastewater_pump_switch(wastewater_pump_sw))
+
+    # Inject HTTP request component for direct Shelly control
+    if CONF_HTTP_REQUEST in config:
+        http_req = await cg.get_variable(config[CONF_HTTP_REQUEST])
+        cg.add(var.set_http_request(http_req))
 
     # Inject tank volume and valve configuration
     cg.add(var.setTankVolume(config[CONF_TANK_VOLUME_LITERS]))

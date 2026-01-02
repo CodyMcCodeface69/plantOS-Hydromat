@@ -9,16 +9,23 @@ esphome:
   name: plantos
   on_boot:
     # Configure actuator safety gate max durations (in seconds) on boot
-    # All actuators limited to 10 seconds maximum runtime
+    # Each actuator has a safety timeout to prevent accidents
     priority: -100  # Run after all components are initialized
     then:
       - lambda: |-
-          ESP_LOGI("esphome", "Configuring actuator safety gate max durations (10s limit)");
-          id(actuator_safety)->setMaxDuration("WaterValve", 600);
-          id(actuator_safety)->setMaxDuration("AcidPump", 10);
-          id(actuator_safety)->setMaxDuration("NutrientPumpA", 10);
-          id(actuator_safety)->setMaxDuration("NutrientPumpB", 10);
-          id(actuator_safety)->setMaxDuration("NutrientPumpC", 10);
+          ESP_LOGI("esphome", "Configuring actuator safety gate max durations");
+          id(actuator_safety)->setMaxDuration("WaterValve", 600);       // 10 min - water fill max
+          id(actuator_safety)->setMaxDuration("AcidPump", 10);          // 10 sec - pH dosing
+          id(actuator_safety)->setMaxDuration("NutrientPumpA", 10);     // 10 sec - nutrient A
+          id(actuator_safety)->setMaxDuration("NutrientPumpB", 10);     // 10 sec - nutrient B
+          id(actuator_safety)->setMaxDuration("NutrientPumpC", 10);     // 10 sec - nutrient C
+          id(actuator_safety)->setMaxDuration("AirPump", 3600);         // 60 min - can run long, set 0 to disable
+          id(actuator_safety)->setMaxDuration("WastewaterPump", 1800);  // 30 min - slow pump
+
+          // Configure intermittent cycling for AirPump (disabled by default)
+          ESP_LOGI("esphome", "Configuring air pump intermittent cycling");
+          id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // 2 min ON, 1 min OFF (default)
+          id(actuator_safety)->enableCycling("AirPump", false);        // Disabled by default
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -1102,6 +1109,114 @@ button:
             ESP_LOGI("button", "Please verify 20mL was dispensed");
             ESP_LOGI("button", "==========================");
 
+  - platform: template
+    name: "10_07_Test Air Pump (Shelly Socket 0)"
+    on_press:
+      # Turn ON air pump via Shelly for 5 seconds
+      # Tests HTTP communication and Shelly socket control
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "=== Air Pump Test (Shelly Socket 0) ===");
+            ESP_LOGI("button", "Turning ON air pump for 5 seconds...");
+        - switch.turn_on: air_pump_shelly_switch
+        - delay: 5s
+        - switch.turn_off: air_pump_shelly_switch
+        - lambda: |-
+            ESP_LOGI("button", "Air Pump OFF - 5s test complete");
+            ESP_LOGI("button", "========================================");
+
+  - platform: template
+    name: "10_08_Test Wastewater Pump (Shelly Socket 2)"
+    on_press:
+      # Turn ON wastewater pump via Shelly for 5 seconds
+      # Tests HTTP communication and Shelly socket control
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "=== Wastewater Pump Test (Shelly Socket 2) ===");
+            ESP_LOGI("button", "Turning ON wastewater pump for 5 seconds...");
+        - switch.turn_on: wastewater_pump_shelly_switch
+        - delay: 5s
+        - switch.turn_off: wastewater_pump_shelly_switch
+        - lambda: |-
+            ESP_LOGI("button", "Wastewater Pump OFF - 5s test complete");
+            ESP_LOGI("button", "==============================================");
+
+  - platform: template
+    name: "10_09_Test Grow Light (Shelly Socket 3)"
+    on_press:
+      # Turn ON grow light via Shelly for 3 seconds
+      # Tests HTTP communication and Shelly socket control
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "=== Grow Light Test (Shelly Socket 3) ===");
+            ESP_LOGI("button", "Turning ON grow light for 3 seconds...");
+        - switch.turn_on: grow_light_shelly_switch
+        - delay: 3s
+        - switch.turn_off: grow_light_shelly_switch
+        - lambda: |-
+            ESP_LOGI("button", "Grow Light OFF - 3s test complete");
+            ESP_LOGI("button", "=========================================");
+
+  - platform: template
+    name: "10_10_Start Air Pump Cycling"
+    on_press:
+      # Enable intermittent cycling for air pump
+      # Uses periods configured via number sliders (14_01 and 14_02)
+      then:
+        - lambda: |-
+            uint32_t on_period = (uint32_t)id(air_pump_on_period).state;
+            uint32_t off_period = (uint32_t)id(air_pump_off_period).state;
+
+            ESP_LOGI("button", "=== Starting Air Pump Cycling ===");
+            ESP_LOGI("button", "ON period: %u seconds", on_period);
+            ESP_LOGI("button", "OFF period: %u seconds", off_period);
+
+            id(actuator_safety)->setCyclingPeriods("AirPump", on_period, off_period);
+            id(actuator_safety)->enableCycling("AirPump", true);
+
+            ESP_LOGI("button", "Air pump will cycle: %us ON, %us OFF", on_period, off_period);
+            ESP_LOGI("button", "===================================");
+
+  - platform: template
+    name: "10_11_Stop Air Pump Cycling"
+    on_press:
+      # Disable intermittent cycling and turn off air pump
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "=== Stopping Air Pump Cycling ===");
+            id(actuator_safety)->enableCycling("AirPump", false);
+            ESP_LOGI("button", "Air pump cycling disabled");
+            ESP_LOGI("button", "==================================");
+
+  # === 15 - Calendar Day Control ===
+  - platform: template
+    name: "15_01_Calendar Day +1"
+    on_press:
+      # Advance calendar to next day
+      # Useful for manually advancing grow cycle or skipping days
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Calendar Day +1 button pressed");
+            if (id(plant_calendar)->advance_day()) {
+              ESP_LOGI("button", "Advanced to day %d", id(plant_calendar)->get_current_day());
+            } else {
+              ESP_LOGE("button", "Failed to advance calendar day");
+            }
+
+  - platform: template
+    name: "15_02_Calendar Day -1"
+    on_press:
+      # Go back to previous calendar day
+      # Useful for extending a growth phase or correcting accidental advances
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Calendar Day -1 button pressed");
+            if (id(plant_calendar)->go_back_day()) {
+              ESP_LOGI("button", "Went back to day %d", id(plant_calendar)->get_current_day());
+            } else {
+              ESP_LOGE("button", "Failed to go back calendar day");
+            }
+
 ################################################################################
 # PlantOS HAL (Hardware Abstraction Layer) - Layer 3
 #
@@ -1118,16 +1233,19 @@ plantos_hal:
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO10
   water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO11
 
-  # Actuator GPIO Outputs (Phase 2: Hardware Control - 6 actuators)
+  # Actuator GPIO Outputs (Phase 2: Hardware Control - 5 GPIO actuators)
   # NOTE: Using outputs instead of switches to avoid circular dependency
-  # NOTE: Air pump removed - future Zigbé implementation
   # Pump Mapping: Grow=NutrientPumpA, Micro=NutrientPumpB, Bloom=NutrientPumpC
   mag_valve_output: mag_valve_output        # GPIO18 - Magnetic valve (fresh water inlet)
   pump_ph_output: pump_ph_output            # GPIO19 - pH pump (acid dosing)
   pump_grow_output: pump_grow_output        # GPIO20 - Grow pump (NutrientPumpA → nutrient_A_ml_per_liter)
   pump_micro_output: pump_micro_output      # GPIO21 - Micro pump (NutrientPumpB → nutrient_B_ml_per_liter)
   pump_bloom_output: pump_bloom_output      # GPIO22 - Bloom pump (NutrientPumpC → nutrient_C_ml_per_liter)
-  # pump_wastewater_output: pump_wastewater_output  # GPIO23 - Removed (not MVP, GPIO23 now DS18B20)
+
+  # Shelly HTTP Switches (MVP: AirPump and WastewaterPump via Shelly Plus 4PM @ 192.168.0.130)
+  air_pump_switch: air_pump_shelly_switch           # Shelly Socket 0 - Air pump for pH mixing
+  wastewater_pump_switch: wastewater_pump_shelly_switch  # Shelly Socket 2 - Tank drainage
+  http_request_id: http_client                      # HTTP client for direct Shelly control
 
   # Tank Volume Configuration (for mL/L dosing calculations)
   # Measured volume between LOW and HIGH water level sensors
@@ -1546,127 +1664,127 @@ calendar_manager:
   # Example: For 10L tank with dose_A_ml_per_L = 1.5 → 15 mL actual dose
   schedule_json: >-
     [
-    {"day": 1, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8},
-    {"day": 2, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8},
-    {"day": 3, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8},
-    {"day": 4, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8},
-    {"day": 5, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8},
-    {"day": 6, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8},
-    {"day": 7, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8},
-    {"day": 8, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.01, "dose_B_ml_per_L": 0.85, "dose_C_ml_per_L": 0.69},
-    {"day": 9, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.23, "dose_B_ml_per_L": 0.91, "dose_C_ml_per_L": 0.59},
-    {"day": 10, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 11, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 12, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 13, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 14, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 15, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 16, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 17, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 18, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 19, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 20, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 21, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48},
-    {"day": 22, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.49, "dose_B_ml_per_L": 1.17, "dose_C_ml_per_L": 0.72},
-    {"day": 23, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.55, "dose_B_ml_per_L": 1.39, "dose_C_ml_per_L": 0.96},
-    {"day": 24, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 25, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 26, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 27, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 28, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 29, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 30, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 31, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 32, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 33, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 34, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 35, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2},
-    {"day": 36, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.28, "dose_B_ml_per_L": 1.49, "dose_C_ml_per_L": 1.44},
-    {"day": 37, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.96, "dose_B_ml_per_L": 1.39, "dose_C_ml_per_L": 1.68},
-    {"day": 38, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 39, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 40, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 41, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 42, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 43, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 44, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 45, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 46, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 47, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 48, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 49, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 50, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 51, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 52, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 53, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 54, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 55, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 56, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 57, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 58, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 59, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 60, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 61, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 62, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 63, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 64, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 65, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 66, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 67, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 68, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 69, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 70, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 71, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 72, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 73, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 74, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 75, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 76, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 77, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 78, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 79, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 80, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 81, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 82, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 83, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 84, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 85, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 86, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 87, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 88, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 89, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 90, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 91, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 92, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 93, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 94, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 95, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 96, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 97, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 98, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 99, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 100, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 101, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 102, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 103, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 104, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 105, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 106, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 107, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 108, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 109, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 110, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 111, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 112, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 113, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 114, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 115, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 116, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92},
-    {"day": 117, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0},
-    {"day": 118, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0},
-    {"day": 119, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0},
-    {"day": 120, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0},
-    {"day": 121, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0}]
+    {"day": 1, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8, "light_on_time": 960, "light_off_time": 480},
+    {"day": 2, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8, "light_on_time": 960, "light_off_time": 480},
+    {"day": 3, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8, "light_on_time": 960, "light_off_time": 480},
+    {"day": 4, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8, "light_on_time": 960, "light_off_time": 480},
+    {"day": 5, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8, "light_on_time": 960, "light_off_time": 480},
+    {"day": 6, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8, "light_on_time": 960, "light_off_time": 480},
+    {"day": 7, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8, "dose_B_ml_per_L": 0.8, "dose_C_ml_per_L": 0.8, "light_on_time": 960, "light_off_time": 480},
+    {"day": 8, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.01, "dose_B_ml_per_L": 0.85, "dose_C_ml_per_L": 0.69, "light_on_time": 960, "light_off_time": 480},
+    {"day": 9, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.23, "dose_B_ml_per_L": 0.91, "dose_C_ml_per_L": 0.59, "light_on_time": 960, "light_off_time": 480},
+    {"day": 10, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 11, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 12, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 13, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 14, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 15, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 16, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 17, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 18, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 19, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 20, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 21, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480},
+    {"day": 22, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.49, "dose_B_ml_per_L": 1.17, "dose_C_ml_per_L": 0.72, "light_on_time": 960, "light_off_time": 240},
+    {"day": 23, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.55, "dose_B_ml_per_L": 1.39, "dose_C_ml_per_L": 0.96, "light_on_time": 960, "light_off_time": 240},
+    {"day": 24, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 25, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 26, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 27, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 28, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 29, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 30, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 31, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 32, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 33, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 34, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 35, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6, "dose_B_ml_per_L": 1.6, "dose_C_ml_per_L": 1.2, "light_on_time": 960, "light_off_time": 240},
+    {"day": 36, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.28, "dose_B_ml_per_L": 1.49, "dose_C_ml_per_L": 1.44, "light_on_time": 960, "light_off_time": 240},
+    {"day": 37, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.96, "dose_B_ml_per_L": 1.39, "dose_C_ml_per_L": 1.68, "light_on_time": 960, "light_off_time": 240},
+    {"day": 38, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 39, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 40, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 41, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 42, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 43, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 44, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 45, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 46, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 47, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 48, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 49, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 50, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 51, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 52, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 53, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 54, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 55, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 56, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 57, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 58, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 59, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 60, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 61, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 62, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 63, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 64, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 65, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 66, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 67, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 68, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 69, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 70, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 71, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 72, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 73, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 74, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 75, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 76, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 77, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 78, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 79, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 80, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 81, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 82, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 83, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 84, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 85, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 86, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 87, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 88, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 89, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 90, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 91, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 92, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 93, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 94, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 95, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 96, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 97, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 98, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 99, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 100, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 101, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 102, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 103, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 104, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 105, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 106, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 107, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 108, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 109, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 110, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 111, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 112, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 113, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 114, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 115, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 116, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240},
+    {"day": 117, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240},
+    {"day": 118, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240},
+    {"day": 119, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240},
+    {"day": 120, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240},
+    {"day": 121, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240}]
 ################################################################################
 switch:
   # === 02 - Safety Gate Control ===
@@ -1769,24 +1887,57 @@ switch:
             ESP_LOGW("switch", "Bloom Pump: OFF command REJECTED by safety gate");
           }
 
-  # NOTE: Wastewater pump removed - not part of MVP (GPIO23 now used for DS18B20)
-  # - platform: template
-  #   id: pump_wastewater_switch
-  #   name: "10_06_Wastewater Pump"
-  #   optimistic: true
-  #   restore_mode: ALWAYS_OFF
-  #   turn_on_action:
-  #     - lambda: |-
-  #         if (!id(actuator_safety)->executeCommand("WastewaterPump", true, 0)) {
-  #           ESP_LOGW("switch", "Wastewater Pump: ON command REJECTED by safety gate");
-  #         }
-  #   turn_off_action:
-  #     - lambda: |-
-  #         if (!id(actuator_safety)->executeCommand("WastewaterPump", false)) {
-  #           ESP_LOGW("switch", "Wastewater Pump: OFF command REJECTED by safety gate");
-  #         }
+  # === Shelly-Controlled Actuators (Shelly Plus 4PM @ 192.168.0.130) ===
+  # AirPump on Socket 0, WastewaterPump on Socket 2
+  # Socket 1 and 3 reserved for future expansion
 
-  # NOTE: Air Pump removed - future Zigbee implementation
+  - platform: template
+    id: air_pump_shelly_switch
+    name: "10_06_Air Pump (Shelly Socket 0)"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - http_request.get:
+          url: "http://192.168.0.130/rpc/Switch.Set?id=0&on=true"
+      - lambda: |-
+          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual ON - HTTP sent (no safety validation)");
+    turn_off_action:
+      - http_request.get:
+          url: "http://192.168.0.130/rpc/Switch.Set?id=0&on=false"
+      - lambda: |-
+          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual OFF - HTTP sent");
+
+  - platform: template
+    id: wastewater_pump_shelly_switch
+    name: "10_07_Wastewater Pump (Shelly Socket 2)"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - http_request.get:
+          url: "http://192.168.0.130/rpc/Switch.Set?id=2&on=true"
+      - lambda: |-
+          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual ON - HTTP sent (no safety validation)");
+    turn_off_action:
+      - http_request.get:
+          url: "http://192.168.0.130/rpc/Switch.Set?id=2&on=false"
+      - lambda: |-
+          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual OFF - HTTP sent");
+
+  - platform: template
+    id: grow_light_shelly_switch
+    name: "10_08_Grow Light (Shelly Socket 3)"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - http_request.get:
+          url: "http://192.168.0.130/rpc/Switch.Set?id=3&on=true"
+      - lambda: |-
+          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual ON - HTTP sent");
+    turn_off_action:
+      - http_request.get:
+          url: "http://192.168.0.130/rpc/Switch.Set?id=3&on=false"
+      - lambda: |-
+          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual OFF - HTTP sent");
 
   # === pH Sensor Control ===
   - platform: template
@@ -2254,6 +2405,43 @@ number:
       - logger.log:
           format: "PWM GPIO22 (Nutrient Pump C) set to %.0f%% (duty cycle: %.2f)"
           args: ['x', 'x / 100.0']
+
+  # === 14 - Air Pump Cycling Period Configuration ===
+  - platform: template
+    id: air_pump_on_period
+    name: "14_01_Air Pump Cycling - ON Period"
+    icon: "mdi:timer-play-outline"
+    optimistic: true
+    min_value: 10      # Minimum 10 seconds ON
+    max_value: 600     # Maximum 10 minutes ON
+    step: 10
+    initial_value: 120  # Default: 2 minutes ON
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: box
+    set_action:
+      - logger.log:
+          format: "Air pump cycling ON period set to %u seconds"
+          args: [ '(uint32_t)x' ]
+          level: INFO
+
+  - platform: template
+    id: air_pump_off_period
+    name: "14_02_Air Pump Cycling - OFF Period"
+    icon: "mdi:timer-stop-outline"
+    optimistic: true
+    min_value: 10      # Minimum 10 seconds OFF
+    max_value: 600     # Maximum 10 minutes OFF
+    step: 10
+    initial_value: 60   # Default: 1 minute OFF
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: box
+    set_action:
+      - logger.log:
+          format: "Air pump cycling OFF period set to %u seconds"
+          args: [ '(uint32_t)x' ]
+          level: INFO
 
 ################################################################################
 # GPIO Status Logger (DEBUG Mode)

@@ -4,7 +4,9 @@
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/output/float_output.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
+#include "esphome/components/http_request/http_request.h"
 
 namespace plantos_hal {
 
@@ -81,6 +83,21 @@ void ESPHomeHAL::set_pump_bloom_output(esphome::output::FloatOutput* output) {
 void ESPHomeHAL::set_pump_wastewater_output(esphome::output::FloatOutput* output) {
     pump_wastewater_output_ = output;
     ESP_LOGI(TAG, "Wastewater pump output configured (GPIO23 - PWM capable)");
+}
+
+void ESPHomeHAL::set_air_pump_switch(esphome::switch_::Switch* sw) {
+    air_pump_switch_ = sw;
+    ESP_LOGI(TAG, "Air pump switch configured (Shelly Socket 0 - HTTP control)");
+}
+
+void ESPHomeHAL::set_wastewater_pump_switch(esphome::switch_::Switch* sw) {
+    wastewater_pump_switch_ = sw;
+    ESP_LOGI(TAG, "Wastewater pump switch configured (Shelly Socket 2 - HTTP control)");
+}
+
+void ESPHomeHAL::set_http_request(esphome::http_request::HttpRequestComponent* http) {
+    http_request_ = http;
+    ESP_LOGI(TAG, "HTTP request component configured for Shelly control");
 }
 
 // NOTE: set_pump_air_output removed - future Zigbee implementation
@@ -197,14 +214,35 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
         }
     }
     else if (pumpId == "WastewaterPump") {
-        // Wastewater pump on GPIO23
-        if (pump_wastewater_output_) {
-            pump_wastewater_output_->set_level(dutyCycle);
+        // Wastewater pump via Shelly Socket 2 (HTTP direct control)
+        if (http_request_) {
+            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=2&on=" + (state ? "true" : "false");
+            http_request_->get(url);
+            ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 HTTP: %s", state ? "ON" : "OFF");
         } else {
-            ESP_LOGW(TAG, "Wastewater pump output not configured - cannot control WastewaterPump");
+            ESP_LOGW(TAG, "HTTP request component not configured - cannot control WastewaterPump");
         }
     }
-    // NOTE: AirPump removed - future Zigbee implementation
+    else if (pumpId == "AirPump") {
+        // Air pump via Shelly Socket 0 (HTTP direct control)
+        if (http_request_) {
+            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=0&on=" + (state ? "true" : "false");
+            http_request_->get(url);
+            ESP_LOGD(TAG, "AirPump → Shelly Socket 0 HTTP: %s", state ? "ON" : "OFF");
+        } else {
+            ESP_LOGW(TAG, "HTTP request component not configured - cannot control AirPump");
+        }
+    }
+    else if (pumpId == "GrowLight") {
+        // Grow light via Shelly Socket 3 (HTTP direct control)
+        if (http_request_) {
+            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=3&on=" + (state ? "true" : "false");
+            http_request_->get(url);
+            ESP_LOGI(TAG, "GrowLight → Shelly Socket 3 HTTP: %s", state ? "ON" : "OFF");
+        } else {
+            ESP_LOGW(TAG, "HTTP request component not configured - cannot control GrowLight");
+        }
+    }
     else {
         ESP_LOGW(TAG, "Unknown pump ID: %s", pumpId.c_str());
     }

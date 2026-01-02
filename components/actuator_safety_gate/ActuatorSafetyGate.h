@@ -42,6 +42,13 @@ struct ActuatorState {
     // Duration violation tracking
     bool violationLogged;         // True if duration violation has been logged (prevents spam)
 
+    // Intermittent cycling fields (for AirPump automatic ON/OFF cycling)
+    bool cyclingEnabled;          // True if intermittent cycling is enabled
+    uint32_t cyclingOnPeriod;     // ON period duration in milliseconds (0 = disabled)
+    uint32_t cyclingOffPeriod;    // OFF period duration in milliseconds (0 = disabled)
+    uint32_t cyclingLastToggle;   // Timestamp of last cycling toggle (millis())
+    bool cyclingCurrentState;     // Current cycling state (true=ON, false=OFF)
+
     ActuatorState()
         : lastRequestedState(false),
           lastCommandTime(0),
@@ -51,7 +58,12 @@ struct ActuatorState {
           rampState(RAMP_OFF),
           rampStartTime(0),
           currentDutyCycle(0.0f),
-          violationLogged(false) {}
+          violationLogged(false),
+          cyclingEnabled(false),
+          cyclingOnPeriod(0),
+          cyclingOffPeriod(0),
+          cyclingLastToggle(0),
+          cyclingCurrentState(false) {}
 };
 
 /**
@@ -204,6 +216,35 @@ public:
      * setMaxDuration("AcidPump", 30);  // Never allow pump to run > 30 seconds
      */
     void setMaxDuration(const char* actuatorID, int maxSeconds);
+
+    /**
+     * Enable/disable intermittent cycling for an actuator
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @param enabled true to enable cycling, false to disable
+     *
+     * When enabled, the actuator will automatically cycle between ON and OFF
+     * states based on the configured on/off periods.
+     *
+     * EXAMPLE:
+     * enableCycling("AirPump", true);  // Enable automatic cycling
+     */
+    void enableCycling(const char* actuatorID, bool enabled);
+
+    /**
+     * Set cycling periods for an actuator
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @param onPeriodSec ON period duration in seconds
+     * @param offPeriodSec OFF period duration in seconds
+     *
+     * Configures the ON/OFF periods for intermittent cycling.
+     * Cycling must be enabled separately via enableCycling().
+     *
+     * EXAMPLE:
+     * setCyclingPeriods("AirPump", 120, 60);  // 2 min ON, 1 min OFF
+     */
+    void setCyclingPeriods(const char* actuatorID, uint32_t onPeriodSec, uint32_t offPeriodSec);
 
     /**
      * Get the current tracked state of an actuator

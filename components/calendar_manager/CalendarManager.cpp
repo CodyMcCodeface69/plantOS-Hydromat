@@ -41,13 +41,15 @@ void CalendarManager::setup() {
 
     // Log current schedule
     DailySchedule today = this->get_today_schedule();
-    ESP_LOGI(TAG, "Day %d schedule: pH %.2f-%.2f, Nutrient A: %.2f mL/L, B: %.2f mL/L, C: %.2f mL/L",
+    ESP_LOGI(TAG, "Day %d schedule: pH %.2f-%.2f, Nutrient A: %.2f mL/L, B: %.2f mL/L, C: %.2f mL/L, Light: %02d:%02d ON / %02d:%02d OFF",
              today.day_number,
              today.target_ph_min,
              today.target_ph_max,
              today.nutrient_A_ml_per_liter,
              today.nutrient_B_ml_per_liter,
-             today.nutrient_C_ml_per_liter);
+             today.nutrient_C_ml_per_liter,
+             today.light_on_time / 60, today.light_on_time % 60,
+             today.light_off_time / 60, today.light_off_time % 60);
 
     ESP_LOGI(TAG, "CalendarManager initialized successfully");
 }
@@ -100,6 +102,8 @@ bool CalendarManager::parse_schedule_json() {
         float dose_a = obj["dose_A_ml_per_L"] | 0.0f;
         float dose_b = obj["dose_B_ml_per_L"] | 0.0f;
         float dose_c = obj["dose_C_ml_per_L"] | 0.0f;
+        uint16_t light_on = obj["light_on_time"] | 960;   // Default: 16:00
+        uint16_t light_off = obj["light_off_time"] | 480;  // Default: 08:00
 
         // Validate day number
         if (day < 1 || day > 120) {
@@ -108,12 +112,13 @@ bool CalendarManager::parse_schedule_json() {
         }
 
         // Store in map
-        this->schedule_map_[day] = DailySchedule(day, ph_min, ph_max, dose_a, dose_b, dose_c);
+        this->schedule_map_[day] = DailySchedule(day, ph_min, ph_max, dose_a, dose_b, dose_c, light_on, light_off);
         parsed_count++;
 
         if (this->verbose_) {
-            ESP_LOGD(TAG, "Day %d: pH %.2f-%.2f, A:%.2f mL/L B:%.2f mL/L C:%.2f mL/L",
-                     day, ph_min, ph_max, dose_a, dose_b, dose_c);
+            ESP_LOGD(TAG, "Day %d: pH %.2f-%.2f, A:%.2f mL/L B:%.2f mL/L C:%.2f mL/L, Light: %02d:%02d ON / %02d:%02d OFF",
+                     day, ph_min, ph_max, dose_a, dose_b, dose_c,
+                     light_on / 60, light_on % 60, light_off / 60, light_off % 60);
         }
     }
 
@@ -159,6 +164,20 @@ bool CalendarManager::advance_day() {
     }
 
     return this->set_current_day(next_day);
+}
+
+bool CalendarManager::go_back_day() {
+    uint8_t prev_day = this->current_day_ - 1;
+    if (prev_day < 1) {
+        prev_day = 120;  // Wrap around to day 120
+        ESP_LOGI(TAG, "Going back from day 1 - wrapping to day 120");
+    }
+
+    if (this->verbose_) {
+        ESP_LOGI(TAG, "Going back from day %d to day %d", this->current_day_, prev_day);
+    }
+
+    return this->set_current_day(prev_day);
 }
 
 bool CalendarManager::reset_to_day_1() {
@@ -212,6 +231,9 @@ void CalendarManager::log_status() {
     ESP_LOGI(TAG, "Nutrient A: %.2f mL/L", today.nutrient_A_ml_per_liter);
     ESP_LOGI(TAG, "Nutrient B: %.2f mL/L", today.nutrient_B_ml_per_liter);
     ESP_LOGI(TAG, "Nutrient C: %.2f mL/L", today.nutrient_C_ml_per_liter);
+    ESP_LOGI(TAG, "Light Schedule: %02d:%02d ON / %02d:%02d OFF",
+             today.light_on_time / 60, today.light_on_time % 60,
+             today.light_off_time / 60, today.light_off_time % 60);
     ESP_LOGI(TAG, "==============================");
 }
 

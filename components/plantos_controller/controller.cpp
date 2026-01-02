@@ -184,7 +184,8 @@ void PlantOSController::loop() {
 
         // Update calendar status in status logger
         if (calendar_manager_) {
-            uint8_t currentDay = getCurrentGrowDay();
+            // Use calendar manager's actual current day (not timestamp-based calculation)
+            uint8_t currentDay = calendar_manager_->get_current_day();
             esphome::calendar_manager::DailySchedule schedule = calendar_manager_->get_schedule(currentDay);
             status_logger_.updateCalendarStatus(
                 currentDay,
@@ -676,7 +677,8 @@ void PlantOSController::handlePhCalculating() {
     float target_max = PH_TARGET_MAX; // Fallback: 6.5
 
     if (calendar_manager_) {
-        uint8_t current_day = getCurrentGrowDay();
+        // Use calendar manager's actual current day (not timestamp-based calculation)
+        uint8_t current_day = calendar_manager_->get_current_day();
         auto schedule = calendar_manager_->get_schedule(current_day);
         target_min = schedule.target_ph_min;
         target_max = schedule.target_ph_max;
@@ -1238,8 +1240,8 @@ void PlantOSController::handleFeeding() {
 
         // Calculate nutrient doses from CalendarManager (mL/L) and convert to actual mL
         if (calendar_manager_ && hal_) {
-            // Get current grow day (auto-calculated from NTP or manual counter)
-            uint8_t current_day = getCurrentGrowDay();
+            // Use calendar manager's actual current day (not timestamp-based calculation)
+            uint8_t current_day = calendar_manager_->get_current_day();
 
             // Get schedule for current day from calendar
             auto schedule = calendar_manager_->get_schedule(current_day);

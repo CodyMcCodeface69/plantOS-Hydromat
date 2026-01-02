@@ -215,6 +215,7 @@ external_components:
   # Official ESPHome ADC has bugs on C6 (no ADC2 support causes compilation errors)
   # This fork fixes the issue and works on GPIO0 (ADC1_CH0)
   # Source: https://github.com/esphome/issues/issues/6038#issuecomment-2287359862
+  # To Do: Switch to github://PhracturedBlue/c6_adc to allow multiple GPIO ADC pins (for TDS meter, Light sensor, etc.)
   - source:
       type: git
       url: https://github.com/lboue/esphome
@@ -604,7 +605,7 @@ text_sensor:
   #   update_interval: 5s
 
   - platform: template
-    name: "Water Temperature - HAL"
+    name: "00_04_Water Temperature - HAL"
     id: water_temperature_text
     # Lambda returns current water temperature value from HAL
     lambda: |-
@@ -619,7 +620,7 @@ text_sensor:
     update_interval: 10s
 
   - platform: template
-    name: "Tank Volume"
+    name: "00_06_Tank Volume"
     id: tank_volume_text
     # Lambda returns configured tank volume from HAL
     lambda: |-
@@ -649,7 +650,7 @@ text_sensor:
     update_interval: 1s
 
   - platform: template
-    name: "00_03_Current Grow Day"
+    name: "00_03_Current CalMan Grow Day"
     id: current_grow_day_text
     # Lambda returns current grow day from calendar manager
     lambda: |-
@@ -1190,7 +1191,7 @@ button:
 
   # === 15 - Calendar Day Control ===
   - platform: template
-    name: "15_01_Calendar Day +1"
+    name: "06_09_Calendar Day +1"
     on_press:
       # Advance calendar to next day
       # Useful for manually advancing grow cycle or skipping days
@@ -1206,7 +1207,7 @@ button:
             }
 
   - platform: template
-    name: "15_02_Calendar Day -1"
+    name: "06_10_Calendar Day -1"
     on_press:
       # Go back to previous calendar day
       # Useful for extending a growth phase or correcting accidental advances
@@ -1484,7 +1485,7 @@ ezo_ph_uart:
   verbose: false  # Disable verbose UART logging by default (enabled dynamically during calibration)
   # pH sensor configuration
   ph:
-    name: "Nutrient Solution pH"
+    name: "00_05_Nutrient Solution pH"
     id: ph_sensor_real
     accuracy_decimals: 2
     filters:

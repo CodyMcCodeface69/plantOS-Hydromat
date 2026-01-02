@@ -101,5 +101,42 @@ void TimeDummy::add_hours(int32_t hours) {
              esp_time.hour, esp_time.minute, esp_time.second);
 }
 
+void TimeDummy::add_minutes(int32_t minutes) {
+    // Add minutes to adjustment offset (60 seconds per minute)
+    int64_t seconds = static_cast<int64_t>(minutes) * 60;
+    adjustment_offset_ += seconds;
+
+    ESP_LOGI(TAG, "Time adjusted: %s%d minute%s (offset: %lld sec)",
+             minutes > 0 ? "+" : "", minutes, minutes == 1 || minutes == -1 ? "" : "s",
+             adjustment_offset_);
+
+    // Update time immediately
+    this->read_time();
+
+    // Log new current time
+    auto esp_time = this->now();
+    ESP_LOGI(TAG, "New time: %04d-%02d-%02d %02d:%02d:%02d",
+             esp_time.year, esp_time.month, esp_time.day_of_month,
+             esp_time.hour, esp_time.minute, esp_time.second);
+}
+
+void TimeDummy::add_seconds(int32_t seconds) {
+    // Add seconds to adjustment offset
+    adjustment_offset_ += static_cast<int64_t>(seconds);
+
+    ESP_LOGI(TAG, "Time adjusted: %s%d second%s (offset: %lld sec)",
+             seconds > 0 ? "+" : "", seconds, seconds == 1 || seconds == -1 ? "" : "s",
+             adjustment_offset_);
+
+    // Update time immediately
+    this->read_time();
+
+    // Log new current time
+    auto esp_time = this->now();
+    ESP_LOGI(TAG, "New time: %04d-%02d-%02d %02d:%02d:%02d",
+             esp_time.year, esp_time.month, esp_time.day_of_month,
+             esp_time.hour, esp_time.minute, esp_time.second);
+}
+
 } // namespace time_dummy
 } // namespace esphome

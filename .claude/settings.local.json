@@ -20,7 +20,8 @@
       "Bash(timeout 30 task run:*)",
       "Bash(git -C /home/cody/plantOS-testlab log --oneline -10)",
       "Bash(timeout 20 task run:*)",
-      "Bash(task run)"
+      "Bash(task run)",
+      "Bash(esphome version:*)"
     ],
     "deny": [],
     "ask": []

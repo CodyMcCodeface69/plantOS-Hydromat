@@ -70,6 +70,18 @@ public:
     void add_hours(int32_t hours);
 
     /**
+     * Add specified number of minutes to current time
+     * @param minutes Number of minutes to add (can be negative to subtract)
+     */
+    void add_minutes(int32_t minutes);
+
+    /**
+     * Add specified number of seconds to current time
+     * @param seconds Number of seconds to add (can be negative to subtract)
+     */
+    void add_seconds(int32_t seconds);
+
+    /**
      * Get current dummy timestamp
      * @return Current Unix timestamp (seconds since epoch)
      */

@@ -111,8 +111,8 @@ This document tracks tasks organized into three phases:
 - ✅ Add water level checking to WATER_FILLING handler (abort on HIGH)
 - ✅ Add water level checking to WATER_EMPTYING handler (abort on LOW)
 - ✅ Add level status to CentralStatusLogger
-- [ ] Test fill operation with high level abort
-- [ ] Test empty operation with low level abort
+- ✅ Test fill operation with high level abort
+- [ ] Test empty operation with low level abort (waiting on hardware)
 
 **Files to modify**:
 - `plantOS.yaml`: Add 2 binary sensor components (~15-20 lines)
@@ -182,12 +182,12 @@ This document tracks tasks organized into three phases:
 - [ ] Manual pH correction (web UI button)
 - [ ] Automatic pH correction trigger
 - [ ] Feeding sequence (all 3 pumps run sequentially)
-- [ ] Water fill (abort on high level sensor)
+- ✅ Water fill (abort on high level sensor)
 - [ ] Water empty (abort on low level sensor)
-- [ ] Temperature compensation (verify temp sent to pH sensor)
+- ✅ Temperature compensation (verify temp sent to pH sensor)
 - [ ] Power loss recovery (PSM validation)
-- [ ] SafetyGate duration limits (try to exceed, verify rejection)
-- [ ] pH calibration (3-point: 4.00, 7.00, 10.01)
+- ✅ SafetyGate duration limits (try to exceed, verify rejection)
+- ✅ pH calibration (3-point: 4.00, 7.00, 10.01)
 - [ ] 24-hour unattended operation
 - [ ] 48-hour pH stability (stays within 5.5-6.5)
 
@@ -370,7 +370,7 @@ Create full 120-day grow cycle JSON schedule with:
 **Architecture**: Duplicate FSM instances
 - 2x PlantOSController (controller_chamber1, controller_chamber2)
 - 2x ESPHomeHAL (hal_chamber1, hal_chamber2)
-- 1x ActuatorSafetyGate (shared, global safety rules)
+- 2x ActuatorSafetyGate (different safety rules according to tank volume)
 
 ### P3-1: Architecture Design
 **Status**: Open
@@ -555,13 +555,13 @@ Temperature compensation fully integrated:
 
 **R2: Power Supply Limitation**
 - ESP32 can't source enough current for 7+ relays
-- Mitigation: External relay board with 12V/24V supply, ESP32 drives coils only
+- Mitigation: External relay board / MOSFETs with 12V/5V supply, ESP32 drives coils only
 
 ### MEDIUM Risk ⚠
 
 **R3: Water Level Sensor Compatibility**
 - XKC-Y23-V is 5V, ESP32-C6 is 3.3V logic
-- Mitigation: Voltage divider (2kΩ + 3.3kΩ) or level shifter (74LVC245)
+- Mitigation: Use 3.3V, which is in input range.
 
 **R4: GPIO Pin Shortage (Phase 3 only)**
 - ESP32-C6 has 30 pins, Phase 3 needs 36
@@ -569,7 +569,7 @@ Temperature compensation fully integrated:
 
 **R5: I2C Address Conflict (Phase 3 only)**
 - Two EZO pH sensors both default to 0x61
-- Mitigation: UART for both or I2C multiplexer (TCA9548A)
+- Mitigation: UART for one/both or I2C multiplexer (TCA9548A)
 
 ### LOW Risk ℹ️
 

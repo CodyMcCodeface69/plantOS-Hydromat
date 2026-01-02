@@ -776,6 +776,46 @@ button:
             ESP_LOGI("button", "Time -1 Hour button pressed");
             id(sntp_time)->add_hours(-1);
 
+  - platform: template
+    name: "06_05_Time +1 Minute"
+    on_press:
+      # Increase dummy time by 1 minute (60 seconds)
+      # Used to test time-based events and scheduling
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Time +1 Minute button pressed");
+            id(sntp_time)->add_minutes(1);
+
+  - platform: template
+    name: "06_06_Time -1 Minute"
+    on_press:
+      # Decrease dummy time by 1 minute (60 seconds)
+      # Used to test time-based events and scheduling
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Time -1 Minute button pressed");
+            id(sntp_time)->add_minutes(-1);
+
+  - platform: template
+    name: "06_07_Time +1 Second"
+    on_press:
+      # Increase dummy time by 1 second
+      # Used to test precise time-based events and scheduling
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Time +1 Second button pressed");
+            id(sntp_time)->add_seconds(1);
+
+  - platform: template
+    name: "06_08_Time -1 Second"
+    on_press:
+      # Decrease dummy time by 1 second
+      # Used to test precise time-based events and scheduling
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "Time -1 Second button pressed");
+            id(sntp_time)->add_seconds(-1);
+
   # === 07 - pH & Measurement ===
   - platform: template
     name: "07_01_Start pH Calibration"

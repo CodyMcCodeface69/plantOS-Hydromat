@@ -185,7 +185,7 @@ void PlantOSController::loop() {
         // Update calendar status in status logger
         if (calendar_manager_) {
             uint8_t currentDay = getCurrentGrowDay();
-            esphome::calendar_manager::DailySchedule schedule = calendar_manager_->get_today_schedule();
+            esphome::calendar_manager::DailySchedule schedule = calendar_manager_->get_schedule(currentDay);
             status_logger_.updateCalendarStatus(
                 currentDay,
                 schedule.target_ph_min,

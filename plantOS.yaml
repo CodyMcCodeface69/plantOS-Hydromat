@@ -651,9 +651,9 @@ text_sensor:
   - platform: template
     name: "00_03_Current Grow Day"
     id: current_grow_day_text
-    # Lambda returns current grow day calculated by controller
+    # Lambda returns current grow day from calendar manager
     lambda: |-
-      uint8_t day = id(unified_controller)->getCurrentGrowDay();
+      uint8_t day = id(plant_calendar)->get_current_day();
       char buf[32];
       snprintf(buf, sizeof(buf), "Day %d / 120", day);
       return {buf};
@@ -1199,6 +1199,8 @@ button:
             ESP_LOGI("button", "Calendar Day +1 button pressed");
             if (id(plant_calendar)->advance_day()) {
               ESP_LOGI("button", "Advanced to day %d", id(plant_calendar)->get_current_day());
+              // Update text sensor immediately
+              id(current_grow_day_text).update();
             } else {
               ESP_LOGE("button", "Failed to advance calendar day");
             }
@@ -1213,6 +1215,8 @@ button:
             ESP_LOGI("button", "Calendar Day -1 button pressed");
             if (id(plant_calendar)->go_back_day()) {
               ESP_LOGI("button", "Went back to day %d", id(plant_calendar)->get_current_day());
+              // Update text sensor immediately
+              id(current_grow_day_text).update();
             } else {
               ESP_LOGE("button", "Failed to go back calendar day");
             }
@@ -1783,8 +1787,8 @@ calendar_manager:
     {"day": 117, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240},
     {"day": 118, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240},
     {"day": 119, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240},
-    {"day": 120, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240},
-    {"day": 121, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240}]
+    {"day": 120, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.0, "dose_B_ml_per_L": 0.0, "dose_C_ml_per_L": 0.0, "light_on_time": 960, "light_off_time": 240}
+    ]
 ################################################################################
 switch:
   # === 02 - Safety Gate Control ===

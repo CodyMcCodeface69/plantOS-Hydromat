@@ -74,8 +74,9 @@ bool CalendarManager::parse_schedule_json() {
     }
 
     // Use ArduinoJson to parse the JSON string
-    // Calculate required capacity (estimate: 120 days * ~80 bytes/entry)
-    const size_t capacity = JSON_ARRAY_SIZE(120) + 120 * JSON_OBJECT_SIZE(6) + 2048;
+    // Calculate required capacity (estimate: 120 days * ~100 bytes/entry)
+    // Each object now has 8 fields: day, ph_min, ph_max, dose_A/B/C_ml_per_L, light_on_time, light_off_time
+    const size_t capacity = JSON_ARRAY_SIZE(120) + 120 * JSON_OBJECT_SIZE(8) + 3072;
     DynamicJsonDocument doc(capacity);
 
     DeserializationError error = deserializeJson(doc, this->schedule_json_);

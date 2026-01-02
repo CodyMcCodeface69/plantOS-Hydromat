@@ -1194,6 +1194,8 @@ plantos_controller:
                                 # Verbose mode logs state changes, sensor readings, and actuator
                                 # commands in real-time without waiting for periodic reports.
                                 # Note: LED changes are automatically filtered out.
+  enable_420_mode: true         # Enable 420 easter egg at 4:20 AM/PM (default: true)
+                                # When enabled, displays ASCII art in status logs at 4:20
 
 ################################################################################
 # Time Logger: Periodic Time Logging

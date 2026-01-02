@@ -241,8 +241,9 @@ public:
      * @param enableReports Enable/disable periodic status reports
      * @param reportIntervalMs Report interval in milliseconds
      * @param verboseMode Enable instant verbose logging (filters out LED changes)
+     * @param enable420Mode Enable 420 easter egg at 4:20 AM/PM
      */
-    void configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode);
+    void configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode, bool enable420Mode);
 
     /**
      * Calculate current grow day number (1-120)

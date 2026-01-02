@@ -43,6 +43,7 @@ CONF_GROW_START_DATE = 'grow_start_date'
 CONF_ENABLE_STATUS_REPORTS = 'enable_status_reports'
 CONF_STATUS_REPORT_INTERVAL = 'status_report_interval'
 CONF_VERBOSE_MODE = 'verbose_mode'
+CONF_420_MODE = 'enable_420_mode'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -57,6 +58,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_ENABLE_STATUS_REPORTS, default=True): cv.boolean,
     cv.Optional(CONF_STATUS_REPORT_INTERVAL, default="30s"): cv.positive_time_period_milliseconds,
     cv.Optional(CONF_VERBOSE_MODE, default=False): cv.boolean,
+    cv.Optional(CONF_420_MODE, default=True): cv.boolean,
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -109,5 +111,6 @@ async def to_code(config):
     cg.add(var.configureStatusLogger(
         config[CONF_ENABLE_STATUS_REPORTS],
         config[CONF_STATUS_REPORT_INTERVAL],
-        config[CONF_VERBOSE_MODE]
+        config[CONF_VERBOSE_MODE],
+        config[CONF_420_MODE]
     ))

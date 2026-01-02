@@ -1171,45 +1171,40 @@ void PlantOSController::handleFeeding() {
 
     uint32_t elapsed = getStateElapsed();
 
-    // On first entry to feeding state: send temperature compensation
-    // This ensures pH sensor is properly compensated if pH is checked during/after feeding
+    // Static variables to cache doses and duration across loop iterations
+    static float dose_a_ml = 0.0f;
+    static float dose_b_ml = 0.0f;
+    static float dose_c_ml = 0.0f;
+    static uint32_t current_duration_ms = 0;
+
+    // On first entry to feeding state: calculate doses and send temperature compensation
     if (state_counter_ == 0 && elapsed < 100) {
         sendTemperatureCompensation();
-    }
 
-    // Get nutrient doses from CalendarManager (mL/L) and convert to actual mL
-    // Then use HAL pumpflow() to convert mL to seconds
-    float dose_a_ml = 0.0f;
-    float dose_b_ml = 0.0f;
-    float dose_c_ml = 0.0f;
+        // Calculate nutrient doses from CalendarManager (mL/L) and convert to actual mL
+        if (calendar_manager_ && hal_) {
+            // Get current grow day (auto-calculated from NTP or manual counter)
+            uint8_t current_day = getCurrentGrowDay();
 
-    if (calendar_manager_ && hal_) {
-        // Get current grow day (auto-calculated from NTP or manual counter)
-        uint8_t current_day = getCurrentGrowDay();
+            // Get schedule for current day from calendar
+            auto schedule = calendar_manager_->get_schedule(current_day);
+            float tank_volume_liters = hal_->getTankVolume();
 
-        // Get schedule for current day from calendar
-        auto schedule = calendar_manager_->get_schedule(current_day);
-        float tank_volume_liters = hal_->getTankVolume();
+            // Calculate actual mL doses from mL/L concentrations
+            dose_a_ml = schedule.nutrient_A_ml_per_liter * tank_volume_liters;
+            dose_b_ml = schedule.nutrient_B_ml_per_liter * tank_volume_liters;
+            dose_c_ml = schedule.nutrient_C_ml_per_liter * tank_volume_liters;
 
-        // Calculate actual mL doses from mL/L concentrations
-        dose_a_ml = schedule.nutrient_A_ml_per_liter * tank_volume_liters;
-        dose_b_ml = schedule.nutrient_B_ml_per_liter * tank_volume_liters;
-        dose_c_ml = schedule.nutrient_C_ml_per_liter * tank_volume_liters;
-
-        ESP_LOGI(TAG, "Feeding day %d: Tank %.1fL, A:%.2f mL, B:%.2f mL, C:%.2f mL",
-                 current_day, tank_volume_liters, dose_a_ml, dose_b_ml, dose_c_ml);
-    } else {
-        // Fallback: use hardcoded values if calendar not available
-        dose_a_ml = 5.0f;  // 5 mL
-        dose_b_ml = 4.0f;  // 4 mL
-        dose_c_ml = 3.0f;  // 3 mL
-        ESP_LOGW(TAG, "Calendar not available - using fallback doses");
+            ESP_LOGI(TAG, "Feeding day %d: Tank %.1fL, A:%.2f mL, B:%.2f mL, C:%.2f mL",
+                     current_day, tank_volume_liters, dose_a_ml, dose_b_ml, dose_c_ml);
+        } else {
+            ESP_LOGW(TAG, "Calendar not available - skipping nutrient dosing");
+        }
     }
 
     // Use state_counter to track which pump we're on (0=A, 1=B, 2=C, 3=done)
     const char* pump_name = nullptr;
     float dose_ml = 0.0f;
-    uint32_t duration_ms = 0;
 
     if (state_counter_ == 0) {
         pump_name = NUTRIENT_PUMP_A;
@@ -1253,21 +1248,21 @@ void PlantOSController::handleFeeding() {
         return;
     }
 
-    // Convert mL to duration using HAL pumpflow
-    if (dose_ml > 0.0f && hal_) {
-        float duration_sec = hal_->pumpflow(pump_name, dose_ml);
-        duration_ms = static_cast<uint32_t>(duration_sec * 1000.0f);
-        ESP_LOGI(TAG, "%s dose: %.2f mL = %.2f sec (%d ms)",
-                 pump_name, dose_ml, duration_sec, duration_ms);
-    } else {
-        duration_ms = 0;
-    }
-
-    // On entry for this pump: activate it
+    // On entry for this pump: calculate duration and activate it
     if (elapsed < 100) {
-        if (duration_ms > 0) {
+        // Convert mL to duration using HAL pumpflow (only once per pump)
+        if (dose_ml > 0.0f && hal_) {
+            float duration_sec = hal_->pumpflow(pump_name, dose_ml);
+            current_duration_ms = static_cast<uint32_t>(duration_sec * 1000.0f);
+            ESP_LOGI(TAG, "%s dose: %.2f mL = %.2f sec (%d ms)",
+                     pump_name, dose_ml, duration_sec, current_duration_ms);
+        } else {
+            current_duration_ms = 0;
+        }
+
+        if (current_duration_ms > 0) {
             if (safety_gate_) {
-                uint32_t duration_sec = (duration_ms + 999) / 1000;  // Round up to seconds
+                uint32_t duration_sec = (current_duration_ms + 999) / 1000;  // Round up to seconds
                 bool approved = safety_gate_->executeCommand(pump_name, true, duration_sec);
 
                 if (!approved) {
@@ -1284,7 +1279,7 @@ void PlantOSController::handleFeeding() {
                 }
             }
 
-            ESP_LOGI(TAG, "%s ON for %.2f mL (%d ms)", pump_name, dose_ml, duration_ms);
+            ESP_LOGI(TAG, "%s ON for %.2f mL (%d ms)", pump_name, dose_ml, current_duration_ms);
         } else {
             ESP_LOGI(TAG, "%s duration is 0 - skipping", pump_name);
             // Immediately move to next pump
@@ -1295,7 +1290,7 @@ void PlantOSController::handleFeeding() {
     }
 
     // Wait for duration + 200ms safety margin
-    if (elapsed < duration_ms + 200) {
+    if (elapsed < current_duration_ms + 200) {
         return;
     }
 
@@ -1316,15 +1311,38 @@ void PlantOSController::handleFeedFilling() {
     // This is the first phase of the Feed operation
 
     uint32_t elapsed = getStateElapsed();
-    static constexpr uint32_t FILL_DURATION_MS = 600000;  // 10 min fallback
+
+    // Calculate max fill duration based on tank volume and valve flow rate
+    // Formula: duration = (tank_volume_mL / valve_flow_rate_mL_s) × 1.2 (20% safety margin)
+    uint32_t max_fill_duration_ms = 600000;  // Default fallback: 10 minutes
+    uint32_t max_fill_duration_sec = 600;    // For SafetyGate command
+
+    if (hal_) {
+        float tank_volume_L = hal_->getTankVolume();
+        float tank_volume_mL = tank_volume_L * 1000.0f;
+
+        // Use valveflow() to calculate fill duration for full tank volume
+        float fill_duration_sec = hal_->valveflow(tank_volume_mL);
+
+        // Add 20% safety margin
+        fill_duration_sec *= 1.2f;
+
+        max_fill_duration_ms = static_cast<uint32_t>(fill_duration_sec * 1000.0f);
+        max_fill_duration_sec = static_cast<uint32_t>(fill_duration_sec);
+
+        ESP_LOGI(TAG, "[FEED_FILLING] Calculated max fill time: %.1f sec (%.1fL tank with 20%% margin)",
+                 fill_duration_sec, tank_volume_L);
+    } else {
+        ESP_LOGW(TAG, "[FEED_FILLING] HAL not available - using fallback timeout of 10 min");
+    }
 
     // ENTRY: Log and activate water valve
     if (elapsed < 100) {
         ESP_LOGI(TAG, "[FEED_FILLING] Starting tank fill before nutrient dosing");
 
-        // Request water valve open (600s = 10 min max duration as safety backup)
+        // Request water valve open with calculated max duration
         if (safety_gate_) {
-            bool approved = safety_gate_->executeCommand(WATER_VALVE, true, 600);
+            bool approved = safety_gate_->executeCommand(WATER_VALVE, true, max_fill_duration_sec);
 
             if (!approved) {
                 ESP_LOGE(TAG, "[FEED_FILLING] SafetyGate rejected WaterValve command");
@@ -1342,17 +1360,19 @@ void PlantOSController::handleFeedFilling() {
             }
         }
 
-        ESP_LOGI(TAG, "[FEED_FILLING] Water valve OPENED");
+        ESP_LOGI(TAG, "[FEED_FILLING] Water valve OPENED (max duration: %d sec)", max_fill_duration_sec);
         return;
     }
 
     // MONITOR: Check water level sensors (if available)
     if (hal_->hasWaterLevelSensors()) {
         bool high_sensor = hal_->readWaterLevelHigh();
+        bool low_sensor = hal_->readWaterLevelLow();
 
-        // SUCCESS: High level reached
-        if (high_sensor) {
-            ESP_LOGI(TAG, "[FEED_FILLING] HIGH sensor triggered - tank full");
+        // SUCCESS: Tank full when BOTH sensors are ON
+        if (high_sensor && low_sensor) {
+            ESP_LOGI(TAG, "[FEED_FILLING] BOTH sensors ON - tank full");
+            ESP_LOGI(TAG, "[FEED_FILLING] Water level: HIGH=ON, LOW=ON");
 
             // Close water valve
             if (safety_gate_) {
@@ -1366,11 +1386,19 @@ void PlantOSController::handleFeedFilling() {
             transitionTo(ControllerState::FEEDING);
             return;
         }
+
+        // LOG: Progress update every 5 seconds
+        static uint32_t last_progress_log = 0;
+        if (elapsed - last_progress_log >= 5000) {
+            ESP_LOGI(TAG, "[FEED_FILLING] Filling in progress... HIGH=%s, LOW=%s",
+                     high_sensor ? "ON" : "OFF", low_sensor ? "ON" : "OFF");
+            last_progress_log = elapsed;
+        }
     }
 
-    // TIMEOUT: Safety backup - 10min max fill time
-    if (elapsed >= FILL_DURATION_MS) {
-        ESP_LOGW(TAG, "[FEED_FILLING] 10min timeout reached - closing valve");
+    // TIMEOUT: Safety backup - calculated max fill time
+    if (elapsed >= max_fill_duration_ms) {
+        ESP_LOGW(TAG, "[FEED_FILLING] Timeout reached (%d sec) - closing valve", max_fill_duration_sec);
 
         // Close water valve
         if (safety_gate_) {
@@ -1379,7 +1407,7 @@ void PlantOSController::handleFeedFilling() {
 
         // Alert if sensors were expected but didn't trigger
         if (hal_->hasWaterLevelSensors()) {
-            ESP_LOGE(TAG, "[FEED_FILLING] HIGH sensor never triggered - possible sensor failure or low water pressure");
+            ESP_LOGE(TAG, "[FEED_FILLING] BOTH sensors never triggered - possible sensor failure or low water pressure");
         }
 
         ESP_LOGI(TAG, "[FEED_FILLING] Proceeding to nutrient dosing despite timeout");
@@ -1934,6 +1962,24 @@ void PlantOSController::startFeed() {
         ESP_LOGI(TAG, "===============================================");
         ESP_LOGI(TAG, "Sequence: Fill tank → Add nutrients → pH correction");
 
+        // SAFETY CHECK: Verify tank is empty (both sensors OFF) before filling
+        if (hal_ && hal_->hasWaterLevelSensors()) {
+            bool high_sensor = hal_->readWaterLevelHigh();
+            bool low_sensor = hal_->readWaterLevelLow();
+
+            if (high_sensor || low_sensor) {
+                ESP_LOGE(TAG, "FEED ABORTED: Tank must be empty before starting!");
+                ESP_LOGE(TAG, "Water level sensors: HIGH=%s, LOW=%s",
+                         high_sensor ? "ON" : "OFF", low_sensor ? "ON" : "OFF");
+                ESP_LOGE(TAG, "Please drain the tank manually until both sensors show OFF");
+                return;
+            }
+
+            ESP_LOGI(TAG, "Water level check PASSED: Tank is empty (both sensors OFF)");
+        } else {
+            ESP_LOGW(TAG, "Water level sensors not available - skipping pre-fill check");
+        }
+
         // Set flag for auto pH correction after feeding
         auto_ph_correction_pending_ = true;
 
@@ -2021,8 +2067,9 @@ void PlantOSController::resetToInit() {
     transitionTo(ControllerState::INIT);
 }
 
-void PlantOSController::configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode) {
+void PlantOSController::configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode, bool enable420Mode) {
     status_logger_.configure(enableReports, reportIntervalMs, verboseMode);
+    status_logger_.set420Mode(enable420Mode);
 }
 
 std::string PlantOSController::getStateAsString() const {

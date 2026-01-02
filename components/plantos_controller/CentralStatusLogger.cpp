@@ -274,11 +274,31 @@ void CentralStatusLogger::logStatus() {
                 }
             }
 
-            // Display missing critical devices in red
+            // Display missing critical devices in red (or yellow if UART alternative exists)
             if (!missingCritical.empty()) {
                 for (const auto& device : missingCritical) {
-                    // ANSI Red: \033[31m, Reset: \033[0m
-                    ESP_LOGE(TAG, "    \033[31m✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
+                    // Special case: EZO pH I2C missing but UART version is present
+                    bool isEzoPh = (device.address == 0x61 || device.name.find("EZO pH") != std::string::npos);
+                    bool uartEzoPhPresent = false;
+
+                    if (isEzoPh && uartStatusUpdated) {
+                        // Check if UART EZO pH sensor is ready
+                        for (const auto& uart : uartDevices) {
+                            if (uart.name.find("EZO pH") != std::string::npos && uart.ready) {
+                                uartEzoPhPresent = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isEzoPh && uartEzoPhPresent) {
+                        // ANSI Yellow: \033[33m, Reset: \033[0m
+                        ESP_LOGW(TAG, "    \033[33m⚠ 0x%02X: %s (I2C not used - UART version active)\033[0m",
+                                device.address, device.name.c_str());
+                    } else {
+                        // ANSI Red: \033[31m, Reset: \033[0m
+                        ESP_LOGE(TAG, "    \033[31m✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
+                    }
                 }
             }
 
@@ -382,6 +402,39 @@ void CentralStatusLogger::logStatus() {
         }
     } else {
         ESP_LOGI(TAG, "  1-Wire: Status not yet updated");
+    }
+
+    // Water Level Sensors (Binary Sensors)
+    if (waterLevelSensorsAvailable) {
+        ESP_LOGI(TAG, "  Water Level Sensors:");
+
+        bool highSensor = waterLevelHighSensor;
+        bool lowSensor = waterLevelLowSensor;
+
+        // Interpret sensor states
+        if (!highSensor && !lowSensor) {
+            // Both sensors OFF: Water level is below LOW sensor
+            // ANSI Yellow: \033[33m, Reset: \033[0m
+            ESP_LOGW(TAG, "    \033[33m⚠ Water level LOW or sensors disconnected\033[0m");
+            ESP_LOGW(TAG, "    \033[33m  HIGH sensor: OFF, LOW sensor: OFF\033[0m");
+        } else if (lowSensor && !highSensor) {
+            // LOW sensor ON, HIGH sensor OFF: Water level between sensors
+            // ANSI Green: \033[32m, Reset: \033[0m
+            ESP_LOGI(TAG, "    \033[32m✓ Lower sensor active, high pending\033[0m");
+            ESP_LOGI(TAG, "    \033[32m  HIGH sensor: OFF, LOW sensor: ON\033[0m");
+        } else if (highSensor && lowSensor) {
+            // Both sensors ON: Water level is at or above HIGH sensor
+            // ANSI Green: \033[32m, Reset: \033[0m
+            ESP_LOGI(TAG, "    \033[32m✓ Both sensors active - tank full\033[0m");
+            ESP_LOGI(TAG, "    \033[32m  HIGH sensor: ON, LOW sensor: ON\033[0m");
+        } else {
+            // HIGH sensor ON but LOW sensor OFF: Unusual state (possible sensor fault)
+            // ANSI Red: \033[31m, Reset: \033[0m
+            ESP_LOGE(TAG, "    \033[31m✗ UNUSUAL STATE - HIGH=ON but LOW=OFF\033[0m");
+            ESP_LOGE(TAG, "    \033[31m  Possible sensor fault or wiring issue\033[0m");
+        }
+    } else {
+        ESP_LOGI(TAG, "  Water Level Sensors: Not configured");
     }
 
     ESP_LOGI(TAG, "");

@@ -505,6 +505,36 @@ void PlantOSController::handleIdle() {
         return;
     }
 
+    // ========================================================================
+    // Air Pump Health Monitoring - Ensure cycling continues even if manually turned off
+    // ========================================================================
+    if (safety_gate_ && now - last_air_pump_check_time_ >= AIR_PUMP_HEALTH_CHECK_INTERVAL) {
+        last_air_pump_check_time_ = now;
+
+        // Check if air pump cycling is enabled
+        if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
+            // Cycling is active - get expected state from SafetyGate
+            bool expected_state = safety_gate_->getState(AIR_PUMP);
+
+            // Re-send the command to ensure pump is in correct state
+            // This handles cases where:
+            // 1. User manually turned off pump via Shelly web interface
+            // 2. Pump lost power/connection and didn't receive previous command
+            // 3. Network hiccup caused HTTP command to fail
+            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Cycling enabled - verifying state (expected: %s)",
+                     expected_state ? "ON" : "OFF");
+
+            // Re-send command through SafetyGate (will execute via HAL → Shelly HTTP)
+            // SafetyGate will handle debouncing, so redundant commands are ignored
+            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0);  // 10 min max if ON
+
+            ESP_LOGD(TAG, "[AIR PUMP HEALTH] State verification complete - pump should be %s",
+                     expected_state ? "ON" : "OFF");
+        } else {
+            ESP_LOGV(TAG, "[AIR PUMP HEALTH] Cycling not enabled - skipping verification");
+        }
+    }
+
     // Future: Check for other scheduled tasks, sensor thresholds, etc.
 }
 
@@ -556,6 +586,31 @@ void PlantOSController::handleNight() {
         }
         transitionTo(ControllerState::IDLE);
         return;
+    }
+
+    // ========================================================================
+    // Air Pump Health Monitoring - Continue cycling during night mode for oxygenation
+    // ========================================================================
+    if (safety_gate_ && now - last_air_pump_check_time_ >= AIR_PUMP_HEALTH_CHECK_INTERVAL) {
+        last_air_pump_check_time_ = now;
+
+        // Check if air pump cycling is enabled
+        if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
+            // Cycling is active - get expected state from SafetyGate
+            bool expected_state = safety_gate_->getState(AIR_PUMP);
+
+            // Re-send the command to ensure pump is in correct state
+            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Night mode - cycling enabled, verifying state (expected: %s)",
+                     expected_state ? "ON" : "OFF");
+
+            // Re-send command through SafetyGate (will execute via HAL → Shelly HTTP)
+            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0);  // 10 min max if ON
+
+            ESP_LOGD(TAG, "[AIR PUMP HEALTH] State verification complete - pump should be %s",
+                     expected_state ? "ON" : "OFF");
+        } else {
+            ESP_LOGV(TAG, "[AIR PUMP HEALTH] Cycling not enabled - skipping verification");
+        }
     }
 
     // During night mode: No automatic pH monitoring, no feeding, no water management

@@ -317,6 +317,12 @@ private:
     uint32_t last_ph_check_time_{0};     // Last time we checked pH (millis())
 
     // ========================================================================
+    // Air Pump Health Monitoring State (IDLE state cycling)
+    // ========================================================================
+
+    uint32_t last_air_pump_check_time_{0};  // Last time we verified air pump state (millis())
+
+    // ========================================================================
     // Feed Operation State (Fill + Nutrients + pH)
     // ========================================================================
 
@@ -513,6 +519,9 @@ private:
     static constexpr uint32_t ERROR_DURATION = 5000;          // 5 seconds error display
     static constexpr uint32_t PH_MEASURING_DURATION = 30000;  // 30 seconds stabilization
     static constexpr uint32_t PH_MIXING_DURATION = 120000;    // 2 minutes mixing
+
+    // Air pump health monitoring (milliseconds)
+    static constexpr uint32_t AIR_PUMP_HEALTH_CHECK_INTERVAL = 30000;  // 30 seconds between checks
 
     // pH correction parameters
     static constexpr float PH_TARGET_MIN = 5.5f;

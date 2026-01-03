@@ -318,6 +318,19 @@ bool ActuatorSafetyGate::getState(const char* actuatorID) const {
     return false; // Unknown actuator defaults to OFF
 }
 
+bool ActuatorSafetyGate::isCyclingEnabled(const char* actuatorID) const {
+    if (actuatorID == nullptr) return false;
+
+    std::string id(actuatorID);
+    auto it = actuators_.find(id);
+
+    if (it != actuators_.end()) {
+        return it->second.cyclingEnabled;
+    }
+
+    return false; // Unknown actuator - no cycling
+}
+
 uint32_t ActuatorSafetyGate::getRuntime(const char* actuatorID) const {
     if (actuatorID == nullptr) return 0;
 

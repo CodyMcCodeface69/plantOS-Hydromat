@@ -498,7 +498,7 @@ sensor:
   # This improves data quality by removing sensor spikes, noise, and glitches.
   - id: sensor_filtered_id
     platform: sensor_filter
-    name: "Filtered Sensor pH"
+    name: "00_05a_Filtered Sensor pH"
     accuracy_decimals: 3  # Display 3 decimal places (e.g., 2.936)
 
     # sensor_source: The raw sensor to filter
@@ -533,7 +533,7 @@ binary_sensor:
   # Triggers when water reaches high level (tank near full)
   - platform: gpio
     id: water_level_high_sensor
-    name: "Water Level HIGH"
+    name: "00_07_Water Level HIGH"
     pin:
       number: GPIO10
       mode:
@@ -554,7 +554,7 @@ binary_sensor:
   # Triggers when water reaches minimum safe level
   - platform: gpio
     id: water_level_low_sensor
-    name: "Water Level LOW"
+    name: "00_08_Water Level LOW"
     pin:
       number: GPIO11
       mode:
@@ -697,7 +697,7 @@ button:
 
   # === 04 - System State Control ===
   - platform: template
-    name: "04_01_Set to SHUTDOWN"
+    name: "04_01_Set to SHUTDOWN (All Actuators OFF, Cal OFF)"
     on_press:
       # Transition to SHUTDOWN state
       # - Turns off all actuators
@@ -710,7 +710,7 @@ button:
             id(unified_controller)->setToShutdown();
 
   - platform: template
-    name: "04_02_Set to PAUSE"
+    name: "04_02_Set to PAUSE (Actuators ON, Cal OFF)"
     on_press:
       # Transition to PAUSE state
       # - Maintains actuator states

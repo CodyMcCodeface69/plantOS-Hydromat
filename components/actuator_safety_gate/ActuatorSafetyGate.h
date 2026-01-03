@@ -257,6 +257,16 @@ public:
     bool getState(const char* actuatorID) const;
 
     /**
+     * Check if cycling is enabled for an actuator
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @return true if intermittent cycling is enabled, false otherwise
+     *
+     * This allows external code to check if an actuator is in automatic cycling mode.
+     */
+    bool isCyclingEnabled(const char* actuatorID) const;
+
+    /**
      * Get the current runtime of an actuator (in seconds)
      *
      * @param actuatorID Unique identifier for the actuator

@@ -133,25 +133,25 @@ The PlantOS Controller implements a unified Finite State Machine (FSM) with 16 s
      └──────────────────────┘
               │
               ├──[pH in range]────────────────────────────────────────────────────────────┐
-              │                                                                            │
+              │                                                                           │
               ├──[pH < min (too low)]─────────────────────────────────────────────────────┤
               │  WARNING: Cannot raise pH (no base pump)                                  │
-              │                                                                            │
+              │                                                                           │
               └──[pH > max (too high)]──────────┐                                         │
-                                                 ▼                                         │
+                                                 ▼                                        │
                                       ┌──────────────────────┐                            │
                                       │   PH_MEASURING       │                            │
                                       │  Yellow pulse        │                            │
                                       │  All pumps OFF       │                            │
-                                      │  5-min stabilization │                            │
+                                      │  0.5-min stabilization│                           │
                                       │  pH reading every    │                            │
-                                      │  60 seconds          │                            │
+                                      │  5 seconds           │                            │
                                       │  Temperature comp    │                            │
                                       │  sent to sensor      │                            │
                                       └──────────────────────┘                            │
-                                                 │                                         │
-                                                 ├──[No readings after 5 min]─────────▶ERROR
-                                                 │                                         │
+                                                 │                                        │
+                                                 ├──[No readings after 5 min]────────▶ERROR
+                                                 │                                        │
                                                  └──[After 5 min]──────┐                  │
                                                                        ▼                  │
                                                             ┌──────────────────────┐      │
@@ -203,7 +203,7 @@ The PlantOS Controller implements a unified Finite State Machine (FSM) with 16 s
 
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       pH SENSOR CALIBRATION SEQUENCE                                                 │
-│  Flow: PH_CALIBRATING (3-point: Mid 7.00 → Low 4.00 → High 10.01)                                                   │
+│  Flow: PH_CALIBRATING (3-point: Mid 7.00 → Low 4.00 → High 10.01)                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
      ┌──────────────────────┐
@@ -237,7 +237,7 @@ The PlantOS Controller implements a unified Finite State Machine (FSM) with 16 s
 
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                         FEEDING SEQUENCE                                                             │
-│  Flow: FEEDING (sequential nutrient pumps A → B → C) → [optional auto pH]                                           │
+│  Flow: FEEDING (sequential nutrient pumps A → B → C) → [optional auto pH]                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
      ┌──────────────────────┐

@@ -675,8 +675,8 @@ void PlantOSController::handlePhMeasuring() {
         return;
     }
 
-    // Take pH readings every 60 seconds
-    uint32_t reading_interval = elapsed / 60000; // Every 60 seconds
+    // Take pH readings every 5 seconds
+    uint32_t reading_interval = elapsed / 5000; // Every 5 seconds
     if (reading_interval > state_counter_) {
         state_counter_ = reading_interval;
 

@@ -511,7 +511,7 @@ private:
     // State timeouts (milliseconds)
     static constexpr uint32_t INIT_DURATION = 3000;           // 3 seconds boot
     static constexpr uint32_t ERROR_DURATION = 5000;          // 5 seconds error display
-    static constexpr uint32_t PH_MEASURING_DURATION = 300000; // 5 minutes stabilization
+    static constexpr uint32_t PH_MEASURING_DURATION = 30000;  // 30 seconds stabilization
     static constexpr uint32_t PH_MIXING_DURATION = 120000;    // 2 minutes mixing
 
     // pH correction parameters

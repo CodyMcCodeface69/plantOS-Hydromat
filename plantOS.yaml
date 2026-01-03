@@ -1351,10 +1351,10 @@ plantos_hal:
   # IMPORTANT: Update these values after calibration using 10s test buttons
   # Formula: flow_rate_ml_s = (measured_mL) / 10
   # Pump Mapping: Grow=NutrientPumpA, Micro=NutrientPumpB, Bloom=NutrientPumpC
-  pump_ph_flow_rate_ml_s: 1.0        # pH pump: mL/second @ configured PWM (default: 1.0)
-  pump_ph_pwm_intensity: 100%        # pH pump: PWM intensity (0-100%, default: 100%)
+  pump_ph_flow_rate_ml_s: 0.48        # pH pump: mL/second @ configured PWM (default: 1.0 CALIBRATED: 4.8mL/10s @ 100%)
+  pump_ph_pwm_intensity: 100%        # pH pump: PWM intensity (0-100%, default: 100% CALIBRATED: 100%@5V)
   pump_grow_flow_rate_ml_s: 0.45     # Grow pump (NutrientPumpA): mL/second @ configured PWM (CALIBRATED: 4.0mL/10s @ 60%)
-  pump_grow_pwm_intensity: 60%       # Grow pump (NutrientPumpA): PWM intensity (0-100%, CALIBRATED: 60%)
+  pump_grow_pwm_intensity: 60%       # Grow pump (NutrientPumpA): PWM intensity (0-100%, CALIBRATED: 60%@5V)
   pump_micro_flow_rate_ml_s: 1.0     # Micro pump (NutrientPumpB): mL/second @ configured PWM (default: 1.0)
   pump_micro_pwm_intensity: 100%     # Micro pump (NutrientPumpB): PWM intensity (0-100%, default: 100%)
   pump_bloom_flow_rate_ml_s: 1.0     # Bloom pump (NutrientPumpC): mL/second @ configured PWM (default: 1.0)

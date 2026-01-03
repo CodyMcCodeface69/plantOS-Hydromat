@@ -7,6 +7,23 @@
 #include "esphome/components/time/real_time_clock.h"
 #include <algorithm> // for std::sort, std::min, std::max
 
+/*
+╔════════════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                        ║
+║                    PlantOS Controller - Unified FSM Implementation                     ║
+║                                                                                        ║
+║  IMPORTANT: For complete FSM documentation including state diagrams, transitions,     ║
+║             triggers, and implementation guidelines, see:                              ║
+║                                                                                        ║
+║             /home/cody/plantOS-testlab/FSMINFO.md                                      ║
+║                                                                                        ║
+║  This file contains the implementation of all state handlers and transitions.          ║
+║  FSMINFO.md is the authoritative source for FSM behavior and MUST be updated          ║
+║  when making changes to states, transitions, actuator actions, or timeouts.           ║
+║                                                                                        ║
+╚════════════════════════════════════════════════════════════════════════════════════════╝
+*/
+
 namespace plantos_controller {
 
 PlantOSController::PlantOSController() {
@@ -218,6 +235,10 @@ void PlantOSController::loop() {
 
         case ControllerState::IDLE:
             handleIdle();
+            break;
+
+        case ControllerState::NIGHT:
+            handleNight();
             break;
 
         case ControllerState::SHUTDOWN:
@@ -477,7 +498,68 @@ void PlantOSController::handleIdle() {
         return;  // Exit IDLE immediately
     }
 
+    // Check if night mode hours started - transition to NIGHT
+    if (night_mode_enabled_ && isNightModeHours()) {
+        ESP_LOGI(TAG, "Night mode hours started - transitioning to NIGHT state");
+        transitionTo(ControllerState::NIGHT);
+        return;
+    }
+
     // Future: Check for other scheduled tasks, sensor thresholds, etc.
+}
+
+void PlantOSController::handleNight() {
+    // Dim breathing green - night mode active
+    // Similar to IDLE but no automatic pH monitoring, feeding, or water management
+
+    uint32_t elapsed = getStateElapsed();
+
+    // Periodically check PSM for SHUTDOWN or PAUSE states every 5 seconds
+    // This handles cases where:
+    // 1. State was set while system was running
+    // 2. State restoration from INIT failed due to timing issues
+    // 3. Component initialization order caused PSM to be unavailable during INIT
+    static uint32_t last_psm_check = 0;
+    uint32_t now = hal_->getSystemTime();
+
+    if (now - last_psm_check >= 5000) {  // Check every 5 seconds
+        last_psm_check = now;
+
+        if (psm_ && psm_->hasEvent()) {
+            esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+            std::string eventID(event.eventID);
+
+            ESP_LOGD(TAG, ">>> NIGHT PSM CHECK: EventID='%s', Status=%d, Age=%lld sec",
+                     eventID.c_str(), event.status, psm_->getEventAge());
+
+            // Check for persistent states that should override NIGHT
+            if (!eventID.empty()) {
+                if (eventID == "STATE_SHUTDOWN") {
+                    ESP_LOGW(TAG, ">>> PSM check: SHUTDOWN state detected - transitioning from NIGHT");
+                    transitionTo(ControllerState::SHUTDOWN);
+                    return;
+                } else if (eventID == "STATE_PAUSE") {
+                    ESP_LOGW(TAG, ">>> PSM check: PAUSE state detected - transitioning from NIGHT");
+                    transitionTo(ControllerState::PAUSE);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Check if night mode hours ended - transition back to IDLE
+    if (!night_mode_enabled_ || !isNightModeHours()) {
+        if (!night_mode_enabled_) {
+            ESP_LOGI(TAG, "Night mode disabled - transitioning to IDLE state");
+        } else {
+            ESP_LOGI(TAG, "Night mode hours ended - transitioning to IDLE state");
+        }
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // During night mode: No automatic pH monitoring, no feeding, no water management
+    // Manual operations are still prevented by checking night mode in public API methods
 }
 
 void PlantOSController::handleShutdown() {
@@ -1637,7 +1719,7 @@ void PlantOSController::handleWaterEmptying() {
 
         // Check LOW sensor before starting (prevent dry-pump immediately)
         if (hal_->hasWaterLevelSensors() && !hal_->readWaterLevelLow()) {
-            ESP_LOGW(TAG, "[WATER_EMPTYING] LOW sensor already OFF - tank already empty, aborting");
+            ESP_LOGW(TAG, "[WATER_EMPTYING] LOW sensor already OFF - tank already empty");
 
             // Clear PSM event
             if (psm_) {
@@ -1645,7 +1727,14 @@ void PlantOSController::handleWaterEmptying() {
             }
 
             pump_command_sent = false;  // Reset for next attempt
-            transitionTo(ControllerState::IDLE);
+
+            // Check if part of reservoir change sequence
+            if (auto_ph_correction_pending_) {
+                ESP_LOGI(TAG, "[WATER_EMPTYING] Tank already empty - proceeding to fill phase");
+                transitionTo(ControllerState::FEED_FILLING);
+            } else {
+                transitionTo(ControllerState::IDLE);
+            }
             return;
         }
 
@@ -1662,6 +1751,12 @@ void PlantOSController::handleWaterEmptying() {
                 }
 
                 pump_command_sent = false;  // Reset for next attempt
+
+                // Check if part of reservoir change sequence
+                if (auto_ph_correction_pending_) {
+                    ESP_LOGW(TAG, "[WATER_EMPTYING] Drain rejected - aborting reservoir change");
+                    auto_ph_correction_pending_ = false;  // Clear flag - sequence aborted
+                }
                 transitionTo(ControllerState::IDLE);
                 return;
             }
@@ -1692,8 +1787,15 @@ void PlantOSController::handleWaterEmptying() {
             }
 
             pump_command_sent = false;  // Reset for next drain cycle
-            ESP_LOGI(TAG, "[WATER_EMPTYING] Drain complete - returning to IDLE");
-            transitionTo(ControllerState::IDLE);
+
+            // Check if part of reservoir change sequence
+            if (auto_ph_correction_pending_) {
+                ESP_LOGI(TAG, "[WATER_EMPTYING] Drain complete - proceeding to fill phase");
+                transitionTo(ControllerState::FEED_FILLING);
+            } else {
+                ESP_LOGI(TAG, "[WATER_EMPTYING] Drain complete - returning to IDLE");
+                transitionTo(ControllerState::IDLE);
+            }
             return;
         }
 
@@ -1735,8 +1837,15 @@ void PlantOSController::handleWaterEmptying() {
         }
 
         pump_command_sent = false;  // Reset for next drain cycle
-        ESP_LOGI(TAG, "[WATER_EMPTYING] Timeout complete - returning to IDLE");
-        transitionTo(ControllerState::IDLE);
+
+        // Check if part of reservoir change sequence
+        if (auto_ph_correction_pending_) {
+            ESP_LOGI(TAG, "[WATER_EMPTYING] Timeout complete - proceeding to fill phase");
+            transitionTo(ControllerState::FEED_FILLING);
+        } else {
+            ESP_LOGI(TAG, "[WATER_EMPTYING] Timeout complete - returning to IDLE");
+            transitionTo(ControllerState::IDLE);
+        }
         return;
     }
 }
@@ -1887,8 +1996,14 @@ void PlantOSController::sendTemperatureCompensation() {
 // ============================================================================
 
 void PlantOSController::startPhCorrection() {
-    if (current_state_ != ControllerState::IDLE) {
-        ESP_LOGW(TAG, "Cannot start pH correction - system not in IDLE state (state: %d)", static_cast<int>(current_state_));
+    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start pH correction - system not in IDLE or NIGHT state (state: %d)", static_cast<int>(current_state_));
+        return;
+    }
+
+    // Prevent pH correction during night mode
+    if (current_state_ == ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start pH correction - system in NIGHT mode");
         return;
     }
 
@@ -1962,6 +2077,8 @@ void PlantOSController::startFeeding() {
         }
 
         transitionTo(ControllerState::FEEDING);
+    } else if (current_state_ == ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start feeding - system in NIGHT mode");
     } else {
         ESP_LOGW(TAG, "Cannot start feeding - system busy");
     }
@@ -1980,6 +2097,8 @@ void PlantOSController::startFillTank() {
         }
 
         transitionTo(ControllerState::WATER_FILLING);
+    } else if (current_state_ == ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start fill - system in NIGHT mode");
     } else {
         ESP_LOGW(TAG, "Cannot start fill - system busy");
     }
@@ -2012,6 +2131,17 @@ void PlantOSController::startEmptyTank() {
 }
 
 void PlantOSController::startFeed() {
+    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start feed - system busy");
+        return;
+    }
+
+    // Prevent feed during night mode
+    if (current_state_ == ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start feed - system in NIGHT mode");
+        return;
+    }
+
     if (current_state_ == ControllerState::IDLE) {
         ESP_LOGI(TAG, "===============================================");
         ESP_LOGI(TAG, "  STARTING FEED OPERATION");
@@ -2052,8 +2182,14 @@ void PlantOSController::startFeed() {
 }
 
 void PlantOSController::startReservoirChange() {
-    if (current_state_ != ControllerState::IDLE) {
+    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
         ESP_LOGW(TAG, "Cannot start Reservoir Change - system busy");
+        return;
+    }
+
+    // Prevent reservoir change during night mode
+    if (current_state_ == ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start Reservoir Change - system in NIGHT mode");
         return;
     }
 
@@ -2061,12 +2197,6 @@ void PlantOSController::startReservoirChange() {
     ESP_LOGI(TAG, "  STARTING RESERVOIR CHANGE SEQUENCE");
     ESP_LOGI(TAG, "========================================================");
     ESP_LOGI(TAG, "Sequence: Empty tank → Fill → Add nutrients → pH correction");
-    ESP_LOGI(TAG, "");
-
-    // Wastewater pump available via Shelly - but reservoir change still requires manual drain
-    // to ensure complete water removal (wastewater pump may not reach bottom of tank)
-    ESP_LOGW(TAG, "⚠️  Please manually empty tank before starting Reservoir Change");
-    ESP_LOGI(TAG, "Or use button '10_08_Test Wastewater Pump' to drain via Shelly");
     ESP_LOGI(TAG, "");
 
     // Set flag for auto pH correction after feeding
@@ -2077,14 +2207,9 @@ void PlantOSController::startReservoirChange() {
         psm_->logEvent("RESERVOIR_CHANGE", 0);  // 0 = STARTED
     }
 
-    // Start with filling (skip empty for MVP since no wastewater pump)
-    ESP_LOGI(TAG, "Starting fill phase (tank should already be empty)");
-    transitionTo(ControllerState::FEED_FILLING);
-
-    // FUTURE: When WastewaterPump is available:
-    // transitionTo(ControllerState::WATER_EMPTYING);
-    // In handleWaterEmptying(), check auto_feed_pending_ flag
-    // and transition to FEED_FILLING instead of IDLE
+    // Start with emptying tank using wastewater pump (Shelly Socket 2)
+    ESP_LOGI(TAG, "Starting empty phase - activating wastewater pump via Shelly");
+    transitionTo(ControllerState::WATER_EMPTYING);
 }
 
 void PlantOSController::setToShutdown() {
@@ -2131,13 +2256,13 @@ void PlantOSController::configureStatusLogger(bool enableReports, uint32_t repor
 std::string PlantOSController::getStateAsString() const {
     // State name mapping for string representation
     const char* state_names[] = {
-        "INIT", "IDLE", "SHUTDOWN", "PAUSE", "ERROR",
+        "INIT", "IDLE", "NIGHT", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
         "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING"
     };
 
     int state_index = static_cast<int>(current_state_);
-    if (state_index >= 0 && state_index < 15) {  // Updated from 14 to 15
+    if (state_index >= 0 && state_index < 16) {  // Updated from 15 to 16
         return std::string(state_names[state_index]);
     }
 
@@ -2155,7 +2280,7 @@ void PlantOSController::transitionTo(ControllerState newState) {
 
     // State name mapping for readable logging
     const char* state_names[] = {
-        "INIT", "IDLE", "SHUTDOWN", "PAUSE", "ERROR",
+        "INIT", "IDLE", "NIGHT", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
         "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING"
     };
@@ -2418,6 +2543,35 @@ bool PlantOSController::isPhStable() {
     float min_val = std::min({reading_1, reading_2, reading_3});
 
     return (max_val - min_val) <= STABILITY_THRESHOLD;
+}
+
+bool PlantOSController::isNightModeHours() const {
+    // Check if we're currently within night mode hours
+    // Requires time source to be configured and synchronized
+
+    if (!time_source_) {
+        ESP_LOGW(TAG, "Time source not configured - cannot determine night mode hours");
+        return false;
+    }
+
+    auto now = time_source_->now();
+    if (!now.is_valid()) {
+        ESP_LOGW(TAG, "NTP time not synchronized yet - cannot determine night mode hours");
+        return false;
+    }
+
+    uint8_t current_hour = now.hour;
+
+    // Handle wrapping case where start > end (e.g., 22:00 to 08:00)
+    if (night_mode_start_hour_ > night_mode_end_hour_) {
+        // Night mode spans midnight
+        // In night mode if: hour >= start OR hour < end
+        return (current_hour >= night_mode_start_hour_) || (current_hour < night_mode_end_hour_);
+    } else {
+        // Normal case: start < end (e.g., 01:00 to 06:00)
+        // In night mode if: hour >= start AND hour < end
+        return (current_hour >= night_mode_start_hour_) && (current_hour < night_mode_end_hour_);
+    }
 }
 
 } // namespace plantos_controller

@@ -402,7 +402,8 @@ output:
     frequency: 1000 Hz
     zero_means_zero: true
 
-  # NOTE: Wastewater pump removed - not part of MVP (GPIO23 now used for DS18B20)
+  # NOTE: Wastewater pump now controlled via Shelly Plus 4PM Socket 2 (HTTP control)
+  # GPIO-based control removed to free GPIO23 for DS18B20 temperature sensor
   # - platform: ledc
   #   id: pump_wastewater_output
   #   pin: GPIO23
@@ -417,8 +418,8 @@ output:
 # Requires 4.7kΩ pull-up resistor between data line and 3.3V.
 #
 # NOTE: Relocated to GPIO23 (GPIO16 is UART TX, caused 1-Wire timing conflicts).
-# Wastewater pump removed (not part of MVP).
-# AirPump actuator removed (future Zigbee implementation).
+# Wastewater pump now controlled via Shelly Plus 4PM Socket 2 (HTTP control).
+# AirPump actuator now controlled via Shelly Plus 4PM Socket 0 (HTTP control).
 ################################################################################
 one_wire:
   - platform: gpio
@@ -918,8 +919,7 @@ button:
   - platform: template
     name: "09_02_Empty Tank"
     on_press:
-      # Start tank emptying sequence (MVP: Manual empty required)
-      # WastewaterPump not available in MVP
+      # Start tank emptying sequence using wastewater pump (Shelly Socket 2)
       then:
         - lambda: |-
             id(unified_controller)->startEmptyTank();
@@ -1107,6 +1107,93 @@ button:
             // Turn off pump
             id(hal)->setPump("NutrientPumpA", false);
             ESP_LOGI("button", "Grow Pump OFF - 2cl test complete");
+            ESP_LOGI("button", "Please verify 20mL was dispensed");
+            ESP_LOGI("button", "==========================");
+
+  - platform: template
+    name: "10_06b_Test pH Pump (2cl = 20mL)"
+    on_press:
+      # Test precise volume output: 2cl (20mL) from pH Pump
+      # Uses HAL pumpflow() to convert mL to seconds based on calibration
+      then:
+        - lambda: |-
+            // Use HAL pumpflow to calculate duration for 20mL
+            float target_ml = 20.0f;
+            float duration_s = id(hal)->pumpflow("AcidPump", target_ml);
+
+            ESP_LOGI("button", "=== pH Pump 2cl Test ===");
+            ESP_LOGI("button", "Target: %.1f mL (2cl)", target_ml);
+            ESP_LOGI("button", "Calculated duration: %.2f seconds", duration_s);
+            ESP_LOGI("button", "Using configured PWM and flow rate from HAL");
+
+            // Turn on pump using configured PWM intensity
+            id(hal)->setPump("AcidPump", true);
+
+        # Wait for calculated duration (convert to milliseconds)
+        - delay: !lambda "return (uint32_t)(id(hal)->pumpflow(\"AcidPump\", 20.0f) * 1000);"
+
+        - lambda: |-
+            // Turn off pump
+            id(hal)->setPump("AcidPump", false);
+            ESP_LOGI("button", "pH Pump OFF - 2cl test complete");
+            ESP_LOGI("button", "Please verify 20mL was dispensed");
+            ESP_LOGI("button", "==========================");
+
+  - platform: template
+    name: "10_06c_Test Micro Pump (2cl = 20mL)"
+    on_press:
+      # Test precise volume output: 2cl (20mL) from Micro Pump
+      # Uses HAL pumpflow() to convert mL to seconds based on calibration
+      then:
+        - lambda: |-
+            // Use HAL pumpflow to calculate duration for 20mL
+            float target_ml = 20.0f;
+            float duration_s = id(hal)->pumpflow("NutrientPumpB", target_ml);
+
+            ESP_LOGI("button", "=== Micro Pump 2cl Test ===");
+            ESP_LOGI("button", "Target: %.1f mL (2cl)", target_ml);
+            ESP_LOGI("button", "Calculated duration: %.2f seconds", duration_s);
+            ESP_LOGI("button", "Using configured PWM and flow rate from HAL");
+
+            // Turn on pump using configured PWM intensity
+            id(hal)->setPump("NutrientPumpB", true);
+
+        # Wait for calculated duration (convert to milliseconds)
+        - delay: !lambda "return (uint32_t)(id(hal)->pumpflow(\"NutrientPumpB\", 20.0f) * 1000);"
+
+        - lambda: |-
+            // Turn off pump
+            id(hal)->setPump("NutrientPumpB", false);
+            ESP_LOGI("button", "Micro Pump OFF - 2cl test complete");
+            ESP_LOGI("button", "Please verify 20mL was dispensed");
+            ESP_LOGI("button", "==========================");
+
+  - platform: template
+    name: "10_06d_Test Bloom Pump (2cl = 20mL)"
+    on_press:
+      # Test precise volume output: 2cl (20mL) from Bloom Pump
+      # Uses HAL pumpflow() to convert mL to seconds based on calibration
+      then:
+        - lambda: |-
+            // Use HAL pumpflow to calculate duration for 20mL
+            float target_ml = 20.0f;
+            float duration_s = id(hal)->pumpflow("NutrientPumpC", target_ml);
+
+            ESP_LOGI("button", "=== Bloom Pump 2cl Test ===");
+            ESP_LOGI("button", "Target: %.1f mL (2cl)", target_ml);
+            ESP_LOGI("button", "Calculated duration: %.2f seconds", duration_s);
+            ESP_LOGI("button", "Using configured PWM and flow rate from HAL");
+
+            // Turn on pump using configured PWM intensity
+            id(hal)->setPump("NutrientPumpC", true);
+
+        # Wait for calculated duration (convert to milliseconds)
+        - delay: !lambda "return (uint32_t)(id(hal)->pumpflow(\"NutrientPumpC\", 20.0f) * 1000);"
+
+        - lambda: |-
+            // Turn off pump
+            id(hal)->setPump("NutrientPumpC", false);
+            ESP_LOGI("button", "Bloom Pump OFF - 2cl test complete");
             ESP_LOGI("button", "Please verify 20mL was dispensed");
             ESP_LOGI("button", "==========================");
 
@@ -1309,6 +1396,12 @@ plantos_controller:
   # Example: "2025-12-30" means Dec 30, 2025 is day 1 of the 120-day cycle
   # If not set, falls back to calendar manager's manual day counter (NVS-persisted)
   grow_start_date: "2025-12-30"
+
+  # Night Mode Configuration
+  night_mode_enabled: false     # Enable/disable night mode (default: false, use switch in web UI)
+  night_mode_start_hour: 22     # Hour when night mode starts (0-23, default: 22 = 10 PM)
+  night_mode_end_hour: 8        # Hour when night mode ends (0-23, default: 8 = 8 AM)
+                                # During night mode: no pH correction, feeding, or water filling
 
   # Status Logger Configuration
   enable_status_reports: false  # Enable/disable periodic status reports (default: false, use switch 11_10)
@@ -1965,6 +2058,23 @@ switch:
             ESP_LOGI("switch", "Disabling continuous pH reading mode");
             id(ezo_ph_uart_component)->disable_continuous_reading();
 
+  # === Night Mode Configuration ===
+
+  - platform: template
+    name: "01_01_Night Mode Enabled"
+    id: night_mode_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:weather-night"
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Night Mode ENABLED - no pH correction, feeding, or filling during night hours");
+          id(unified_controller)->setNightModeConfig(true, id(night_start_hour).state, id(night_end_hour).state);
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Night Mode DISABLED");
+          id(unified_controller)->setNightModeConfig(false, id(night_start_hour).state, id(night_end_hour).state);
+
   # === 11 - Verbose Logging Toggles ===
   # These switches control debug log output for specific components
   # Turning ON enables DEBUG level (verbose), turning OFF sets to INFO level (quiet)
@@ -2311,6 +2421,42 @@ switch:
 # TODO: REMOVE BEFORE FINAL RELEASE
 ################################################################################
 number:
+  # === Night Mode Time Configuration ===
+  - platform: template
+    id: night_start_hour
+    name: "01_02_Night Mode Start Hour"
+    icon: "mdi:clock-start"
+    optimistic: true
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 22
+    restore_value: true
+    unit_of_measurement: "h"
+    mode: box
+    set_action:
+      - lambda: |-
+          ESP_LOGI("number", "Night Mode Start Hour set to %.0f:00", x);
+          id(unified_controller)->setNightModeConfig(id(night_mode_switch).state, x, id(night_end_hour).state);
+
+  - platform: template
+    id: night_end_hour
+    name: "01_03_Night Mode End Hour"
+    icon: "mdi:clock-end"
+    optimistic: true
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 8
+    restore_value: true
+    unit_of_measurement: "h"
+    mode: box
+    set_action:
+      - lambda: |-
+          ESP_LOGI("number", "Night Mode End Hour set to %.0f:00", x);
+          id(unified_controller)->setNightModeConfig(id(night_mode_switch).state, id(night_start_hour).state, x);
+
+  # === 13 - PWM Control Sliders ===
   - platform: template
     id: pwm_gpio18_slider
     name: "13_01_GPIO18 - Water Valve PWM"

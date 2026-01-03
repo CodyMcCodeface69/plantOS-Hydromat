@@ -44,6 +44,9 @@ CONF_ENABLE_STATUS_REPORTS = 'enable_status_reports'
 CONF_STATUS_REPORT_INTERVAL = 'status_report_interval'
 CONF_VERBOSE_MODE = 'verbose_mode'
 CONF_420_MODE = 'enable_420_mode'
+CONF_NIGHT_MODE_ENABLED = 'night_mode_enabled'
+CONF_NIGHT_MODE_START_HOUR = 'night_mode_start_hour'
+CONF_NIGHT_MODE_END_HOUR = 'night_mode_end_hour'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -59,6 +62,9 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_STATUS_REPORT_INTERVAL, default="30s"): cv.positive_time_period_milliseconds,
     cv.Optional(CONF_VERBOSE_MODE, default=False): cv.boolean,
     cv.Optional(CONF_420_MODE, default=True): cv.boolean,
+    cv.Optional(CONF_NIGHT_MODE_ENABLED, default=False): cv.boolean,
+    cv.Optional(CONF_NIGHT_MODE_START_HOUR, default=22): cv.int_range(min=0, max=23),
+    cv.Optional(CONF_NIGHT_MODE_END_HOUR, default=8): cv.int_range(min=0, max=23),
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -113,4 +119,11 @@ async def to_code(config):
         config[CONF_STATUS_REPORT_INTERVAL],
         config[CONF_VERBOSE_MODE],
         config[CONF_420_MODE]
+    ))
+
+    # Configure night mode settings
+    cg.add(var.setNightModeConfig(
+        config[CONF_NIGHT_MODE_ENABLED],
+        config[CONF_NIGHT_MODE_START_HOUR],
+        config[CONF_NIGHT_MODE_END_HOUR]
     ))

@@ -46,6 +46,7 @@ namespace plantos_controller {
 enum class ControllerState {
     INIT,              // Boot sequence (Red→Yellow→Green)
     IDLE,              // Ready state (Breathing Green)
+    NIGHT,             // Night mode - no pH correction, feeding, or filling (Dim Green Breathing)
     SHUTDOWN,          // System shutdown - all actuators OFF, calendar disabled (Solid Yellow)
     PAUSE,             // System paused - actuators maintain state, calendar disabled (Solid Orange)
     ERROR,             // Error condition (Fast Red Flash)
@@ -142,6 +143,24 @@ public:
         grow_start_timestamp_ = timestamp;
     }
 
+    /**
+     * Set Night Mode Configuration
+     * @param enabled Enable/disable night mode
+     * @param start_hour Start hour (0-23)
+     * @param end_hour End hour (0-23)
+     */
+    void setNightModeConfig(bool enabled, uint8_t start_hour, uint8_t end_hour) {
+        night_mode_enabled_ = enabled;
+        night_mode_start_hour_ = start_hour;
+        night_mode_end_hour_ = end_hour;
+    }
+
+    /**
+     * Check if currently in night mode hours
+     * @return true if current time is within night mode hours
+     */
+    bool isNightModeHours() const;
+
     // ========================================================================
     // Public API for External Control (ESPHome services, buttons, etc.)
     // ========================================================================
@@ -186,7 +205,7 @@ public:
     /**
      * Start complete reservoir change sequence
      * Sequence: Empty → Fill → Nutrients → pH correction
-     * MVP: WastewaterPump not available, so skips empty phase (warns user)
+     * Uses wastewater pump (Shelly Socket 2) for automated tank drainage
      */
     void startReservoirChange();
 
@@ -270,6 +289,11 @@ private:
 
     // Grow cycle configuration
     int64_t grow_start_timestamp_{0};  // Unix timestamp of day 1 (0 = not configured)
+
+    // Night mode configuration
+    bool night_mode_enabled_{false};      // Night mode toggle
+    uint8_t night_mode_start_hour_{22};   // Start hour (0-23), default 22:00
+    uint8_t night_mode_end_hour_{8};      // End hour (0-23), default 08:00
 
     // Status logger (owned by controller, not injected)
     CentralStatusLogger status_logger_;
@@ -370,6 +394,7 @@ private:
 
     void handleInit();
     void handleIdle();
+    void handleNight();
     void handleShutdown();
     void handlePause();
     void handleError();

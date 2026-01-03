@@ -45,6 +45,47 @@ PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and contro
 **Reference Documents**:
 - `TODO.md` - Task list organized by phase (MVP → More Features → More Chambers)
 - `.claude/plans/snazzy-yawning-rocket.md` - Detailed implementation plan
+- **`FSMINFO.md`** - **Authoritative FSM documentation** (see below)
+
+## FSM Documentation (CRITICAL)
+
+**Location**: `/home/cody/plantOS-testlab/FSMINFO.md`
+
+**FSMINFO.md is the authoritative source for all PlantOS Controller FSM (Finite State Machine) behavior.** This document contains:
+
+- **Complete ASCII state diagram** showing all 15 states and transitions
+- **Transition triggers** - both manual (API calls) and automatic (timers, sensors)
+- **Actuator actions** - exact pump/valve operations for each state
+- **State timeouts** - duration values and fallback behaviors
+- **PSM events** - persistence across power cycles and recovery actions
+- **Safety features** - all 7 safety mechanisms integrated into the FSM
+- **Implementation guidelines** - how to modify the FSM correctly
+
+### When to Reference FSMINFO.md
+
+**ALWAYS consult FSMINFO.md when:**
+- Adding a new state to the controller
+- Modifying state transitions or triggers
+- Changing actuator behavior in any state
+- Adjusting timeout values or sensor monitoring
+- Debugging FSM behavior or state transitions
+- Planning new features that involve controller states
+
+### When to Update FSMINFO.md
+
+**CRITICAL**: When making ANY changes to the FSM, you **MUST** update `FSMINFO.md` to reflect:
+1. **New States**: Add to state diagram, actuator table, PSM table, timeout table
+2. **Modified Transitions**: Update diagram arrows and trigger conditions
+3. **Changed Timeouts**: Update timeout table with new values
+4. **New Actuator Actions**: Update actuator actions table
+5. **New Safety Features**: Document in safety features section
+6. **New Public API Methods**: Add to external triggers table
+
+**Implementation Files**:
+- State enum: `components/plantos_controller/controller.h:46-62`
+- State handlers: `components/plantos_controller/controller.cpp` (handleInit, handleIdle, etc.)
+- Public API: `components/plantos_controller/controller.h:149-218`
+- State dispatch: `components/plantos_controller/controller.cpp:214-274`
 
 ## Development Environment
 

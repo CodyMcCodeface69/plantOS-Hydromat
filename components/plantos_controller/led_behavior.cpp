@@ -5,6 +5,7 @@
 // Include all concrete behaviors
 #include "boot_sequence.h"
 #include "breathing_green.h"
+#include "dim_breathing_green.h"
 #include "solid_yellow.h"
 #include "solid_orange.h"
 #include "error_flash.h"
@@ -26,6 +27,7 @@ static const char* TAG = "led_behavior";
 enum class ControllerState {
     INIT,
     IDLE,
+    NIGHT,
     SHUTDOWN,
     PAUSE,
     ERROR,
@@ -104,6 +106,11 @@ void LedBehaviorSystem::transitionToBehavior(ControllerState newState) {
         case ControllerState::IDLE:
             newBehavior = std::make_unique<BreathingGreenBehavior>();
             ESP_LOGI(TAG, "LED: Breathing Green");
+            break;
+
+        case ControllerState::NIGHT:
+            newBehavior = std::make_unique<DimBreathingGreenBehavior>();
+            ESP_LOGI(TAG, "LED: Dim Breathing Green (Night Mode)");
             break;
 
         case ControllerState::SHUTDOWN:

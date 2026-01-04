@@ -41,7 +41,8 @@ void ActuatorSafetyGate::setEnabled(bool enabled) {
 
 bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
                                         bool targetState,
-                                        int maxDurationSeconds) {
+                                        int maxDurationSeconds,
+                                        bool forceExecute) {
     // Input validation
     if (actuatorID == nullptr || strlen(actuatorID) == 0) {
         ESP_LOGE(TAG, "REJECTED: Invalid actuator ID (null or empty)");
@@ -53,14 +54,20 @@ bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
     uint32_t currentTime = esphome::millis();
 
     // ========================================================================
-    // SAFETY CHECK 1: DEBOUNCING (only if safety gate is enabled)
+    // SAFETY CHECK 1: DEBOUNCING (only if safety gate is enabled and not forced)
     // ========================================================================
     // Reject if requesting the same state as currently tracked
     // This prevents unnecessary pin toggles and redundant operations
-    // NOTE: Debouncing is bypassed when safety gate is disabled
-    if (enabled_ && state.lastRequestedState == targetState) {
+    // NOTE: Debouncing is bypassed when safety gate is disabled OR forceExecute is true
+    if (enabled_ && !forceExecute && state.lastRequestedState == targetState) {
         logRejection(actuatorID, "Debouncing - state already requested");
         return false;
+    }
+
+    // Log force execute mode
+    if (forceExecute && state.lastRequestedState == targetState) {
+        ESP_LOGD(TAG, "[FORCE EXECUTE] %s → %s (bypassing debouncing for health monitoring)",
+                 actuatorID, targetState ? "ON" : "OFF");
     }
 
     // ========================================================================
@@ -185,9 +192,13 @@ void ActuatorSafetyGate::enableCycling(const char* actuatorID, bool enabled) {
                  actuatorID,
                  state.cyclingOnPeriod / 1000,
                  state.cyclingOffPeriod / 1000);
-        // Initialize cycling state
-        state.cyclingCurrentState = false;  // Start with OFF
+        // Initialize cycling state - START WITH ON CYCLE
+        state.cyclingCurrentState = true;  // Start with ON
         state.cyclingLastToggle = esphome::millis();
+
+        // Immediately turn ON the actuator to start the ON cycle
+        ESP_LOGI(TAG, "Starting %s with ON cycle", actuatorID);
+        executeCommand(actuatorID, true, state.cyclingOnPeriod / 1000);
     } else {
         ESP_LOGI(TAG, "Intermittent cycling DISABLED for %s", actuatorID);
         // Turn off the actuator when cycling is disabled

@@ -46,6 +46,11 @@ CONF_AIR_PUMP_SWITCH = 'air_pump_switch'
 CONF_WASTEWATER_PUMP_SWITCH = 'wastewater_pump_switch'
 CONF_HTTP_REQUEST = 'http_request_id'
 
+# Shelly BLE switch keys (Alternative to HTTP for mesh WiFi compatibility)
+CONF_AIR_PUMP_BLE_SWITCH = 'air_pump_ble_switch'
+CONF_WASTEWATER_PUMP_BLE_SWITCH = 'wastewater_pump_ble_switch'
+CONF_GROW_LIGHT_BLE_SWITCH = 'grow_light_ble_switch'
+
 # Tank volume and valve configuration
 CONF_TANK_VOLUME_LITERS = 'tank_volume_liters'
 CONF_MAG_VALVE_FLOW_RATE = 'mag_valve_flow_rate_ml_s'
@@ -87,6 +92,11 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_AIR_PUMP_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_WASTEWATER_PUMP_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_HTTP_REQUEST): cv.use_id(http_request.HttpRequestComponent),
+
+    # Shelly BLE switches (Alternative to HTTP - preferred for mesh WiFi)
+    cv.Optional(CONF_AIR_PUMP_BLE_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_WASTEWATER_PUMP_BLE_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_GROW_LIGHT_BLE_SWITCH): cv.use_id(switch.Switch),
 
     # Tank volume and valve configuration
     cv.Optional(CONF_TANK_VOLUME_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
@@ -189,6 +199,19 @@ async def to_code(config):
     if CONF_HTTP_REQUEST in config:
         http_req = await cg.get_variable(config[CONF_HTTP_REQUEST])
         cg.add(var.set_http_request(http_req))
+
+    # Inject Shelly BLE switches (alternative to HTTP - preferred for mesh WiFi)
+    if CONF_AIR_PUMP_BLE_SWITCH in config:
+        air_pump_ble_sw = await cg.get_variable(config[CONF_AIR_PUMP_BLE_SWITCH])
+        cg.add(var.set_air_pump_ble_switch(air_pump_ble_sw))
+
+    if CONF_WASTEWATER_PUMP_BLE_SWITCH in config:
+        wastewater_pump_ble_sw = await cg.get_variable(config[CONF_WASTEWATER_PUMP_BLE_SWITCH])
+        cg.add(var.set_wastewater_pump_ble_switch(wastewater_pump_ble_sw))
+
+    if CONF_GROW_LIGHT_BLE_SWITCH in config:
+        grow_light_ble_sw = await cg.get_variable(config[CONF_GROW_LIGHT_BLE_SWITCH])
+        cg.add(var.set_grow_light_ble_switch(grow_light_ble_sw))
 
     # Inject tank volume and valve configuration
     cg.add(var.setTankVolume(config[CONF_TANK_VOLUME_LITERS]))

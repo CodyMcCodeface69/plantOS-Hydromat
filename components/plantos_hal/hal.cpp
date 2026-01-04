@@ -6,7 +6,8 @@
 #include "esphome/components/output/float_output.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
-#include "esphome/components/http_request/http_request.h"
+// HTTP request disabled - using BLE instead
+// #include "esphome/components/http_request/http_request.h"
 
 namespace plantos_hal {
 
@@ -95,9 +96,26 @@ void ESPHomeHAL::set_wastewater_pump_switch(esphome::switch_::Switch* sw) {
     ESP_LOGI(TAG, "Wastewater pump switch configured (Shelly Socket 2 - HTTP control)");
 }
 
-void ESPHomeHAL::set_http_request(esphome::http_request::HttpRequestComponent* http) {
-    http_request_ = http;
-    ESP_LOGI(TAG, "HTTP request component configured for Shelly control");
+// HTTP request disabled - using BLE instead
+// void ESPHomeHAL::set_http_request(esphome::http_request::HttpRequestComponent* http) {
+//     http_request_ = http;
+//     ESP_LOGI(TAG, "HTTP request component configured for Shelly control");
+// }
+
+// Shelly BLE switch setters
+void ESPHomeHAL::set_air_pump_ble_switch(esphome::switch_::Switch* sw) {
+    air_pump_ble_switch_ = sw;
+    ESP_LOGI(TAG, "Air pump BLE switch configured (alternative to HTTP)");
+}
+
+void ESPHomeHAL::set_wastewater_pump_ble_switch(esphome::switch_::Switch* sw) {
+    wastewater_pump_ble_switch_ = sw;
+    ESP_LOGI(TAG, "Wastewater pump BLE switch configured (alternative to HTTP)");
+}
+
+void ESPHomeHAL::set_grow_light_ble_switch(esphome::switch_::Switch* sw) {
+    grow_light_ble_switch_ = sw;
+    ESP_LOGI(TAG, "Grow light BLE switch configured (alternative to HTTP)");
 }
 
 // NOTE: set_pump_air_output removed - future Zigbee implementation
@@ -214,33 +232,57 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
         }
     }
     else if (pumpId == "WastewaterPump") {
-        // Wastewater pump via Shelly Socket 2 (HTTP direct control)
-        if (http_request_) {
-            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=2&on=" + (state ? "true" : "false");
-            http_request_->get(url);
-            ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 HTTP: %s", state ? "ON" : "OFF");
+        // Wastewater pump via Shelly Socket 2 (BLE only - HTTP disabled)
+        if (wastewater_pump_ble_switch_) {
+            if (state) {
+                wastewater_pump_ble_switch_->turn_on();
+            } else {
+                wastewater_pump_ble_switch_->turn_off();
+            }
+            ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 BLE: %s", state ? "ON" : "OFF");
+        // HTTP fallback disabled - uncomment if switching back to HTTP mode
+        // } else if (http_request_) {
+        //     std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=2&on=" + (state ? "true" : "false");
+        //     http_request_->get(url);
+        //     ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 HTTP: %s", state ? "ON" : "OFF");
         } else {
-            ESP_LOGW(TAG, "HTTP request component not configured - cannot control WastewaterPump");
+            ESP_LOGW(TAG, "BLE switch not configured - cannot control WastewaterPump");
         }
     }
     else if (pumpId == "AirPump") {
-        // Air pump via Shelly Socket 0 (HTTP direct control)
-        if (http_request_) {
-            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=0&on=" + (state ? "true" : "false");
-            http_request_->get(url);
-            ESP_LOGD(TAG, "AirPump → Shelly Socket 0 HTTP: %s", state ? "ON" : "OFF");
+        // Air pump via Shelly Socket 0 (BLE only - HTTP disabled)
+        if (air_pump_ble_switch_) {
+            if (state) {
+                air_pump_ble_switch_->turn_on();
+            } else {
+                air_pump_ble_switch_->turn_off();
+            }
+            ESP_LOGD(TAG, "AirPump → Shelly Socket 0 BLE: %s", state ? "ON" : "OFF");
+        // HTTP fallback disabled - uncomment if switching back to HTTP mode
+        // } else if (http_request_) {
+        //     std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=0&on=" + (state ? "true" : "false");
+        //     http_request_->get(url);
+        //     ESP_LOGD(TAG, "AirPump → Shelly Socket 0 HTTP: %s", state ? "ON" : "OFF");
         } else {
-            ESP_LOGW(TAG, "HTTP request component not configured - cannot control AirPump");
+            ESP_LOGW(TAG, "BLE switch not configured - cannot control AirPump");
         }
     }
     else if (pumpId == "GrowLight") {
-        // Grow light via Shelly Socket 3 (HTTP direct control)
-        if (http_request_) {
-            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=3&on=" + (state ? "true" : "false");
-            http_request_->get(url);
-            ESP_LOGI(TAG, "GrowLight → Shelly Socket 3 HTTP: %s", state ? "ON" : "OFF");
+        // Grow light via Shelly Socket 3 (BLE only - HTTP disabled)
+        if (grow_light_ble_switch_) {
+            if (state) {
+                grow_light_ble_switch_->turn_on();
+            } else {
+                grow_light_ble_switch_->turn_off();
+            }
+            ESP_LOGI(TAG, "GrowLight → Shelly Socket 3 BLE: %s", state ? "ON" : "OFF");
+        // HTTP fallback disabled - uncomment if switching back to HTTP mode
+        // } else if (http_request_) {
+        //     std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=3&on=" + (state ? "true" : "false");
+        //     http_request_->get(url);
+        //     ESP_LOGI(TAG, "GrowLight → Shelly Socket 3 HTTP: %s", state ? "ON" : "OFF");
         } else {
-            ESP_LOGW(TAG, "HTTP request component not configured - cannot control GrowLight");
+            ESP_LOGW(TAG, "BLE switch not configured - cannot control GrowLight");
         }
     }
     else {
@@ -345,6 +387,14 @@ bool ESPHomeHAL::getPumpState(const std::string& pumpId) const {
 bool ESPHomeHAL::getValveState(const std::string& valveId) const {
     auto it = valve_states_.find(valveId);
     return it != valve_states_.end() ? it->second : false;
+}
+
+bool ESPHomeHAL::checkShellySwitchStatus(const std::string& pumpId) {
+    // For now, return the tracked state
+    // TODO: Implement actual HTTP GET to /rpc/Switch.GetStatus?id=X and parse JSON
+    // ESPHome's http_request component is callback-based, making synchronous requests difficult
+    // The health monitoring workaround is to force-send commands even if debounced
+    return getPumpState(pumpId);
 }
 
 // ============================================================================

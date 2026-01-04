@@ -25,9 +25,10 @@ class FloatOutput;
 namespace ezo_ph_uart {
 class EZOPHUARTComponent;
 }
-namespace http_request {
-class HttpRequestComponent;
-}
+// HTTP request disabled - using BLE instead
+// namespace http_request {
+// class HttpRequestComponent;
+// }
 }  // namespace esphome
 
 namespace plantos_hal {
@@ -163,6 +164,17 @@ public:
      * @return true if valve is OPEN, false if CLOSED
      */
     virtual bool getValveState(const std::string& valveId) const = 0;
+
+    /**
+     * Check actual Shelly switch status via HTTP (for air pump health monitoring)
+     * @param pumpId Pump identifier (e.g., "AirPump")
+     * @return true if pump is actually ON according to Shelly, false otherwise
+     *
+     * This method queries the Shelly device directly via HTTP GET to verify
+     * the actual hardware state, not just the tracked state.
+     * Used for health monitoring and recovery from manual shutoffs or network failures.
+     */
+    virtual bool checkShellySwitchStatus(const std::string& pumpId) = 0;
 
     // ============================================================================
     // SENSORS - Called by Controller
@@ -369,8 +381,14 @@ public:
     void set_air_pump_switch(esphome::switch_::Switch* sw);
     void set_wastewater_pump_switch(esphome::switch_::Switch* sw);
 
-    // HTTP request component setter (for direct Shelly control)
-    void set_http_request(esphome::http_request::HttpRequestComponent* http);
+    // Shelly BLE switch setters (Alternative to HTTP for mesh WiFi compatibility)
+    // Use these instead of HTTP switches to avoid OTA conflicts
+    void set_air_pump_ble_switch(esphome::switch_::Switch* sw);
+    void set_wastewater_pump_ble_switch(esphome::switch_::Switch* sw);
+    void set_grow_light_ble_switch(esphome::switch_::Switch* sw);
+
+    // HTTP request component setter (DISABLED - using BLE instead)
+    // void set_http_request(esphome::http_request::HttpRequestComponent* http);
 
     // Configuration setters
     void set_ph_reading_interval(uint32_t interval_ms) { ph_reading_interval_ms_ = interval_ms; }
@@ -395,6 +413,7 @@ public:
     void setValve(const std::string& valveId, bool state) override;
     bool getPumpState(const std::string& pumpId) const override;
     bool getValveState(const std::string& valveId) const override;
+    bool checkShellySwitchStatus(const std::string& pumpId) override;
 
     float readPH() override;
     bool hasPhValue() const override;
@@ -449,8 +468,13 @@ private:
     esphome::switch_::Switch* air_pump_switch_{nullptr};
     esphome::switch_::Switch* wastewater_pump_switch_{nullptr};
 
-    // HTTP request component for direct Shelly control
-    esphome::http_request::HttpRequestComponent* http_request_{nullptr};
+    // Shelly BLE switches (Alternative to HTTP - preferred for mesh WiFi)
+    esphome::switch_::Switch* air_pump_ble_switch_{nullptr};
+    esphome::switch_::Switch* wastewater_pump_ble_switch_{nullptr};
+    esphome::switch_::Switch* grow_light_ble_switch_{nullptr};
+
+    // HTTP request component for direct Shelly control (DISABLED - using BLE)
+    // esphome::http_request::HttpRequestComponent* http_request_{nullptr};
 
     // Shelly IP address
     static constexpr const char* SHELLY_IP = "192.168.0.130";

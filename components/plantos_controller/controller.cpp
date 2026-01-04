@@ -506,32 +506,52 @@ void PlantOSController::handleIdle() {
     }
 
     // ========================================================================
-    // Air Pump Health Monitoring - Ensure cycling continues even if manually turned off
+    // Air Pump Health Monitoring - Ensure pump operates correctly in both modes
+    // Two modes:
+    // 1. Normal mode (cycling disabled): Air pump ON 24/7
+    // 2. Cycling mode (cycling enabled): Air pump cycles ON/OFF per configured periods
     // ========================================================================
     if (safety_gate_ && now - last_air_pump_check_time_ >= AIR_PUMP_HEALTH_CHECK_INTERVAL) {
         last_air_pump_check_time_ = now;
 
         // Check if air pump cycling is enabled
         if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
-            // Cycling is active - get expected state from SafetyGate
+            // CYCLING MODE: Air pump cycles ON/OFF
+            // Get expected state from SafetyGate's cycling logic
             bool expected_state = safety_gate_->getState(AIR_PUMP);
 
-            // Re-send the command to ensure pump is in correct state
+            // FORCE RE-SEND the command to ensure pump is in correct state
             // This handles cases where:
             // 1. User manually turned off pump via Shelly web interface
             // 2. Pump lost power/connection and didn't receive previous command
-            // 3. Network hiccup caused HTTP command to fail
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Cycling enabled - verifying state (expected: %s)",
+            // 3. Network hiccup caused HTTP command to fail (ESP_ERR_HTTP_CONNECT)
+            // 4. HTTP request timed out or was rejected
+            ESP_LOGI(TAG, "[AIR PUMP HEALTH] Cycling mode - FORCING state to %s (bypassing debouncing)",
                      expected_state ? "ON" : "OFF");
 
-            // Re-send command through SafetyGate (will execute via HAL → Shelly HTTP)
-            // SafetyGate will handle debouncing, so redundant commands are ignored
-            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0);  // 10 min max if ON
+            // Force execute: Bypass debouncing to always send HTTP command
+            // This ensures the command is sent to Shelly every 30 seconds regardless of tracked state
+            bool success = requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0, true);
 
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] State verification complete - pump should be %s",
-                     expected_state ? "ON" : "OFF");
+            if (success) {
+                ESP_LOGI(TAG, "[AIR PUMP HEALTH] HTTP command sent - pump should be %s within 1-2 seconds",
+                         expected_state ? "ON" : "OFF");
+            } else {
+                ESP_LOGW(TAG, "[AIR PUMP HEALTH] Command rejected - check SafetyGate logs");
+            }
         } else {
-            ESP_LOGV(TAG, "[AIR PUMP HEALTH] Cycling not enabled - skipping verification");
+            // NORMAL MODE: Air pump ON 24/7 for continuous oxygenation
+            ESP_LOGI(TAG, "[AIR PUMP HEALTH] Normal mode - FORCING air pump ON 24/7 (bypassing debouncing)");
+
+            // Force execute: Bypass debouncing to always send HTTP command
+            // Keep pump ON continuously (600s duration = 10 min, will be re-sent every 30s)
+            bool success = requestPump(AIR_PUMP, true, 600, true);
+
+            if (success) {
+                ESP_LOGI(TAG, "[AIR PUMP HEALTH] HTTP command sent - pump should be ON within 1-2 seconds");
+            } else {
+                ESP_LOGW(TAG, "[AIR PUMP HEALTH] Command rejected - check SafetyGate logs");
+            }
         }
     }
 
@@ -589,27 +609,46 @@ void PlantOSController::handleNight() {
     }
 
     // ========================================================================
-    // Air Pump Health Monitoring - Continue cycling during night mode for oxygenation
+    // Air Pump Health Monitoring - Continue air pump operation during night mode for oxygenation
+    // Two modes (same as IDLE state):
+    // 1. Normal mode (cycling disabled): Air pump ON 24/7
+    // 2. Cycling mode (cycling enabled): Air pump cycles ON/OFF per configured periods
     // ========================================================================
     if (safety_gate_ && now - last_air_pump_check_time_ >= AIR_PUMP_HEALTH_CHECK_INTERVAL) {
         last_air_pump_check_time_ = now;
 
         // Check if air pump cycling is enabled
         if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
-            // Cycling is active - get expected state from SafetyGate
+            // CYCLING MODE: Air pump cycles ON/OFF
+            // Get expected state from SafetyGate's cycling logic
             bool expected_state = safety_gate_->getState(AIR_PUMP);
 
-            // Re-send the command to ensure pump is in correct state
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Night mode - cycling enabled, verifying state (expected: %s)",
+            // FORCE RE-SEND the command to ensure pump is in correct state
+            ESP_LOGI(TAG, "[AIR PUMP HEALTH] Night mode - Cycling mode - FORCING state to %s (bypassing debouncing)",
                      expected_state ? "ON" : "OFF");
 
-            // Re-send command through SafetyGate (will execute via HAL → Shelly HTTP)
-            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0);  // 10 min max if ON
+            // Force execute: Bypass debouncing to always send HTTP command
+            bool success = requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0, true);
 
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] State verification complete - pump should be %s",
-                     expected_state ? "ON" : "OFF");
+            if (success) {
+                ESP_LOGI(TAG, "[AIR PUMP HEALTH] HTTP command sent - pump should be %s within 1-2 seconds",
+                         expected_state ? "ON" : "OFF");
+            } else {
+                ESP_LOGW(TAG, "[AIR PUMP HEALTH] Command rejected - check SafetyGate logs");
+            }
         } else {
-            ESP_LOGV(TAG, "[AIR PUMP HEALTH] Cycling not enabled - skipping verification");
+            // NORMAL MODE: Air pump ON 24/7 for continuous oxygenation
+            ESP_LOGI(TAG, "[AIR PUMP HEALTH] Night mode - Normal mode - FORCING air pump ON 24/7 (bypassing debouncing)");
+
+            // Force execute: Bypass debouncing to always send HTTP command
+            // Keep pump ON continuously (600s duration = 10 min, will be re-sent every 30s)
+            bool success = requestPump(AIR_PUMP, true, 600, true);
+
+            if (success) {
+                ESP_LOGI(TAG, "[AIR PUMP HEALTH] HTTP command sent - pump should be ON within 1-2 seconds");
+            } else {
+                ESP_LOGW(TAG, "[AIR PUMP HEALTH] Command rejected - check SafetyGate logs");
+            }
         }
     }
 
@@ -2360,6 +2399,29 @@ void PlantOSController::transitionTo(ControllerState newState) {
     state_start_time_ = esphome::millis();
     state_counter_ = 0;
 
+    // ========================================================================
+    // State Entry Actions
+    // ========================================================================
+
+    // IDLE state entry: Ensure air pump cycling is active
+    if (newState == ControllerState::IDLE || newState == ControllerState::NIGHT) {
+        if (safety_gate_) {
+            // Check if cycling is enabled but pump hasn't been started yet
+            if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
+                // Get expected state and ensure pump is running
+                bool expected_state = safety_gate_->getState(AIR_PUMP);
+
+                ESP_LOGI(TAG, "[STATE ENTRY] %s - Air pump cycling is enabled, initializing to %s state",
+                         newStateName, expected_state ? "ON" : "OFF");
+
+                // Send initial command to start the cycle
+                requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0);
+            } else {
+                ESP_LOGD(TAG, "[STATE ENTRY] %s - Air pump cycling not enabled", newStateName);
+            }
+        }
+    }
+
     // LED behavior transition is handled automatically in loop()
     // via led_behaviors_->update()
 }
@@ -2372,7 +2434,7 @@ uint32_t PlantOSController::getStateElapsed() const {
 // Actuator Control Helpers
 // ============================================================================
 
-bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint32_t durationSec) {
+bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint32_t durationSec, bool forceExecute) {
     if (!safety_gate_) {
         ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", pumpId.c_str());
         return false;
@@ -2380,11 +2442,11 @@ bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint3
 
     // Verbose mode: Log actuator commands
     if (status_logger_.isVerboseMode()) {
-        ESP_LOGI(TAG, "[VERBOSE] Actuator command: %s → %s for %u seconds",
-                 pumpId.c_str(), state ? "ON" : "OFF", durationSec);
+        ESP_LOGI(TAG, "[VERBOSE] Actuator command: %s → %s for %u seconds (force=%s)",
+                 pumpId.c_str(), state ? "ON" : "OFF", durationSec, forceExecute ? "YES" : "NO");
     }
 
-    return safety_gate_->executeCommand(pumpId.c_str(), state, durationSec);
+    return safety_gate_->executeCommand(pumpId.c_str(), state, durationSec, forceExecute);
 }
 
 bool PlantOSController::requestValve(const std::string& valveId, bool state, uint32_t durationSec) {

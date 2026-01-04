@@ -22,7 +22,11 @@
       "Bash(timeout 20 task run:*)",
       "Bash(task run)",
       "Bash(esphome version:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebFetch(domain:shelly-api-docs.shelly.cloud)",
+      "WebFetch(domain:kb.shelly.cloud)",
+      "Bash(~/.platformio/packages/tool-esptoolpy/esptool.py:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

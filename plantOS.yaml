@@ -19,13 +19,15 @@ esphome:
           id(actuator_safety)->setMaxDuration("NutrientPumpA", 10);     // 10 sec - nutrient A
           id(actuator_safety)->setMaxDuration("NutrientPumpB", 10);     // 10 sec - nutrient B
           id(actuator_safety)->setMaxDuration("NutrientPumpC", 10);     // 10 sec - nutrient C
-          id(actuator_safety)->setMaxDuration("AirPump", 3600);         // 60 min - can run long, set 0 to disable
+          id(actuator_safety)->setMaxDuration("AirPump", 0);         // 60 min - can run long, set 0 to disable
           id(actuator_safety)->setMaxDuration("WastewaterPump", 1800);  // 30 min - slow pump
 
-          // Configure intermittent cycling for AirPump (disabled by default)
-          ESP_LOGI("esphome", "Configuring air pump intermittent cycling");
-          id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // 2 min ON, 1 min OFF (default)
-          id(actuator_safety)->enableCycling("AirPump", false);        // Disabled by default
+          // Configure air pump operation modes:
+          // - Normal mode (cycling disabled): Air pump runs 24/7 continuously [DEFAULT]
+          // - Cycling mode (cycling enabled): Air pump cycles ON/OFF per periods
+          ESP_LOGI("esphome", "Configuring air pump operation modes");
+          id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // 2 min ON, 1 min OFF (for Cycling mode)
+          id(actuator_safety)->enableCycling("AirPump", false);        // Default: Normal mode (24/7 ON)
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -38,6 +40,31 @@ esp32:
     # - Official Espressif support and documentation
     type: esp-idf
     version: recommended
+  # Configure 8MB flash size (ESP32-C6-DevKitC-1 specification)
+  flash_size: 8MB
+  # Increase app partition size for BLE support (adds ~120KB to firmware)
+  # Default partition leaves ~1.8MB for app, we need ~1.9MB with BLE
+  # Using ESP-IDF's built-in default_8MB partition: gives us enough space
+  # Remove custom partitions to avoid flash overlap issues
+
+################################################################################
+# Bluetooth Low Energy (BLE) Configuration
+#
+# Enables BLE connectivity for Shelly Plus 4PM control via Bluetooth.
+# Preferred over HTTP/WiFi when using mesh WiFi networks that interfere with OTA.
+#
+# BLE Tracker: Scans for nearby BLE devices
+# BLE Client: Connects to specific device by MAC address
+################################################################################
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+ble_client:
+  - mac_address: 98:A3:16:6B:A9:BA  # Shelly Plus 4PM MAC address
+    id: shelly_ble_client
 
 logger:
   # DEBUG level enables detailed component logging for development
@@ -83,7 +110,8 @@ wifi:
   # WiFi optimization for mesh networks (TP-Link Deco, etc.)
   # These settings improve compatibility with WiFi mesh systems
   # Mesh settings: Deactivate Fast Roaming and Beamforming, Deactiate Mesh for plantOS client, Deactivate 5 GHz band
-  power_save_mode: none    # Disable power saving for better connectivity
+  # NOTE: power_save_mode must be 'light' when using BLE (NONE is incompatible)
+  power_save_mode: light   # Light power saving (required for BLE compatibility)
   # fast_connect: true       # Skip channel scanning for faster connection
 
   # Force WiFi B/G mode by disabling 802.11n/ac features
@@ -109,20 +137,21 @@ wifi:
     - delay: 2s
 
     # Perform online connectivity check
-    - logger.log: "Performing online connectivity check (ping www.google.com)..."
-    # Start timeout handler first (will be stopped if HTTP succeeds)
-    - script.execute: connectivity_check_timeout
-    - http_request.get:
-        url: http://www.google.com/generate_204
-        on_response:
-          then:
-            - lambda: |-
-                // Note: Any successful response (even error codes) means network is working
-                // Only timeouts indicate mesh network issues
-                ESP_LOGI("wifi", "✓ Online connectivity check PASSED - HTTP response received");
-                id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
-            # Stop the timeout script since we got a response
-            - script.stop: connectivity_check_timeout
+    # DISABLED - http_request component disabled (using BLE instead of HTTP)
+    # - logger.log: "Performing online connectivity check (ping www.google.com)..."
+    # # Start timeout handler first (will be stopped if HTTP succeeds)
+    # - script.execute: connectivity_check_timeout
+    # - http_request.get:
+    #     url: http://www.google.com/generate_204
+    #     on_response:
+    #       then:
+    #         - lambda: |-
+    #             // Note: Any successful response (even error codes) means network is working
+    #             // Only timeouts indicate mesh network issues
+    #             ESP_LOGI("wifi", "✓ Online connectivity check PASSED - HTTP response received");
+    #             id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
+    #         # Stop the timeout script since we got a response
+    #         - script.stop: connectivity_check_timeout
 
   # ==============================================================
   # FALLBACK ACCESS POINT (AP) FOR DEBUGGING
@@ -163,15 +192,14 @@ api:
 ################################################################################
 # HTTP Request Component - For Online Connectivity Check
 #
-# Used to verify internet connectivity by attempting to fetch a known URL.
-# Google's connectivity check endpoint returns HTTP 204 (No Content) when
-# online, which is a lightweight test that doesn't consume bandwidth.
+# DISABLED - Using BLE for Shelly control instead of HTTP
+# Uncomment if switching back to HTTP mode for Shelly switches
 ################################################################################
-http_request:
-  id: http_client
-  useragent: esphome/plantOS
-  timeout: 5s
-  verify_ssl: false  # Skip SSL verification for simple connectivity test
+# http_request:
+#   id: http_client
+#   useragent: esphome/plantOS
+#   timeout: 5s
+#   verify_ssl: false  # Skip SSL verification for simple connectivity test
 
 ################################################################################
 # Time Synchronization: NTP
@@ -209,7 +237,7 @@ external_components:
     components: [sensor_dummy, sensor_filter, ezo_ph_uart,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
                  i2c_scanner, time_logger, time_dummy, wdt_manager, i2c_mutex_demo, plantos_hal,
-                 plantos_controller]
+                 plantos_controller, shelly_ble]
 
   # ESP32-C6 ADC Fix: Use lboue's working implementation with adc_oneshot API
   # Official ESPHome ADC has bugs on C6 (no ADC2 support causes compilation errors)
@@ -487,7 +515,7 @@ sensor:
   - platform: dallas_temp
     one_wire_id: one_wire_bus
     id: water_temperature
-    name: "Water Temperature - DS18B20"
+    name: "00_04a_Water Temperature - DS18B20"
     update_interval: 6s     # Update temperature every 6 seconds (offset from EZO pH 10s interval)
     accuracy_decimals: 2     # Display 2 decimal places (e.g., 24.50°C)
     resolution: 12           # 12-bit resolution (0.0625°C per bit, ~750ms conversion)
@@ -1245,36 +1273,6 @@ button:
             ESP_LOGI("button", "Grow Light OFF - 3s test complete");
             ESP_LOGI("button", "=========================================");
 
-  - platform: template
-    name: "10_10_Start Air Pump Cycling"
-    on_press:
-      # Enable intermittent cycling for air pump
-      # Uses periods configured via number sliders (14_01 and 14_02)
-      then:
-        - lambda: |-
-            uint32_t on_period = (uint32_t)id(air_pump_on_period).state;
-            uint32_t off_period = (uint32_t)id(air_pump_off_period).state;
-
-            ESP_LOGI("button", "=== Starting Air Pump Cycling ===");
-            ESP_LOGI("button", "ON period: %u seconds", on_period);
-            ESP_LOGI("button", "OFF period: %u seconds", off_period);
-
-            id(actuator_safety)->setCyclingPeriods("AirPump", on_period, off_period);
-            id(actuator_safety)->enableCycling("AirPump", true);
-
-            ESP_LOGI("button", "Air pump will cycle: %us ON, %us OFF", on_period, off_period);
-            ESP_LOGI("button", "===================================");
-
-  - platform: template
-    name: "10_11_Stop Air Pump Cycling"
-    on_press:
-      # Disable intermittent cycling and turn off air pump
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "=== Stopping Air Pump Cycling ===");
-            id(actuator_safety)->enableCycling("AirPump", false);
-            ESP_LOGI("button", "Air pump cycling disabled");
-            ESP_LOGI("button", "==================================");
 
   # === 15 - Calendar Day Control ===
   - platform: template
@@ -1334,10 +1332,19 @@ plantos_hal:
   pump_micro_output: pump_micro_output      # GPIO21 - Micro pump (NutrientPumpB → nutrient_B_ml_per_liter)
   pump_bloom_output: pump_bloom_output      # GPIO22 - Bloom pump (NutrientPumpC → nutrient_C_ml_per_liter)
 
-  # Shelly HTTP Switches (MVP: AirPump and WastewaterPump via Shelly Plus 4PM @ 192.168.0.130)
-  air_pump_switch: air_pump_shelly_switch           # Shelly Socket 0 - Air pump for pH mixing
-  wastewater_pump_switch: wastewater_pump_shelly_switch  # Shelly Socket 2 - Tank drainage
-  http_request_id: http_client                      # HTTP client for direct Shelly control
+  # Shelly Switches (Using BLE - preferred for mesh WiFi compatibility)
+  # Switch between BLE and HTTP by commenting/uncommenting the appropriate lines below
+
+  # === BLE Mode (ACTIVE) ===
+  air_pump_ble_switch: air_pump_shelly_switch           # Shelly Socket 0 - Air pump (BLE)
+  wastewater_pump_ble_switch: wastewater_pump_shelly_switch  # Shelly Socket 2 - Wastewater pump (BLE)
+  grow_light_ble_switch: grow_light_shelly_switch       # Shelly Socket 3 - Grow light (BLE)
+
+  # === HTTP Mode (DISABLED) ===
+  # Uncomment below and comment out BLE switches above to use HTTP instead
+  # air_pump_switch: air_pump_shelly_switch_http           # Shelly Socket 0 - Air pump (HTTP)
+  # wastewater_pump_switch: wastewater_pump_shelly_switch_http  # Shelly Socket 2 - Wastewater pump (HTTP)
+  # http_request_id: http_client                      # HTTP client for direct Shelly control
 
   # Tank Volume Configuration (for mL/L dosing calculations)
   # Measured volume between LOW and HIGH water level sensors
@@ -1985,57 +1992,120 @@ switch:
             ESP_LOGW("switch", "Bloom Pump: OFF command REJECTED by safety gate");
           }
 
-  # === Shelly-Controlled Actuators (Shelly Plus 4PM @ 192.168.0.130) ===
-  # AirPump on Socket 0, WastewaterPump on Socket 2
-  # Socket 1 and 3 reserved for future expansion
+  # === Shelly-Controlled Actuators (Shelly Plus 4PM via BLE) ===
+  # Using Bluetooth Low Energy instead of HTTP/WiFi
+  # Preferred for mesh WiFi environments to avoid OTA update conflicts
+  # AirPump on Socket 0, WastewaterPump on Socket 2, GrowLight on Socket 3
 
-  - platform: template
+  - platform: shelly_ble
     id: air_pump_shelly_switch
-    name: "10_06_Air Pump (Shelly Socket 0)"
-    optimistic: true
-    restore_mode: ALWAYS_OFF
-    turn_on_action:
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=0&on=true"
-      - lambda: |-
-          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual ON - HTTP sent (no safety validation)");
-    turn_off_action:
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=0&on=false"
-      - lambda: |-
-          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual OFF - HTTP sent");
+    name: "10_06_Air Pump (BLE Socket 0)"
+    ble_client_id: shelly_ble_client
+    socket_id: 0
 
-  - platform: template
+  - platform: shelly_ble
     id: wastewater_pump_shelly_switch
-    name: "10_07_Wastewater Pump (Shelly Socket 2)"
-    optimistic: true
-    restore_mode: ALWAYS_OFF
-    turn_on_action:
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=2&on=true"
-      - lambda: |-
-          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual ON - HTTP sent (no safety validation)");
-    turn_off_action:
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=2&on=false"
-      - lambda: |-
-          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual OFF - HTTP sent");
+    name: "10_07_Wastewater Pump (BLE Socket 2)"
+    ble_client_id: shelly_ble_client
+    socket_id: 2
 
-  - platform: template
+  - platform: shelly_ble
     id: grow_light_shelly_switch
-    name: "10_08_Grow Light (Shelly Socket 3)"
+    name: "10_08_Grow Light (BLE Socket 3)"
+    ble_client_id: shelly_ble_client
+    socket_id: 3
+
+  # === OLD HTTP SWITCHES (DISABLED - Using BLE instead) ===
+  # Uncomment below and comment out BLE switches above to use HTTP instead
+  # Also update plantos_hal configuration to use http_request_id
+
+  # - platform: template
+  #   id: air_pump_shelly_switch_http
+  #   name: "10_06_Air Pump (HTTP Socket 0)"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   turn_on_action:
+  #     - http_request.get:
+  #         url: "http://192.168.0.130/rpc/Switch.Set?id=0&on=true"
+  #     - lambda: |-
+  #         ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual ON - HTTP sent (no safety validation)");
+  #   turn_off_action:
+  #     - http_request.get:
+  #         url: "http://192.168.0.130/rpc/Switch.Set?id=0&on=false"
+  #     - lambda: |-
+  #         ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual OFF - HTTP sent");
+
+  # - platform: template
+  #   id: wastewater_pump_shelly_switch_http
+  #   name: "10_07_Wastewater Pump (HTTP Socket 2)"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   turn_on_action:
+  #     - http_request.get:
+  #         url: "http://192.168.0.130/rpc/Switch.Set?id=2&on=true"
+  #     - lambda: |-
+  #         ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual ON - HTTP sent (no safety validation)");
+  #   turn_off_action:
+  #     - http_request.get:
+  #         url: "http://192.168.0.130/rpc/Switch.Set?id=2&on=false"
+  #     - lambda: |-
+  #         ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual OFF - HTTP sent");
+
+  # - platform: template
+  #   id: grow_light_shelly_switch_http
+  #   name: "10_08_Grow Light (HTTP Socket 3)"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   turn_on_action:
+  #     - http_request.get:
+  #         url: "http://192.168.0.130/rpc/Switch.Set?id=3&on=true"
+  #     - lambda: |-
+  #         ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual ON - HTTP sent");
+  #   turn_off_action:
+  #     - http_request.get:
+  #         url: "http://192.168.0.130/rpc/Switch.Set?id=3&on=false"
+  #     - lambda: |-
+  #         ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual OFF - HTTP sent");
+
+  # === Air Pump Cycling Control ===
+  # Two modes:
+  # - OFF (Normal mode): Air pump runs 24/7 continuously
+  # - ON (Cycling mode): Air pump cycles ON/OFF per configured periods
+  # State is restored from NVS on boot
+  - platform: template
+    name: "01_04_Air Pump Cycling"
+    id: air_pump_cycling_switch
     optimistic: true
-    restore_mode: ALWAYS_OFF
+    restore_mode: RESTORE_DEFAULT_OFF  # Default to Normal mode (24/7 ON)
+    icon: "mdi:air-purifier"
     turn_on_action:
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=3&on=true"
-      - lambda: |-
-          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual ON - HTTP sent");
+      # Enable intermittent cycling for air pump
+      # Uses periods configured via number sliders (14_01 and 14_02)
+      # Starts with ON cycle immediately
+      then:
+        - lambda: |-
+            uint32_t on_period = (uint32_t)id(air_pump_on_period).state;
+            uint32_t off_period = (uint32_t)id(air_pump_off_period).state;
+
+            ESP_LOGI("switch", "=== Air Pump Cycling ENABLED ===");
+            ESP_LOGI("switch", "ON period: %u seconds", on_period);
+            ESP_LOGI("switch", "OFF period: %u seconds", off_period);
+
+            id(actuator_safety)->setCyclingPeriods("AirPump", on_period, off_period);
+            id(actuator_safety)->enableCycling("AirPump", true);
+
+            ESP_LOGI("switch", "Air pump will cycle: %us ON, %us OFF", on_period, off_period);
+            ESP_LOGI("switch", "Starting with ON cycle");
+            ESP_LOGI("switch", "================================");
     turn_off_action:
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=3&on=false"
-      - lambda: |-
-          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual OFF - HTTP sent");
+      # Disable intermittent cycling and enable Normal mode (24/7 ON)
+      then:
+        - lambda: |-
+            ESP_LOGI("switch", "=== Air Pump: NORMAL MODE (24/7 ON) ===");
+            id(actuator_safety)->enableCycling("AirPump", false);
+            ESP_LOGI("switch", "Cycling disabled - air pump will run continuously");
+            ESP_LOGI("switch", "Controller will turn ON pump within 30 seconds");
+            ESP_LOGI("switch", "========================================");
 
   # === pH Sensor Control ===
   - platform: template
@@ -2560,7 +2630,7 @@ number:
   # === 14 - Air Pump Cycling Period Configuration ===
   - platform: template
     id: air_pump_on_period
-    name: "14_01_Air Pump Cycling - ON Period"
+    name: "01_05_Air Pump Cycling - ON Period"
     icon: "mdi:timer-play-outline"
     optimistic: true
     min_value: 10      # Minimum 10 seconds ON
@@ -2578,7 +2648,7 @@ number:
 
   - platform: template
     id: air_pump_off_period
-    name: "14_02_Air Pump Cycling - OFF Period"
+    name: "01_06_Air Pump Cycling - OFF Period"
     icon: "mdi:timer-stop-outline"
     optimistic: true
     min_value: 10      # Minimum 10 seconds OFF

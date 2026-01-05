@@ -164,6 +164,17 @@ public:
      */
     virtual bool getValveState(const std::string& valveId) const = 0;
 
+    /**
+     * Check actual Shelly switch status via HTTP GET (future implementation)
+     * @param pumpId Pump identifier
+     * @return true if pump is ON according to Shelly, false if OFF
+     *
+     * NOTE: This is a stub for future implementation. Currently returns tracked state.
+     * TODO: Query Shelly via HTTP GET /rpc/Switch.GetStatus?id=X
+     * ESPHome's callback-based HTTP makes synchronous requests difficult.
+     */
+    virtual bool checkShellySwitchStatus(const std::string& pumpId) = 0;
+
     // ============================================================================
     // SENSORS - Called by Controller
     // ============================================================================
@@ -395,6 +406,7 @@ public:
     void setValve(const std::string& valveId, bool state) override;
     bool getPumpState(const std::string& pumpId) const override;
     bool getValveState(const std::string& valveId) const override;
+    bool checkShellySwitchStatus(const std::string& pumpId) override;
 
     float readPH() override;
     bool hasPhValue() const override;

@@ -449,9 +449,10 @@ private:
      * @param pumpId Pump identifier (e.g., "AcidPump")
      * @param state true=ON, false=OFF
      * @param durationSec Maximum duration in seconds (0=no limit)
+     * @param forceExecute If true, bypass debouncing (for health monitoring)
      * @return true if approved by SafetyGate
      */
-    bool requestPump(const std::string& pumpId, bool state, uint32_t durationSec = 0);
+    bool requestPump(const std::string& pumpId, bool state, uint32_t durationSec = 0, bool forceExecute = false);
 
     /**
      * Request valve operation via SafetyGate

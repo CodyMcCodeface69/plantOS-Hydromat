@@ -88,6 +88,8 @@ The PlantOS Controller implements a unified Finite State Machine (FSM) with 16 s
                                          │  Breathing green LED │                          │
                                          │  Ready for commands  │                          │ [Night mode hours end OR
                                          │  Periodic pH checks  │                          │  night mode disabled]
+                                         │  Air pump health     │                          │
+                                         │  monitoring (30s)    │                          │
                                          └──────────────────────┘                          │
                                                     │                                      │
                                                     │ [Night mode enabled &               │
@@ -98,6 +100,8 @@ The PlantOS Controller implements a unified Finite State Machine (FSM) with 16 s
                                          │  Dim green breathing │
                                          │  No pH/feed/fill     │
                                          │  Manual ops blocked  │
+                                         │  Air pump health     │
+                                         │  monitoring (30s)    │
                                          └──────────────────────┘
                                                     │
                    ┌───────────────┬────────────────┼────────────────┬────────────────┬──────────────────┐
@@ -558,6 +562,124 @@ Sent to pH sensor before all critical readings:
 
 ---
 
+# Air Pump Control System
+
+## Overview
+
+The air pump control system operates in both IDLE and NIGHT states, providing continuous oxygenation to the hydroponic system. It supports two operational modes controlled via web UI.
+
+## Operational Modes
+
+### Mode 1: Normal Mode (DEFAULT - 24/7)
+**Status**: Cycling switch OFF
+**Behavior**:
+- Air pump runs continuously 24 hours per day
+- Health check runs every 30 seconds in IDLE and NIGHT states
+- Health check forces pump ON using `forceExecute=true` to bypass debouncing
+- Automatically corrects manual shutoffs via Shelly web interface
+- Handles network failures and dropped HTTP commands
+
+**Implementation**:
+```cpp
+// In handleIdle() and handleNight()
+if (!safety_gate_->isCyclingEnabled(AIR_PUMP)) {
+    // Normal mode (24/7): force pump ON every 30s
+    ESP_LOGD(TAG, "[AIR PUMP HEALTH] Normal mode - forcing pump ON");
+    requestPump(AIR_PUMP, true, 0, true);  // forceExecute=true, unlimited duration
+}
+```
+
+**Code Location**: `controller.cpp:532-536` (IDLE), `controller.cpp:612-616` (NIGHT)
+
+### Mode 2: Cycling Mode
+**Status**: Cycling switch ON
+**Behavior**:
+- Air pump cycles between ON and OFF periods
+- Periods configured via web UI sliders (10s - 1 hour range)
+- Defaults: 120s ON, 60s OFF
+- Health check verifies cycling state every 30 seconds
+- Uses `forceExecute=true` to re-send cycling commands
+
+**Implementation**:
+```cpp
+// In handleIdle() and handleNight()
+if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
+    // Cycling Mode: Get expected state and force re-send
+    bool expected_state = safety_gate_->getState(AIR_PUMP);
+    requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0, true);  // forceExecute=true
+}
+```
+
+**Code Location**: `controller.cpp:515-531` (IDLE), `controller.cpp:599-611` (NIGHT)
+
+## Force Execute Mechanism
+
+### Purpose
+Bypass debouncing to allow health monitoring to re-send commands even when pump is already in the requested state.
+
+### How It Works
+1. **Normal Operation**: Safety gate rejects redundant commands (debouncing)
+2. **With Force Execute**: Debouncing check is bypassed
+3. **Use Case**: Health monitoring can re-confirm pump state every 30s
+
+### Implementation
+- **ActuatorSafetyGate**: Modified to check `forceExecute` flag before debouncing rejection
+- **Controller**: Uses `forceExecute=true` for health check commands only
+- **Code Location**:
+  - `ActuatorSafetyGate.cpp:62` (debouncing check)
+  - `ActuatorSafetyGate.cpp:68-71` (force execute logging)
+  - `controller.cpp:2383` (requestPump with forceExecute parameter)
+
+### Safety Note
+Force execute only bypasses debouncing, NOT duration limits or other safety checks. It's reserved for system health monitoring only.
+
+## Health Check Behavior
+
+**Interval**: Every 30 seconds (AIR_PUMP_HEALTH_CHECK_INTERVAL constant)
+
+**States**: IDLE and NIGHT
+
+**Actions**:
+- Query cycling status from ActuatorSafetyGate
+- Determine expected pump state (ON for normal mode, cycling state for cycling mode)
+- Send command with `forceExecute=true` to ensure Shelly receives it
+- Log health check actions at DEBUG level
+
+**Reliability Benefits**:
+- Detects and corrects manual shutoffs via Shelly web interface
+- Recovers from network timeouts and dropped HTTP commands
+- Ensures continuous oxygenation even with WiFi issues
+- Works identically in both IDLE and NIGHT states
+
+## Configuration
+
+### Web UI Controls (Section 01)
+1. **Switch**: "01_04_Air Pump Cycling"
+   - OFF (default): Normal mode - 24/7 operation
+   - ON: Cycling mode - automatic ON/OFF cycling
+
+2. **Number Sliders**: "01_05_Air Pump ON Period (seconds)" and "01_06_Air Pump OFF Period (seconds)"
+   - Range: 10 - 3600 seconds (10s - 1 hour)
+   - Defaults: 120s ON, 60s OFF
+   - Only used when cycling mode is enabled
+
+### Boot Configuration (plantOS.yaml:22-28)
+```yaml
+id(actuator_safety)->setMaxDuration("AirPump", 0);            // 0 = unlimited (24/7 operation)
+id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // Default: 2 min ON, 1 min OFF
+id(actuator_safety)->enableCycling("AirPump", false);        // Default: Normal mode (24/7)
+```
+
+## State Entry Initialization
+
+When transitioning TO IDLE or NIGHT states (future enhancement):
+- Check if cycling is enabled
+- Get expected cycling state
+- Send initial command to start pump in correct state
+- Prevents stale state information from previous states
+
+---
+
 # Implementation Guidelines
 
 ## When Modifying the FSM
@@ -591,6 +713,6 @@ After modifying the FSM:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2026-01-03
+**Document Version**: 1.1
+**Last Updated**: 2026-01-05
 **Maintained By**: PlantOS Development Team

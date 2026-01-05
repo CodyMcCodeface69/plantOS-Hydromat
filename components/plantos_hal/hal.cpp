@@ -347,6 +347,13 @@ bool ESPHomeHAL::getValveState(const std::string& valveId) const {
     return it != valve_states_.end() ? it->second : false;
 }
 
+bool ESPHomeHAL::checkShellySwitchStatus(const std::string& pumpId) {
+    // TODO: Query Shelly via HTTP GET /rpc/Switch.GetStatus?id=X
+    // ESPHome's callback-based HTTP makes synchronous requests difficult
+    // For now, return tracked state
+    return getPumpState(pumpId);
+}
+
 // ============================================================================
 // SENSORS - Called by Controller
 // ============================================================================

@@ -178,10 +178,11 @@ public:
      * @param actuatorID Unique identifier for the actuator (e.g., "AcidPump", "WaterValve")
      * @param targetState Desired state (true=ON, false=OFF)
      * @param maxDurationSeconds Optional maximum duration for this command (seconds, 0=no limit)
+     * @param forceExecute If true, bypass debouncing check (for health monitoring)
      * @return true if command is approved and should be executed, false if rejected
      *
      * SAFETY CHECKS PERFORMED:
-     * 1. Debouncing: Rejects if targetState matches last requested state
+     * 1. Debouncing: Rejects if targetState matches last requested state (bypassed if forceExecute=true)
      * 2. Max Duration: Rejects if maxDurationSeconds exceeds configured limit
      * 3. State Tracking: Updates internal state on approval
      *
@@ -197,11 +198,15 @@ public:
      *     // Approved - turn off pump
      * }
      *
-     * // Requesting same state again (rejected)
+     * // Requesting same state again (rejected by debouncing)
      * executeCommand("AcidPump", true, 5);  // Approved
      * executeCommand("AcidPump", true, 5);  // REJECTED (debouncing)
+     *
+     * // Force execute - bypasses debouncing for health monitoring
+     * executeCommand("AcidPump", true, 5, true);  // Approved (force execute)
+     * executeCommand("AcidPump", true, 5, true);  // Also approved (debouncing bypassed)
      */
-    bool executeCommand(const char* actuatorID, bool targetState, int maxDurationSeconds = 0);
+    bool executeCommand(const char* actuatorID, bool targetState, int maxDurationSeconds = 0, bool forceExecute = false);
 
     /**
      * Set maximum allowed duration for an actuator

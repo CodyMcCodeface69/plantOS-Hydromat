@@ -19,13 +19,13 @@ esphome:
           id(actuator_safety)->setMaxDuration("NutrientPumpA", 10);     // 10 sec - nutrient A
           id(actuator_safety)->setMaxDuration("NutrientPumpB", 10);     // 10 sec - nutrient B
           id(actuator_safety)->setMaxDuration("NutrientPumpC", 10);     // 10 sec - nutrient C
-          id(actuator_safety)->setMaxDuration("AirPump", 3600);         // 60 min - can run long, set 0 to disable
+          id(actuator_safety)->setMaxDuration("AirPump", 0);            // 0 = unlimited (24/7 operation)
           id(actuator_safety)->setMaxDuration("WastewaterPump", 1800);  // 30 min - slow pump
 
-          // Configure intermittent cycling for AirPump (disabled by default)
-          ESP_LOGI("esphome", "Configuring air pump intermittent cycling");
-          id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // 2 min ON, 1 min OFF (default)
-          id(actuator_safety)->enableCycling("AirPump", false);        // Disabled by default
+          // Configure air pump cycling (disabled by default for Normal mode 24/7)
+          ESP_LOGI("esphome", "Configuring air pump cycling");
+          id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // Default: 2 min ON, 1 min OFF
+          id(actuator_safety)->enableCycling("AirPump", false);        // Default: Normal mode (24/7)
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -1245,37 +1245,6 @@ button:
             ESP_LOGI("button", "Grow Light OFF - 3s test complete");
             ESP_LOGI("button", "=========================================");
 
-  - platform: template
-    name: "10_10_Start Air Pump Cycling"
-    on_press:
-      # Enable intermittent cycling for air pump
-      # Uses periods configured via number sliders (14_01 and 14_02)
-      then:
-        - lambda: |-
-            uint32_t on_period = (uint32_t)id(air_pump_on_period).state;
-            uint32_t off_period = (uint32_t)id(air_pump_off_period).state;
-
-            ESP_LOGI("button", "=== Starting Air Pump Cycling ===");
-            ESP_LOGI("button", "ON period: %u seconds", on_period);
-            ESP_LOGI("button", "OFF period: %u seconds", off_period);
-
-            id(actuator_safety)->setCyclingPeriods("AirPump", on_period, off_period);
-            id(actuator_safety)->enableCycling("AirPump", true);
-
-            ESP_LOGI("button", "Air pump will cycle: %us ON, %us OFF", on_period, off_period);
-            ESP_LOGI("button", "===================================");
-
-  - platform: template
-    name: "10_11_Stop Air Pump Cycling"
-    on_press:
-      # Disable intermittent cycling and turn off air pump
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "=== Stopping Air Pump Cycling ===");
-            id(actuator_safety)->enableCycling("AirPump", false);
-            ESP_LOGI("button", "Air pump cycling disabled");
-            ESP_LOGI("button", "==================================");
-
   # === 15 - Calendar Day Control ===
   - platform: template
     name: "06_09_Calendar Day +1"
@@ -1885,6 +1854,40 @@ calendar_manager:
     ]
 ################################################################################
 switch:
+  # === 01 - Air Pump Control ===
+  - platform: template
+    id: air_pump_cycling_switch
+    name: "01_04_Air Pump Cycling"
+    restore_mode: RESTORE_DEFAULT_OFF  # Default to Normal mode (24/7 ON)
+    optimistic: true
+    icon: "mdi:air-purifier"
+    turn_on_action:
+      # Enable intermittent cycling for air pump
+      # Uses periods configured via number sliders (01_05 and 01_06)
+      # Starts with ON cycle immediately
+      - lambda: |-
+          uint32_t on_period = (uint32_t)id(air_pump_on_period).state;
+          uint32_t off_period = (uint32_t)id(air_pump_off_period).state;
+
+          ESP_LOGI("switch", "=== Air Pump Cycling ENABLED ===");
+          ESP_LOGI("switch", "ON period: %u seconds", on_period);
+          ESP_LOGI("switch", "OFF period: %u seconds", off_period);
+
+          id(actuator_safety)->setCyclingPeriods("AirPump", on_period, off_period);
+          id(actuator_safety)->enableCycling("AirPump", true);
+
+          ESP_LOGI("switch", "Air pump will cycle: %us ON, %us OFF", on_period, off_period);
+          ESP_LOGI("switch", "Starting with ON cycle");
+          ESP_LOGI("switch", "================================");
+    turn_off_action:
+      # Disable intermittent cycling and enable Normal mode (24/7 ON)
+      - lambda: |-
+          ESP_LOGI("switch", "=== Air Pump: NORMAL MODE (24/7 ON) ===");
+          id(actuator_safety)->enableCycling("AirPump", false);
+          ESP_LOGI("switch", "Cycling disabled - air pump will run continuously");
+          ESP_LOGI("switch", "Controller will turn ON pump within 30 seconds");
+          ESP_LOGI("switch", "========================================");
+
   # === 02 - Safety Gate Control ===
   - platform: template
     id: safety_gate_enabled
@@ -2560,11 +2563,11 @@ number:
   # === 14 - Air Pump Cycling Period Configuration ===
   - platform: template
     id: air_pump_on_period
-    name: "14_01_Air Pump Cycling - ON Period"
+    name: "01_05_Air Pump ON Period (seconds)"
     icon: "mdi:timer-play-outline"
     optimistic: true
-    min_value: 10      # Minimum 10 seconds ON
-    max_value: 600     # Maximum 10 minutes ON
+    min_value: 10       # Minimum 10 seconds ON
+    max_value: 3600     # Maximum 1 hour ON
     step: 10
     initial_value: 120  # Default: 2 minutes ON
     restore_value: true
@@ -2578,11 +2581,11 @@ number:
 
   - platform: template
     id: air_pump_off_period
-    name: "14_02_Air Pump Cycling - OFF Period"
+    name: "01_06_Air Pump OFF Period (seconds)"
     icon: "mdi:timer-stop-outline"
     optimistic: true
-    min_value: 10      # Minimum 10 seconds OFF
-    max_value: 600     # Maximum 10 minutes OFF
+    min_value: 10       # Minimum 10 seconds OFF
+    max_value: 3600     # Maximum 1 hour OFF
     step: 10
     initial_value: 60   # Default: 1 minute OFF
     restore_value: true

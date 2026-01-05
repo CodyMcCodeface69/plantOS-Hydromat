@@ -513,7 +513,7 @@ void PlantOSController::handleIdle() {
 
         // Check if air pump cycling is enabled
         if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
-            // Cycling is active - get expected state from SafetyGate
+            // Cycling Mode: Get expected state from SafetyGate and force re-send
             bool expected_state = safety_gate_->getState(AIR_PUMP);
 
             // Re-send the command to ensure pump is in correct state
@@ -524,14 +524,15 @@ void PlantOSController::handleIdle() {
             ESP_LOGD(TAG, "[AIR PUMP HEALTH] Cycling enabled - verifying state (expected: %s)",
                      expected_state ? "ON" : "OFF");
 
-            // Re-send command through SafetyGate (will execute via HAL → Shelly HTTP)
-            // SafetyGate will handle debouncing, so redundant commands are ignored
-            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0);  // 10 min max if ON
+            // Re-send command through SafetyGate with forceExecute to bypass debouncing
+            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0, true);  // forceExecute=true
 
             ESP_LOGD(TAG, "[AIR PUMP HEALTH] State verification complete - pump should be %s",
                      expected_state ? "ON" : "OFF");
         } else {
-            ESP_LOGV(TAG, "[AIR PUMP HEALTH] Cycling not enabled - skipping verification");
+            // Normal Mode (24/7): Force pump ON every 30s for continuous operation
+            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Normal mode - forcing pump ON");
+            requestPump(AIR_PUMP, true, 0, true);  // forceExecute=true, unlimited duration
         }
     }
 
@@ -596,20 +597,22 @@ void PlantOSController::handleNight() {
 
         // Check if air pump cycling is enabled
         if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
-            // Cycling is active - get expected state from SafetyGate
+            // Cycling Mode: Get expected state from SafetyGate and force re-send
             bool expected_state = safety_gate_->getState(AIR_PUMP);
 
             // Re-send the command to ensure pump is in correct state
             ESP_LOGD(TAG, "[AIR PUMP HEALTH] Night mode - cycling enabled, verifying state (expected: %s)",
                      expected_state ? "ON" : "OFF");
 
-            // Re-send command through SafetyGate (will execute via HAL → Shelly HTTP)
-            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0);  // 10 min max if ON
+            // Re-send command through SafetyGate with forceExecute to bypass debouncing
+            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0, true);  // forceExecute=true
 
             ESP_LOGD(TAG, "[AIR PUMP HEALTH] State verification complete - pump should be %s",
                      expected_state ? "ON" : "OFF");
         } else {
-            ESP_LOGV(TAG, "[AIR PUMP HEALTH] Cycling not enabled - skipping verification");
+            // Normal Mode (24/7): Force pump ON every 30s for continuous operation
+            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Night mode - Normal mode active, forcing pump ON");
+            requestPump(AIR_PUMP, true, 0, true);  // forceExecute=true, unlimited duration
         }
     }
 
@@ -2372,7 +2375,7 @@ uint32_t PlantOSController::getStateElapsed() const {
 // Actuator Control Helpers
 // ============================================================================
 
-bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint32_t durationSec) {
+bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint32_t durationSec, bool forceExecute) {
     if (!safety_gate_) {
         ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", pumpId.c_str());
         return false;
@@ -2380,11 +2383,11 @@ bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint3
 
     // Verbose mode: Log actuator commands
     if (status_logger_.isVerboseMode()) {
-        ESP_LOGI(TAG, "[VERBOSE] Actuator command: %s → %s for %u seconds",
-                 pumpId.c_str(), state ? "ON" : "OFF", durationSec);
+        ESP_LOGI(TAG, "[VERBOSE] Actuator command: %s → %s for %u seconds (force=%s)",
+                 pumpId.c_str(), state ? "ON" : "OFF", durationSec, forceExecute ? "YES" : "NO");
     }
 
-    return safety_gate_->executeCommand(pumpId.c_str(), state, durationSec);
+    return safety_gate_->executeCommand(pumpId.c_str(), state, durationSec, forceExecute);
 }
 
 bool PlantOSController::requestValve(const std::string& valveId, bool state, uint32_t durationSec) {

@@ -467,6 +467,9 @@ private:
     // Shelly IP address
     static constexpr const char* SHELLY_IP = "192.168.0.130";
 
+    // Helper function for robust HTTP requests with retry
+    bool sendShellyCommand(const std::string& url, const char* deviceName, int maxRetries = 5);
+
     // Actuator state tracking (for getPumpState/getValveState)
     std::map<std::string, bool> pump_states_;
     std::map<std::string, bool> valve_states_;

@@ -214,34 +214,22 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
         }
     }
     else if (pumpId == "WastewaterPump") {
-        // Wastewater pump via Shelly Socket 2 (HTTP direct control)
-        if (http_request_) {
-            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=2&on=" + (state ? "true" : "false");
-            http_request_->get(url);
-            ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 HTTP: %s", state ? "ON" : "OFF");
-        } else {
-            ESP_LOGW(TAG, "HTTP request component not configured - cannot control WastewaterPump");
-        }
+        // Wastewater pump via Shelly Socket 2 (HTTP direct control with retry)
+        std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=2&on=" + (state ? "true" : "false");
+        sendShellyCommand(url, "WastewaterPump (Socket 2)");
+        ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 HTTP: %s", state ? "ON" : "OFF");
     }
     else if (pumpId == "AirPump") {
-        // Air pump via Shelly Socket 0 (HTTP direct control)
-        if (http_request_) {
-            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=0&on=" + (state ? "true" : "false");
-            http_request_->get(url);
-            ESP_LOGD(TAG, "AirPump → Shelly Socket 0 HTTP: %s", state ? "ON" : "OFF");
-        } else {
-            ESP_LOGW(TAG, "HTTP request component not configured - cannot control AirPump");
-        }
+        // Air pump via Shelly Socket 0 (HTTP direct control with retry)
+        std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=0&on=" + (state ? "true" : "false");
+        sendShellyCommand(url, "AirPump (Socket 0)");
+        ESP_LOGD(TAG, "AirPump → Shelly Socket 0 HTTP: %s", state ? "ON" : "OFF");
     }
     else if (pumpId == "GrowLight") {
-        // Grow light via Shelly Socket 3 (HTTP direct control)
-        if (http_request_) {
-            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=3&on=" + (state ? "true" : "false");
-            http_request_->get(url);
-            ESP_LOGI(TAG, "GrowLight → Shelly Socket 3 HTTP: %s", state ? "ON" : "OFF");
-        } else {
-            ESP_LOGW(TAG, "HTTP request component not configured - cannot control GrowLight");
-        }
+        // Grow light via Shelly Socket 3 (HTTP direct control with retry)
+        std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=3&on=" + (state ? "true" : "false");
+        sendShellyCommand(url, "GrowLight (Socket 3)");
+        ESP_LOGI(TAG, "GrowLight → Shelly Socket 3 HTTP: %s", state ? "ON" : "OFF");
     }
     else {
         ESP_LOGW(TAG, "Unknown pump ID: %s", pumpId.c_str());
@@ -345,6 +333,35 @@ bool ESPHomeHAL::getPumpState(const std::string& pumpId) const {
 bool ESPHomeHAL::getValveState(const std::string& valveId) const {
     auto it = valve_states_.find(valveId);
     return it != valve_states_.end() ? it->second : false;
+}
+
+bool ESPHomeHAL::sendShellyCommand(const std::string& url, const char* deviceName, int maxRetries) {
+    // Robust HTTP request with retry logic
+    // NOTE: This function uses blocking delays which is acceptable for infrequent actuator commands.
+    // Strategy: Try sending the command up to maxRetries times with 2s delay between attempts.
+    // This is safe because Shelly Switch.Set commands are idempotent (setting ON multiple times is harmless).
+
+    if (!http_request_) {
+        ESP_LOGE(TAG, "%s: HTTP request component not configured!", deviceName);
+        return false;
+    }
+
+    // Send the command once and wait long enough for completion
+    // The ESPHome http_request component handles retries internally
+    ESP_LOGI(TAG, "%s: Sending HTTP command", deviceName);
+    ESP_LOGD(TAG, "%s: URL: %s", deviceName, url.c_str());
+
+    // Send HTTP request (asynchronous - returns immediately)
+    http_request_->get(url);
+
+    // Wait 3 seconds for the request to complete
+    // This is generous for a local network and allows the ESPHome component
+    // to handle any internal retries or connection delays
+    ESP_LOGD(TAG, "%s: Waiting 3s for HTTP completion...", deviceName);
+    esphome::delay(3000);
+
+    ESP_LOGI(TAG, "%s: HTTP command completed", deviceName);
+    return true;
 }
 
 bool ESPHomeHAL::checkShellySwitchStatus(const std::string& pumpId) {

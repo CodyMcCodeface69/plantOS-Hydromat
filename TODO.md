@@ -163,6 +163,8 @@ This document tracks tasks organized into three phases:
 - Sensor failure handling (use last valid reading, alert after 5 errors)
 - Emergency stop function (all actuators OFF + critical alert)
 - Error counters in CentralStatusLogger
+- More informative error logging (e.g. currently only PH_CORRECTION is logged, without outcome (e.g. Error - pH too low, needs manual intervention))
+- Better clearing of PSM Alerts, once action (e.g. pH correction) is completed
 
 **Files to modify**:
 - `components/plantos_controller/controller.h`: Add error tracking
@@ -179,7 +181,7 @@ This document tracks tasks organized into three phases:
 **Depends on**: MVP-1, MVP-2, MVP-3
 
 **Test Cases**:
-- [ ] Manual pH correction (web UI button)
+- ✅ Manual pH correction (web UI button)
 - [ ] Automatic pH correction trigger
 - [ ] Feeding sequence (all 3 pumps run sequentially)
 - ✅ Water fill (abort on high level sensor)

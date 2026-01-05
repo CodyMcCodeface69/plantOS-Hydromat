@@ -148,6 +148,123 @@ void CentralStatusLogger::clearAllAlerts() {
     activeAlerts.clear();
 }
 
+// ============================================================================
+// ENHANCED ALERT METHODS (for error handling)
+// ============================================================================
+
+void CentralStatusLogger::resolveAlert(const std::string& alertType) {
+    for (auto& alert : activeAlerts) {
+        if (alert.type == alertType && alert.status == AlertStatus::ACTIVE) {
+            alert.status = AlertStatus::RESOLVED;
+            alert.resolved_timestamp = esphome::millis();
+            ESP_LOGI("CentralStatusLogger", "[RESOLVED] %s (was active for %.1f seconds)",
+                     alertType.c_str(), alert.getActiveDurationSeconds());
+            return;
+        }
+    }
+}
+
+void CentralStatusLogger::resolveAlert(const char* alertType) {
+    resolveAlert(std::string(alertType));
+}
+
+void CentralStatusLogger::updateAlertWithContext(
+    const std::string& alertType,
+    const std::string& reason,
+    const std::string& root_cause,
+    const std::string& user_action,
+    const std::string& operation_context,
+    const std::string& recovery_plan,
+    uint8_t max_retries)
+{
+    // Check if alert already exists (update it)
+    for (auto& alert : activeAlerts) {
+        if (alert.type == alertType && alert.status == AlertStatus::ACTIVE) {
+            alert.reason = reason;
+            alert.root_cause = root_cause;
+            alert.user_action = user_action;
+            alert.operation_context = operation_context;
+            alert.recovery_plan = recovery_plan;
+            alert.max_retries = max_retries;
+            return;
+        }
+    }
+
+    // Create new alert with full context
+    Alert newAlert(alertType, reason, root_cause, user_action,
+                   operation_context, recovery_plan, max_retries);
+    activeAlerts.push_back(newAlert);
+
+    ESP_LOGE("CentralStatusLogger", "ALERT: %s - %s", alertType.c_str(), reason.c_str());
+    if (!root_cause.empty()) {
+        ESP_LOGI("CentralStatusLogger", "  Root Cause: %s", root_cause.c_str());
+    }
+    if (!user_action.empty()) {
+        ESP_LOGI("CentralStatusLogger", "  Next Steps: %s", user_action.c_str());
+    }
+    if (!operation_context.empty()) {
+        ESP_LOGI("CentralStatusLogger", "  Context: %s", operation_context.c_str());
+    }
+    if (!recovery_plan.empty()) {
+        ESP_LOGI("CentralStatusLogger", "  Recovery: %s", recovery_plan.c_str());
+    }
+}
+
+void CentralStatusLogger::incrementAlertRetry(const std::string& alertType) {
+    for (auto& alert : activeAlerts) {
+        if (alert.type == alertType && alert.status == AlertStatus::ACTIVE) {
+            alert.retry_count++;
+            ESP_LOGI("CentralStatusLogger", "Alert %s retry %u/%u",
+                     alertType.c_str(), alert.retry_count, alert.max_retries);
+            return;
+        }
+    }
+}
+
+std::vector<Alert> CentralStatusLogger::getActiveAlerts() const {
+    std::vector<Alert> active;
+    for (const auto& alert : activeAlerts) {
+        if (alert.status == AlertStatus::ACTIVE) {
+            active.push_back(alert);
+        }
+    }
+    return active;
+}
+
+std::vector<Alert> CentralStatusLogger::getResolvedAlerts() const {
+    std::vector<Alert> resolved;
+    for (const auto& alert : activeAlerts) {
+        if (alert.status == AlertStatus::RESOLVED) {
+            resolved.push_back(alert);
+        }
+    }
+    return resolved;
+}
+
+int CentralStatusLogger::getResolvedAlertCount() const {
+    int count = 0;
+    for (const auto& alert : activeAlerts) {
+        if (alert.status == AlertStatus::RESOLVED) {
+            count++;
+        }
+    }
+    return count;
+}
+
+void CentralStatusLogger::pruneResolvedAlerts(uint32_t max_age_ms) {
+    uint32_t now = esphome::millis();
+    activeAlerts.erase(
+        std::remove_if(activeAlerts.begin(), activeAlerts.end(),
+            [now, max_age_ms](const Alert& alert) {
+                if (alert.status == AlertStatus::RESOLVED) {
+                    uint32_t age = now - alert.resolved_timestamp;
+                    return age > max_age_ms;
+                }
+                return false;
+            }),
+        activeAlerts.end());
+}
+
 void CentralStatusLogger::updateIP(const std::string& ip) {
     currentIP = ip;
 }
@@ -509,12 +626,75 @@ void CentralStatusLogger::logStatus() {
 
     ESP_LOGI(TAG, "");
 
-    // Alert Summary
+    // Alert Summary - Active and Resolved Alerts
     ESP_LOGI(TAG, "--- ALERT STATUS ---");
-    if (hasActiveAlerts()) {
-        ESP_LOGI(TAG, "  Active Alerts: %d", getAlertCount());
+
+    // Get active and resolved alerts
+    std::vector<Alert> active = getActiveAlerts();
+    std::vector<Alert> resolved = getResolvedAlerts();
+
+    // Display active alerts with full context
+    if (!active.empty()) {
+        ESP_LOGI(TAG, "  Active Alerts: %zu", active.size());
+        ESP_LOGI(TAG, "");
+
+        for (size_t i = 0; i < active.size(); i++) {
+            const Alert& alert = active[i];
+
+            // ANSI Red: \033[31m, Reset: \033[0m
+            ESP_LOGE(TAG, "    \033[31m[ACTIVE #%zu] %s\033[0m", i + 1, alert.type.c_str());
+            ESP_LOGE(TAG, "      Brief: %s", alert.reason.c_str());
+            ESP_LOGE(TAG, "      Active for: %.1f seconds", alert.getActiveDurationSeconds());
+
+            // Display 4-part error context if available
+            if (!alert.root_cause.empty()) {
+                ESP_LOGE(TAG, "      Root Cause: %s", alert.root_cause.c_str());
+            }
+            if (!alert.user_action.empty()) {
+                ESP_LOGE(TAG, "      User Action: %s", alert.user_action.c_str());
+            }
+            if (!alert.operation_context.empty()) {
+                ESP_LOGE(TAG, "      Context: %s", alert.operation_context.c_str());
+            }
+            if (!alert.recovery_plan.empty()) {
+                ESP_LOGE(TAG, "      Recovery: %s", alert.recovery_plan.c_str());
+            }
+
+            // Display retry information if applicable
+            if (alert.max_retries > 0) {
+                ESP_LOGE(TAG, "      Retry: %u / %u attempts", alert.retry_count, alert.max_retries);
+            }
+
+            if (i < active.size() - 1) {
+                ESP_LOGI(TAG, "");
+            }
+        }
     } else {
-        ESP_LOGI(TAG, "  Status: ALL CLEAR");
+        ESP_LOGI(TAG, "  Active Alerts: 0 (ALL CLEAR)");
+    }
+
+    // Display resolved alerts as history
+    if (!resolved.empty()) {
+        ESP_LOGI(TAG, "");
+        ESP_LOGI(TAG, "  Resolved Alerts (History): %zu", resolved.size());
+        ESP_LOGI(TAG, "");
+
+        for (size_t i = 0; i < resolved.size(); i++) {
+            const Alert& alert = resolved[i];
+
+            // ANSI Green: \033[32m, Reset: \033[0m
+            ESP_LOGI(TAG, "    \033[32m[RESOLVED #%zu] %s\033[0m", i + 1, alert.type.c_str());
+            ESP_LOGI(TAG, "      Brief: %s", alert.reason.c_str());
+            ESP_LOGI(TAG, "      Was active for: %.1f seconds", alert.getActiveDurationSeconds());
+
+            // Calculate time since resolution
+            uint32_t time_since_resolved = (esphome::millis() - alert.resolved_timestamp) / 1000;
+            ESP_LOGI(TAG, "      Resolved %u seconds ago", time_since_resolved);
+
+            if (i < resolved.size() - 1) {
+                ESP_LOGI(TAG, "");
+            }
+        }
     }
 
     printSeparator('=');
@@ -554,15 +734,36 @@ void CentralStatusLogger::printAlertBanner() {
     printSeparator('*');
     printSeparator('*');
 
-    for (size_t i = 0; i < activeAlerts.size(); i++) {
-        const Alert& alert = activeAlerts[i];
+    // Get only active alerts (filter out resolved)
+    std::vector<Alert> active = getActiveAlerts();
+
+    for (size_t i = 0; i < active.size(); i++) {
+        const Alert& alert = active[i];
 
         ESP_LOGW(TAG, "");
         ESP_LOGW(TAG, "*** ALERT #%zu: %s", i + 1, alert.type.c_str());
-        ESP_LOGW(TAG, "*** Reason: %s", alert.reason.c_str());
+        ESP_LOGW(TAG, "*** Brief: %s", alert.reason.c_str());
+        ESP_LOGW(TAG, "*** Active for: %.1f seconds", alert.getActiveDurationSeconds());
 
-        uint32_t alertAge = (esphome::millis() - alert.timestamp) / 1000;
-        ESP_LOGW(TAG, "*** Active for: %u seconds", alertAge);
+        // Display 4-part error context if available
+        if (!alert.root_cause.empty()) {
+            ESP_LOGW(TAG, "***");
+            ESP_LOGW(TAG, "*** Root Cause: %s", alert.root_cause.c_str());
+        }
+        if (!alert.user_action.empty()) {
+            ESP_LOGW(TAG, "*** User Action: %s", alert.user_action.c_str());
+        }
+        if (!alert.operation_context.empty()) {
+            ESP_LOGW(TAG, "*** Context: %s", alert.operation_context.c_str());
+        }
+        if (!alert.recovery_plan.empty()) {
+            ESP_LOGW(TAG, "*** Recovery: %s", alert.recovery_plan.c_str());
+        }
+
+        // Display retry information if applicable
+        if (alert.max_retries > 0) {
+            ESP_LOGW(TAG, "*** Retry: %u / %u attempts", alert.retry_count, alert.max_retries);
+        }
     }
 
     ESP_LOGW(TAG, "");

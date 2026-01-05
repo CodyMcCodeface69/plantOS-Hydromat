@@ -47,6 +47,7 @@ CONF_420_MODE = 'enable_420_mode'
 CONF_NIGHT_MODE_ENABLED = 'night_mode_enabled'
 CONF_NIGHT_MODE_START_HOUR = 'night_mode_start_hour'
 CONF_NIGHT_MODE_END_HOUR = 'night_mode_end_hour'
+CONF_ENHANCED_ERROR_HANDLING = 'enhanced_error_handling'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -65,6 +66,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_NIGHT_MODE_ENABLED, default=False): cv.boolean,
     cv.Optional(CONF_NIGHT_MODE_START_HOUR, default=22): cv.int_range(min=0, max=23),
     cv.Optional(CONF_NIGHT_MODE_END_HOUR, default=8): cv.int_range(min=0, max=23),
+    cv.Optional(CONF_ENHANCED_ERROR_HANDLING, default=False): cv.boolean,
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -127,3 +129,7 @@ async def to_code(config):
         config[CONF_NIGHT_MODE_START_HOUR],
         config[CONF_NIGHT_MODE_END_HOUR]
     ))
+
+    # Enable enhanced error handling compile flag if configured
+    if config[CONF_ENHANCED_ERROR_HANDLING]:
+        cg.add_define("PLANTOS_ENHANCED_ERROR_HANDLING")

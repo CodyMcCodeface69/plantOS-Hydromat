@@ -315,6 +315,45 @@ public:
                   uint32_t& outMaxDurationSeconds) const;
 
     // ========================================================================
+    // DURATION QUERY API (for enhanced error handling)
+    // ========================================================================
+
+    /**
+     * Query the configured maximum duration for an actuator
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @return Maximum duration in seconds (0 if no limit configured)
+     *
+     * This allows the controller to query what the maximum allowed duration is
+     * before making a request, enabling adaptive duration adjustment.
+     *
+     * EXAMPLE:
+     * uint32_t max_sec = safetyGate.getMaxDurationSeconds("AcidPump");
+     * // Returns 30 if max configured as 30s, or 0 if no limit
+     */
+    uint32_t getMaxDurationSeconds(const char* actuatorID) const;
+
+    /**
+     * Calculate nearest legal duration within safety limits
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @param requested_duration_sec Requested duration in seconds
+     * @return Adapted duration that fits within max limit (0 if cannot adapt)
+     *
+     * If requested duration exceeds configured max, returns the max duration.
+     * If no max is configured, returns requested duration unchanged.
+     * Returns 0 if actuator doesn't exist or has 0 max (infinite).
+     *
+     * CRITICAL: This is how controller adapts to duration violations!
+     *
+     * EXAMPLE:
+     * uint32_t adapted = safetyGate->getAdaptedDuration("AcidPump", 45);
+     * // Returns 30 if max is 30 seconds
+     * // Returns 45 if max is 0 (no limit) or max >= 45
+     */
+    uint32_t getAdaptedDuration(const char* actuatorID, uint32_t requested_duration_sec) const;
+
+    // ========================================================================
     // SOFT-START / SOFT-STOP METHODS
     // ========================================================================
 

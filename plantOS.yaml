@@ -1382,6 +1382,12 @@ plantos_controller:
   enable_420_mode: true         # Enable 420 easter egg at 4:20 AM/PM (default: true)
                                 # When enabled, displays ASCII art in status logs at 4:20
 
+  # Enhanced Error Handling Configuration
+  enhanced_error_handling: true # Enable enhanced error handling with retry logic (default: false)
+                                # When enabled: duration adaptation, sensor retry with exponential
+                                # backoff, comprehensive 4-part error messages, and RESOLVED state
+                                # tracking. Disable for backward-compatible legacy behavior.
+
 ################################################################################
 # Time Logger: Periodic Time Logging
 #

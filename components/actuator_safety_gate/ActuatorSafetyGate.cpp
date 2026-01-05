@@ -432,6 +432,42 @@ bool ActuatorSafetyGate::getStats(const char* actuatorID,
 }
 
 // ============================================================================
+// DURATION QUERY API (for enhanced error handling)
+// ============================================================================
+
+uint32_t ActuatorSafetyGate::getMaxDurationSeconds(const char* actuatorID) const {
+    if (actuatorID == nullptr || strlen(actuatorID) == 0) {
+        return 0;
+    }
+
+    std::string id(actuatorID);
+    auto it = actuators_.find(id);
+    if (it != actuators_.end()) {
+        return it->second.maxDuration / 1000;  // Convert ms to seconds
+    }
+    return 0;  // Not configured
+}
+
+uint32_t ActuatorSafetyGate::getAdaptedDuration(const char* actuatorID, uint32_t requested_duration_sec) const {
+    uint32_t max_duration_sec = getMaxDurationSeconds(actuatorID);
+
+    // No max configured - return requested duration
+    if (max_duration_sec == 0) {
+        return requested_duration_sec;
+    }
+
+    // Requested duration within limits - return as-is
+    if (requested_duration_sec <= max_duration_sec) {
+        return requested_duration_sec;
+    }
+
+    // Requested exceeds limit - return max allowed
+    ESP_LOGW(TAG, "Adapting duration for %s: requested %us > max %us, using %us",
+             actuatorID, requested_duration_sec, max_duration_sec, max_duration_sec);
+    return max_duration_sec;
+}
+
+// ============================================================================
 // SOFT-START / SOFT-STOP METHODS
 // ============================================================================
 

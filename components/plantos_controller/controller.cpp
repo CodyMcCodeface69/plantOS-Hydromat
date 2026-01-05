@@ -708,12 +708,41 @@ void PlantOSController::handleError() {
 
     // Wait 5 seconds to display error
     if (elapsed >= ERROR_DURATION) {
-        // Clear alerts before transitioning back to INIT
-        status_logger_.clearAlert("PH_CRITICAL");
-        status_logger_.clearAlert("PH_MAX_ATTEMPTS");
-        status_logger_.clearAlert("SENSOR_CRITICAL");
+        if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            // Resolve all active alerts (keep history for debugging)
+            ESP_LOGI(TAG, "Error timeout - resolving alerts and restarting to INIT");
 
-        ESP_LOGI(TAG, "Error timeout - clearing alerts and restarting to INIT");
+            // Original alerts
+            status_logger_.resolveAlert("PH_CRITICAL");
+            status_logger_.resolveAlert("PH_MAX_ATTEMPTS");
+            status_logger_.resolveAlert("SENSOR_CRITICAL");
+            status_logger_.resolveAlert("PH_SENSOR_CRITICAL");
+
+            // New alerts from Phase 7
+            status_logger_.resolveAlert("NO_PH_READINGS");
+            status_logger_.resolveAlert("PUMP_REJECTION_ACID");
+            status_logger_.resolveAlert("PUMP_REJECTION_NUTRIENT_A");
+            status_logger_.resolveAlert("PUMP_REJECTION_NUTRIENT_B");
+            status_logger_.resolveAlert("PUMP_REJECTION_NUTRIENT_C");
+            status_logger_.resolveAlert("PUMP_REJECTION_WATER_VALVE");
+            status_logger_.resolveAlert("PUMP_REJECTION_WASTEWATER");
+            status_logger_.resolveAlert("PH_SENSOR_HARDWARE_FAILURE");
+            status_logger_.resolveAlert("CALIBRATION_FAILED_MID");
+            status_logger_.resolveAlert("CALIBRATION_FAILED_LOW");
+            status_logger_.resolveAlert("CALIBRATION_FAILED_HIGH");
+            status_logger_.resolveAlert("HARDWARE_HAL_MISSING");
+
+            // Hardware detection alerts from Phase 8
+            status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_HIGH");
+            status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_LOW");
+        } else {
+            // Legacy: clear alerts (backward compatible)
+            ESP_LOGI(TAG, "Error timeout - clearing alerts and restarting to INIT");
+            status_logger_.clearAlert("PH_CRITICAL");
+            status_logger_.clearAlert("PH_MAX_ATTEMPTS");
+            status_logger_.resolveAlert("SENSOR_CRITICAL");
+        }
+
         transitionTo(ControllerState::INIT);
     }
 }
@@ -743,6 +772,13 @@ void PlantOSController::handlePhMeasuring() {
         state_counter_ = reading_interval;
 
         if (hasPhValue()) {
+            // Sensor has value - check if recovering from failures
+            if (ENHANCED_ERROR_HANDLING_ENABLED && sensor_retry_state_.consecutive_failures > 0) {
+                ESP_LOGI(TAG, "pH sensor recovered after %u failures", sensor_retry_state_.consecutive_failures);
+                sensor_retry_state_.reset();
+                status_logger_.resolveAlert("PH_SENSOR_CRITICAL");
+            }
+
             float ph = readPH();
             ph_readings_.push_back(ph);
             ESP_LOGI(TAG, "pH reading #%d: %.2f", ph_readings_.size(), ph);
@@ -779,7 +815,62 @@ void PlantOSController::handlePhMeasuring() {
                 }
             }
         } else {
-            ESP_LOGW(TAG, "pH sensor has no value - waiting for reading");
+            // Sensor has no value - implement retry logic with exponential backoff
+            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                sensor_retry_state_.recordFailure();
+
+                if (!sensor_retry_state_.shouldRetry()) {
+                    // Max retries exceeded - abort with comprehensive error
+                    ESP_LOGE(TAG, "pH sensor not responding after %u attempts - aborting measurement",
+                             sensor_retry_state_.consecutive_failures);
+
+                    status_logger_.updateAlertWithContext(
+                        "PH_SENSOR_CRITICAL",
+                        "pH sensor not responding after " + std::to_string(sensor_retry_state_.consecutive_failures) + " attempts",
+                        "Sensor has no value: hasPhValue() returned false for " +
+                            std::to_string(sensor_retry_state_.consecutive_failures) + " consecutive readings",
+                        "Check sensor wiring (UART TX=GPIO20, RX=GPIO21), verify sensor power (5V), try sensor calibration from web UI",
+                        "pH measurement phase, " + std::to_string(ph_readings_.size()) +
+                            " readings collected before failure",
+                        "Aborting to IDLE. System will retry pH correction on next cycle.",
+                        0
+                    );
+
+                    sensor_retry_state_.reset();
+
+                    // Clear any PH_CRITICAL event since measurement failed
+                    if (psm_ && psm_->hasEvent()) {
+                        esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+                        std::string eventID(event.eventID);
+                        if (eventID == "PH_CRITICAL") {
+                            psm_->clearEvent();
+                        }
+                    }
+
+                    transitionTo(ControllerState::IDLE);
+                    return;
+                }
+
+                // Check if backoff period is complete
+                uint32_t current_time = hal_ ? hal_->getSystemTime() : 0;
+                if (!sensor_retry_state_.isBackoffComplete(current_time)) {
+                    // Still in backoff - wait
+                    uint32_t wait_time = (current_time - sensor_retry_state_.last_failure_time) / 1000;
+                    uint32_t backoff_sec = sensor_retry_state_.backoff_delay_ms / 1000;
+                    ESP_LOGD(TAG, "Sensor backoff: waiting %u/%u seconds",
+                             wait_time, backoff_sec);
+                    return;
+                }
+
+                // Backoff complete - ready for retry
+                ESP_LOGW(TAG, "pH sensor retry attempt %u/%u (backoff: %u ms)",
+                         sensor_retry_state_.consecutive_failures,
+                         sensor_retry_state_.MAX_SENSOR_RETRIES,
+                         sensor_retry_state_.backoff_delay_ms);
+            } else {
+                // Legacy behavior - just log warning
+                ESP_LOGW(TAG, "pH sensor has no value - waiting for reading");
+            }
         }
     }
 
@@ -791,6 +882,17 @@ void PlantOSController::handlePhMeasuring() {
     // Measurement period complete - calculate robust average
     if (ph_readings_.empty()) {
         ESP_LOGE(TAG, "No pH readings collected - aborting correction");
+
+        // Set comprehensive alert before ERROR transition
+        status_logger_.updateAlertWithContext(
+            "NO_PH_READINGS",
+            "No pH readings collected during 5-minute measurement phase",
+            "Sensor returned no values: hasPhValue() was false for entire measurement period",
+            "Check pH sensor UART connection (TX=GPIO20, RX=GPIO21), verify sensor power (5V), try sensor calibration from web UI",
+            "pH correction aborted during measurement phase after 5 minutes",
+            "System will return to IDLE and can retry on next cycle",
+            0
+        );
 
         // Clear any PH_CRITICAL event since measurement failed
         if (psm_ && psm_->hasEvent()) {
@@ -835,6 +937,17 @@ void PlantOSController::handlePhCalculating() {
     // Check if pH is within target range
     if (ph_current_ >= target_min && ph_current_ <= target_max) {
         ESP_LOGI(TAG, "pH within target range - no correction needed");
+
+        // Record successful completion of pH correction operation
+        recordOperationStep("pH_CORRECTION_SUCCESS");
+
+        // Resolve any active pH-related alerts
+        if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            status_logger_.resolveAlert("PH_CRITICAL");
+            status_logger_.resolveAlert("NO_PH_READINGS");
+            status_logger_.resolveAlert("PUMP_REJECTION_ACID");
+            status_logger_.resolveAlert("PH_SENSOR_CRITICAL");
+        }
 
         // Clear PSM event - pH correction complete
         if (psm_) {
@@ -908,10 +1021,23 @@ void PlantOSController::handlePhInjecting() {
             ESP_LOGI(TAG, "Air pump active for mixing during injection");
         }
 
-        // Request acid pump via SafetyGate
-        if (!requestPump(ACID_PUMP, true, duration_sec)) {
-            ESP_LOGE(TAG, "Acid pump rejected by SafetyGate - aborting");
+        // Request acid pump via SafetyGate with adaptive duration (will auto-adapt if needed)
+        if (!requestPumpAdaptive(ACID_PUMP, true, duration_sec, false)) {
+            ESP_LOGE(TAG, "Acid pump rejected by SafetyGate even after adaptation - aborting");
             requestPump(AIR_PUMP, false); // Stop air pump too (if it was started)
+
+            // Set comprehensive alert before ERROR transition
+            status_logger_.updateAlertWithContext(
+                "PUMP_REJECTION_ACID",
+                "Acid pump rejected by SafetyGate",
+                "SafetyGate rejected acid pump command even after duration adaptation",
+                "Check acid pump wiring, verify pump not stuck, check SafetyGate max duration config",
+                "pH correction attempt " + std::to_string(ph_attempt_count_ + 1) + "/" +
+                    std::to_string(MAX_PH_ATTEMPTS) + ", injection phase",
+                "Aborting pH correction. Will retry on next cycle.",
+                0
+            );
+
             transitionTo(ControllerState::ERROR);
             return;
         }
@@ -996,6 +1122,18 @@ void PlantOSController::handlePhCalibrating() {
     if (!ph_sensor_->is_sensor_ready()) {
         ESP_LOGE(TAG, "pH sensor hardware not responding - calibration aborted");
         ESP_LOGE(TAG, "Check UART connection and power to sensor");
+
+        // Set comprehensive alert before ERROR transition
+        status_logger_.updateAlertWithContext(
+            "PH_SENSOR_HARDWARE_FAILURE",
+            "pH sensor hardware not responding",
+            "Sensor readiness check failed: is_sensor_ready() returned false",
+            "Check UART connection (TX=GPIO20, RX=GPIO21), verify sensor power (5V), inspect sensor LED status",
+            "Calibration aborted during initialization",
+            "Fix hardware connection and retry calibration from web UI",
+            0
+        );
+
         // Ensure verbose mode is off even on error
         if (ph_sensor_) {
             ph_sensor_->set_verbose(false);
@@ -1105,6 +1243,18 @@ void PlantOSController::handlePhCalibrating() {
             ESP_LOGI(TAG, "Sending mid-point calibration command at pH 7.00...");
             if (!hal_->startPhCalibration(7.00f, 0)) {  // 0 = mid
                 ESP_LOGE(TAG, "MID: Calibration command FAILED");
+
+                // Set comprehensive alert before ERROR transition
+                status_logger_.updateAlertWithContext(
+                    "CALIBRATION_FAILED_MID",
+                    "Mid-point calibration command failed (pH 7.00)",
+                    "HAL calibration command returned false for mid-point (pH 7.00)",
+                    "Verify pH sensor in pH 7.00 buffer solution, check sensor stability, retry calibration",
+                    "3-point calibration: Step 1 of 3 (mid-point) failed",
+                    "Calibration aborted. Verify buffer solution and sensor condition, then retry.",
+                    0
+                );
+
                 // Ensure verbose mode is off even on error
                 if (ph_sensor_) {
                     ph_sensor_->set_verbose(false);
@@ -1216,6 +1366,18 @@ void PlantOSController::handlePhCalibrating() {
             ESP_LOGI(TAG, "Sending low-point calibration command at pH 4.00...");
             if (!hal_->startPhCalibration(4.00f, 1)) {  // 1 = low
                 ESP_LOGE(TAG, "LOW: Calibration command FAILED");
+
+                // Set comprehensive alert before ERROR transition
+                status_logger_.updateAlertWithContext(
+                    "CALIBRATION_FAILED_LOW",
+                    "Low-point calibration command failed (pH 4.00)",
+                    "HAL calibration command returned false for low-point (pH 4.00)",
+                    "Verify pH sensor in pH 4.00 buffer solution, check sensor stability, retry calibration",
+                    "3-point calibration: Step 2 of 3 (low-point) failed",
+                    "Calibration aborted. Verify buffer solution and sensor condition, then retry.",
+                    0
+                );
+
                 // Ensure verbose mode is off even on error
                 if (ph_sensor_) {
                     ph_sensor_->set_verbose(false);
@@ -1327,6 +1489,18 @@ void PlantOSController::handlePhCalibrating() {
             ESP_LOGI(TAG, "Sending high-point calibration command at pH 10.01...");
             if (!hal_->startPhCalibration(10.01f, 2)) {  // 2 = high
                 ESP_LOGE(TAG, "HIGH: Calibration command FAILED");
+
+                // Set comprehensive alert before ERROR transition
+                status_logger_.updateAlertWithContext(
+                    "CALIBRATION_FAILED_HIGH",
+                    "High-point calibration command failed (pH 10.01)",
+                    "HAL calibration command returned false for high-point (pH 10.01)",
+                    "Verify pH sensor in pH 10.01 buffer solution, check sensor stability, retry calibration",
+                    "3-point calibration: Step 3 of 3 (high-point) failed",
+                    "Calibration aborted. Verify buffer solution and sensor condition, then retry.",
+                    0
+                );
+
                 // Ensure verbose mode is off even on error
                 if (ph_sensor_) {
                     ph_sensor_->set_verbose(false);
@@ -1487,22 +1661,32 @@ void PlantOSController::handleFeeding() {
         }
 
         if (current_duration_ms > 0) {
-            if (safety_gate_) {
-                uint32_t duration_sec = (current_duration_ms + 999) / 1000;  // Round up to seconds
-                bool approved = safety_gate_->executeCommand(pump_name, true, duration_sec);
+            uint32_t duration_sec = (current_duration_ms + 999) / 1000;  // Round up to seconds
 
-                if (!approved) {
-                    ESP_LOGE(TAG, "%s command rejected by SafetyGate!", pump_name);
+            // Request pump with adaptive duration (will auto-adapt if needed)
+            if (!requestPumpAdaptive(pump_name, true, duration_sec, false)) {
+                ESP_LOGE(TAG, "%s command rejected by SafetyGate even after adaptation!", pump_name);
 
-                    // Clear PSM event - feeding aborted due to safety rejection
-                    if (psm_) {
-                        psm_->clearEvent();
-                    }
+                // Set comprehensive alert before aborting
+                std::string pump_id_str(pump_name);
+                status_logger_.updateAlertWithContext(
+                    "PUMP_REJECTION_" + pump_id_str,
+                    std::string(pump_name) + " rejected by SafetyGate",
+                    "SafetyGate rejected " + pump_id_str + " command even after duration adaptation",
+                    "Check " + pump_id_str + " wiring, verify pump not stuck, check SafetyGate max duration config",
+                    "Feeding sequence: dosing " + std::to_string(dose_ml) + " mL",
+                    "Aborting feeding sequence. Manual intervention required.",
+                    0
+                );
 
-                    // Abort feeding sequence
-                    transitionTo(ControllerState::IDLE);
-                    return;
+                // Clear PSM event - feeding aborted due to safety rejection
+                if (psm_) {
+                    psm_->clearEvent();
                 }
+
+                // Abort feeding sequence
+                transitionTo(ControllerState::IDLE);
+                return;
             }
 
             ESP_LOGI(TAG, "%s ON for %.2f mL (%d ms)", pump_name, dose_ml, current_duration_ms);
@@ -1663,6 +1847,19 @@ void PlantOSController::handleWaterFilling() {
             if (!approved) {
                 ESP_LOGE(TAG, "[WATER_FILLING] SafetyGate rejected WaterValve command");
 
+                // Set comprehensive alert
+                if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                    status_logger_.updateAlertWithContext(
+                        "PUMP_REJECTION_WATER_VALVE",
+                        "Water valve rejected by SafetyGate",
+                        "SafetyGate rejected water valve command",
+                        "Check water valve wiring, verify valve not stuck, check SafetyGate max duration config",
+                        "Water filling operation aborted",
+                        "Manual intervention required. Check valve hardware.",
+                        0
+                    );
+                }
+
                 // Clear PSM event - fill aborted
                 if (psm_) {
                     psm_->clearEvent();
@@ -1691,6 +1888,12 @@ void PlantOSController::handleWaterFilling() {
             // Close water valve
             if (safety_gate_) {
                 safety_gate_->executeCommand(WATER_VALVE, false, 0);
+            }
+
+            // Resolve any active water-related alerts
+            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                status_logger_.resolveAlert("PUMP_REJECTION_WATER_VALVE");
+                status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_HIGH");
             }
 
             // Clear PSM event
@@ -1740,6 +1943,12 @@ void PlantOSController::handleWaterFilling() {
         static bool no_sensor_warning_logged = false;
         if (!no_sensor_warning_logged) {
             ESP_LOGW(TAG, "[WATER_FILLING] Water level sensors not available - using 30s timeout");
+
+            // Alert about missing sensors (informational)
+            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                ESP_LOGD(TAG, "Water level sensors not configured - operation will use timeout fallback");
+            }
+
             no_sensor_warning_logged = true;
         }
     }
@@ -1761,6 +1970,19 @@ void PlantOSController::handleWaterFilling() {
         // Alert if sensors were expected but didn't trigger
         if (hal_->hasWaterLevelSensors()) {
             ESP_LOGE(TAG, "[WATER_FILLING] HIGH sensor never triggered - possible sensor failure or low water pressure");
+
+            // Set comprehensive alert for sensor failure
+            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                status_logger_.updateAlertWithContext(
+                    "HARDWARE_WATER_SENSOR_HIGH",
+                    "HIGH water level sensor never triggered during fill",
+                    "Sensor did not trigger after 30s timeout - possible sensor failure or disconnection",
+                    "Check HIGH water sensor wiring (GPIO10), verify sensor power, test sensor with multimeter",
+                    "Water filling completed via timeout (30s) instead of sensor trigger",
+                    "Tank may be under-filled or sensor may be faulty. Manual verification recommended.",
+                    0
+                );
+            }
         }
 
         valve_command_sent = false;  // Reset for next fill cycle
@@ -1833,6 +2055,19 @@ void PlantOSController::handleWaterEmptying() {
             if (!approved) {
                 ESP_LOGE(TAG, "[WATER_EMPTYING] SafetyGate rejected WastewaterPump command");
 
+                // Set comprehensive alert
+                if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                    status_logger_.updateAlertWithContext(
+                        "PUMP_REJECTION_WASTEWATER",
+                        "Wastewater pump rejected by SafetyGate",
+                        "SafetyGate rejected wastewater pump command",
+                        "Check wastewater pump wiring, verify pump not stuck, check SafetyGate max duration config",
+                        "Water emptying operation aborted",
+                        "Manual intervention required. Check pump hardware.",
+                        0
+                    );
+                }
+
                 // Clear PSM event - drain aborted
                 if (psm_) {
                     psm_->clearEvent();
@@ -1867,6 +2102,12 @@ void PlantOSController::handleWaterEmptying() {
             // Stop wastewater pump
             if (safety_gate_) {
                 safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
+            }
+
+            // Resolve any active water-related alerts
+            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                status_logger_.resolveAlert("PUMP_REJECTION_WASTEWATER");
+                status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_LOW");
             }
 
             // Clear PSM event
@@ -1922,6 +2163,19 @@ void PlantOSController::handleWaterEmptying() {
         // Alert if sensors were expected but didn't trigger
         if (hal_->hasWaterLevelSensors()) {
             ESP_LOGE(TAG, "[WATER_EMPTYING] LOW sensor never cleared - possible sensor failure or clog");
+
+            // Set comprehensive alert for sensor failure
+            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                status_logger_.updateAlertWithContext(
+                    "HARDWARE_WATER_SENSOR_LOW",
+                    "LOW water level sensor never cleared during drain",
+                    "Sensor did not clear after 30s timeout - possible sensor failure, disconnection, or clog",
+                    "Check LOW water sensor wiring (GPIO11), verify sensor power, test sensor, check for clogs",
+                    "Water emptying completed via timeout (30s) instead of sensor trigger",
+                    "Tank may not be fully drained or sensor may be faulty. Manual verification recommended.",
+                    0
+                );
+            }
         }
 
         pump_command_sent = false;  // Reset for next drain cycle
@@ -1948,6 +2202,18 @@ void PlantOSController::handlePhProcessing() {
 
     if (!hal_) {
         ESP_LOGE(TAG, "HAL not configured - cannot process pH");
+
+        // Set comprehensive alert before ERROR transition
+        status_logger_.updateAlertWithContext(
+            "HARDWARE_HAL_MISSING",
+            "HAL not configured",
+            "Hardware Abstraction Layer pointer is null - dependency injection failed",
+            "Critical system error - check plantOS.yaml configuration and ESPHome logs",
+            "System initialization incomplete",
+            "System cannot operate without HAL. Restart required.",
+            0
+        );
+
         transitionTo(ControllerState::ERROR);
         return;
     }
@@ -2102,6 +2368,9 @@ void PlantOSController::startPhCorrection() {
     ph_readings_.clear();
     ph_current_ = 0.0f;
     ph_dose_duration_ms_ = 0;
+
+    // Initialize operation retry framework (max 3 retries for pH correction)
+    initOperationRetry("PH_CORRECTION", 3);
 
     // Log event for crash recovery persistence
     if (psm_) {
@@ -2457,6 +2726,97 @@ bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint3
     return safety_gate_->executeCommand(pumpId.c_str(), state, durationSec, forceExecute);
 }
 
+bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool state, uint32_t requestedDurationSec, bool forceExecute) {
+    // If enhanced error handling is disabled, use legacy behavior
+    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
+        return requestPump(pumpId, state, requestedDurationSec, forceExecute);
+    }
+
+    // Try original request first
+    bool approved = safety_gate_->executeCommand(pumpId.c_str(), state, requestedDurationSec, forceExecute);
+    if (approved) {
+        // Success - verbose log if enabled
+        if (status_logger_.isVerboseMode()) {
+            ESP_LOGI(TAG, "[VERBOSE] Actuator command approved: %s → %s for %u seconds",
+                     pumpId.c_str(), state ? "ON" : "OFF", requestedDurationSec);
+        }
+        return true;
+    }
+
+    // Request was rejected - analyze rejection type
+    bool current_state = safety_gate_->getState(pumpId.c_str());
+
+    // Check for debouncing rejection (actuator already in requested state)
+    if (current_state == state) {
+        // Debouncing rejection - NO RETRY (already executing)
+        ESP_LOGD(TAG, "%s debouncing rejection - already %s (no retry)",
+                 pumpId.c_str(), state ? "ON" : "OFF");
+        return false;
+    }
+
+    // Duration violation - TRY TO ADAPT
+    if (state && requestedDurationSec > 0) {
+        uint32_t adapted_duration = safety_gate_->getAdaptedDuration(pumpId.c_str(), requestedDurationSec);
+
+        // Check if adaptation is possible
+        if (adapted_duration > 0 && adapted_duration < requestedDurationSec) {
+            // Duration can be adapted - log comprehensive error with adaptation
+            status_logger_.updateAlertWithContext(
+                "DURATION_ADAPTED_" + pumpId,
+                "Duration adapted to " + std::to_string(adapted_duration) + "s",
+                "SafetyGate rejected: Duration " + std::to_string(requestedDurationSec) +
+                    "s exceeds max " + std::to_string(adapted_duration) + "s",
+                "System adapted duration automatically. Consider increasing max duration in config or reducing dose.",
+                retry_state_.getContextString(),
+                "Retrying with adapted duration " + std::to_string(adapted_duration) + "s",
+                0
+            );
+
+            // Retry with adapted duration
+            approved = safety_gate_->executeCommand(pumpId.c_str(), state, adapted_duration, forceExecute);
+
+            if (approved) {
+                // Adaptation successful - mark alert as resolved
+                ESP_LOGI(TAG, "%s duration adapted successfully: %us → %us",
+                         pumpId.c_str(), requestedDurationSec, adapted_duration);
+                status_logger_.resolveAlert("DURATION_ADAPTED_" + pumpId);
+                return true;
+            } else {
+                // Even adapted duration was rejected (should not happen)
+                ESP_LOGE(TAG, "%s rejected even after adaptation to %us",
+                         pumpId.c_str(), adapted_duration);
+            }
+        }
+    }
+
+    // Could not adapt or adaptation failed - comprehensive error
+    std::string rejection_reason = "SafetyGate rejected " + pumpId + " command";
+    if (state && requestedDurationSec > 0) {
+        uint32_t max_duration = safety_gate_->getMaxDurationSeconds(pumpId.c_str());
+        if (max_duration > 0 && requestedDurationSec > max_duration) {
+            rejection_reason += " (duration " + std::to_string(requestedDurationSec) +
+                              "s exceeds max " + std::to_string(max_duration) + "s)";
+        } else {
+            rejection_reason += " (unknown reason - check SafetyGate logs)";
+        }
+    } else {
+        rejection_reason += " (turn-off command or zero duration)";
+    }
+
+    status_logger_.updateAlertWithContext(
+        "SAFETY_GATE_REJECT_" + pumpId,
+        rejection_reason,
+        "SafetyGate rejected command: " + pumpId + " " + (state ? "ON" : "OFF") +
+            " for " + std::to_string(requestedDurationSec) + "s",
+        "Check SafetyGate configuration, verify pump is not stuck, check duration limits in plantOS.yaml",
+        retry_state_.getContextString(),
+        "Operation aborted. Manual intervention may be required.",
+        0
+    );
+
+    return false;
+}
+
 bool PlantOSController::requestValve(const std::string& valveId, bool state, uint32_t durationSec) {
     if (!safety_gate_) {
         ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", valveId.c_str());
@@ -2697,6 +3057,73 @@ bool PlantOSController::isNightModeHours() const {
         // In night mode if: hour >= start AND hour < end
         return (current_hour >= night_mode_start_hour_) && (current_hour < night_mode_end_hour_);
     }
+}
+
+// ============================================================================
+// Hardware Detection and Monitoring
+// ============================================================================
+
+void PlantOSController::checkHardwareStatus() {
+    if (!ENHANCED_ERROR_HANDLING_ENABLED || !hal_) {
+        return;
+    }
+
+    // Check temperature sensor availability
+    if (!hal_->hasTemperature()) {
+        // Temperature sensor not configured - this is informational only
+        ESP_LOGD(TAG, "Temperature sensor not configured");
+    } else {
+        // Temperature sensor is configured - check if it's responding
+        // We'll detect failures when trying to use it during operations
+    }
+
+    // Water level sensors are checked during WATER_FILLING and WATER_EMPTYING operations
+    // We don't need to check them here since they're only used during those specific states
+}
+
+// ============================================================================
+// Operation Retry Framework Helpers
+// ============================================================================
+
+void PlantOSController::initOperationRetry(const std::string& operation_name, uint8_t max_retries) {
+    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
+        return;
+    }
+
+    retry_state_.reset(operation_name, max_retries);
+    ESP_LOGI(TAG, "Operation retry initialized: %s (max retries: %u)",
+             operation_name.c_str(), max_retries);
+}
+
+bool PlantOSController::canRetryOperation() {
+    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
+        return false;
+    }
+
+    return retry_state_.canRetry();
+}
+
+void PlantOSController::recordOperationStep(const std::string& step_name) {
+    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
+        return;
+    }
+
+    retry_state_.completed_steps.push_back(step_name);
+    ESP_LOGD(TAG, "Operation step completed: %s", step_name.c_str());
+}
+
+void PlantOSController::retryOperation() {
+    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
+        return;
+    }
+
+    retry_state_.incrementRetry();
+
+    ESP_LOGW(TAG, "Retrying operation '%s': attempt %u/%u (backoff: %u ms)",
+             retry_state_.operation_name.c_str(),
+             retry_state_.retry_count + 1,
+             retry_state_.max_retries,
+             retry_state_.backoff_delay_ms);
 }
 
 } // namespace plantos_controller

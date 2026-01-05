@@ -539,6 +539,127 @@ private:
     static constexpr float PH_TARGET_MAX = 6.5f;
     static constexpr uint32_t PH_MAX_ITERATIONS = 5;
 
+    // ========================================================================
+    // ENHANCED ERROR HANDLING & RETRY LOGIC
+    // ========================================================================
+
+    /**
+     * OperationRetryState - Tracks retry attempts for current operation
+     *
+     * This structure is reset at the start of each major operation (pH correction,
+     * feeding, water operations) and tracks retry attempts during that operation.
+     */
+    struct OperationRetryState {
+        std::string operation_name;      // "pH_CORRECTION", "FEEDING_PUMP_A", etc.
+        uint8_t retry_count;             // Current retry attempt (0 = first try)
+        uint8_t max_retries;             // Maximum retries allowed
+        uint32_t last_retry_time;        // millis() of last retry attempt
+        uint32_t backoff_delay_ms;       // Current backoff delay
+
+        // Track what completed successfully for context
+        std::vector<std::string> completed_steps;  // e.g., ["NutrientPumpA", "NutrientPumpB"]
+
+        OperationRetryState()
+            : operation_name(""), retry_count(0), max_retries(3),
+              last_retry_time(0), backoff_delay_ms(0) {}
+
+        void reset(const std::string& op_name, uint8_t max_retry = 3) {
+            operation_name = op_name;
+            retry_count = 0;
+            max_retries = max_retry;
+            last_retry_time = 0;
+            backoff_delay_ms = 1000;  // Start with 1 second
+            completed_steps.clear();
+        }
+
+        bool canRetry() const {
+            return retry_count < max_retries;
+        }
+
+        void incrementRetry() {
+            retry_count++;
+            last_retry_time = esphome::millis();
+            // Exponential backoff: 1s, 2s, 4s, 8s...
+            backoff_delay_ms = std::min(static_cast<uint32_t>(backoff_delay_ms * 2), static_cast<uint32_t>(10000));  // Cap at 10s
+        }
+
+        bool isBackoffComplete(uint32_t current_time) const {
+            if (retry_count == 0) return true;  // First try, no backoff
+            return (current_time - last_retry_time) >= backoff_delay_ms;
+        }
+
+        std::string getContextString() const {
+            std::string context = operation_name;
+            context += " (attempt " + std::to_string(retry_count + 1) + "/" + std::to_string(max_retries + 1) + ")";
+            if (!completed_steps.empty()) {
+                context += ", completed: [";
+                for (size_t i = 0; i < completed_steps.size(); i++) {
+                    if (i > 0) context += ", ";
+                    context += completed_steps[i];
+                }
+                context += "]";
+            }
+            return context;
+        }
+    };
+
+    // Current retry state for active operation
+    OperationRetryState retry_state_;
+
+    /**
+     * SensorRetryState - Tracks consecutive sensor read failures
+     *
+     * Separate from operation retry to allow faster retry cycles for sensor failures.
+     */
+    struct SensorRetryState {
+        uint8_t consecutive_failures;    // Consecutive sensor read failures
+        uint32_t last_failure_time;      // millis() of last failure
+        uint32_t backoff_delay_ms;       // Current backoff delay
+        static constexpr uint8_t MAX_SENSOR_RETRIES = 5;
+
+        SensorRetryState()
+            : consecutive_failures(0), last_failure_time(0), backoff_delay_ms(5000) {}
+
+        void recordFailure() {
+            consecutive_failures++;
+            last_failure_time = esphome::millis();
+            // Exponential backoff: 5s, 10s, 15s
+            backoff_delay_ms = std::min(static_cast<uint32_t>(5000 + (consecutive_failures * 5000)), static_cast<uint32_t>(15000));
+        }
+
+        void reset() {
+            consecutive_failures = 0;
+            last_failure_time = 0;
+            backoff_delay_ms = 5000;
+        }
+
+        bool shouldRetry() const {
+            return consecutive_failures < MAX_SENSOR_RETRIES;
+        }
+
+        bool isBackoffComplete(uint32_t current_time) const {
+            if (consecutive_failures == 0) return true;
+            return (current_time - last_failure_time) >= backoff_delay_ms;
+        }
+    };
+
+    SensorRetryState sensor_retry_state_;
+
+    // Compile-time feature flag for enhanced error handling
+#ifdef PLANTOS_ENHANCED_ERROR_HANDLING
+    static constexpr bool ENHANCED_ERROR_HANDLING_ENABLED = true;
+#else
+    static constexpr bool ENHANCED_ERROR_HANDLING_ENABLED = false;
+#endif
+
+    // Helper methods for enhanced error handling
+    bool requestPumpAdaptive(const std::string& pumpId, bool state, uint32_t requested_duration_sec, bool forceExecute);
+    void initOperationRetry(const std::string& operation_name, uint8_t max_retries);
+    bool canRetryOperation();
+    void recordOperationStep(const std::string& step_name);
+    void retryOperation();
+    void checkHardwareStatus();
+
     // Actuator IDs (must match SafetyGate configuration)
     static constexpr const char* ACID_PUMP = "AcidPump";
     static constexpr const char* NUTRIENT_PUMP_A = "NutrientPumpA";

@@ -10,15 +10,66 @@
 #include <cstdio>
 
 /**
- * Alert structure to support multiple simultaneous alerts
+ * AlertStatus - Tracks whether an alert is active or resolved
+ */
+enum class AlertStatus {
+    ACTIVE,      // Alert is currently active
+    RESOLVED     // Alert was resolved but kept for history
+};
+
+/**
+ * Alert structure to support multiple simultaneous alerts with enhanced error context
  */
 struct Alert {
+    // Existing fields (backward compatible)
     std::string type;        // e.g., "SPILL", "PH_CRITICAL", "TEMPERATURE"
-    std::string reason;      // Detailed reason for the alert
-    uint32_t timestamp;      // When the alert was triggered
+    std::string reason;      // Brief reason (backward compat)
+    uint32_t timestamp;      // When triggered (milliseconds)
 
+    // NEW: Status tracking
+    AlertStatus status;            // ACTIVE or RESOLVED
+    uint32_t resolved_timestamp;   // When resolved (0 if not resolved)
+
+    // NEW: Comprehensive error context (4-part error messages)
+    std::string root_cause;        // Technical details: "SafetyGate rejected: Duration 45s > max 30s"
+    std::string user_action;       // User-friendly next steps: "Reduce pH dose or increase max duration"
+    std::string operation_context; // Operation state: "pH correction attempt 3/5, injection phase"
+    std::string recovery_plan;     // Recovery recommendations: "System will retry with adapted duration"
+
+    // NEW: Retry tracking
+    uint8_t retry_count;           // How many times we retried this error
+    uint8_t max_retries;           // Maximum retry attempts configured
+
+    // Backward compatible constructor
     Alert(const std::string& t, const std::string& r)
-        : type(t), reason(r), timestamp(esphome::millis()) {}
+        : type(t), reason(r), timestamp(esphome::millis()),
+          status(AlertStatus::ACTIVE), resolved_timestamp(0),
+          root_cause(""), user_action(""), operation_context(""), recovery_plan(""),
+          retry_count(0), max_retries(0) {}
+
+    // NEW: Constructor with full error context
+    Alert(const std::string& t, const std::string& r,
+          const std::string& root, const std::string& action,
+          const std::string& context, const std::string& recovery,
+          uint8_t max_retry = 0)
+        : type(t), reason(r), timestamp(esphome::millis()),
+          status(AlertStatus::ACTIVE), resolved_timestamp(0),
+          root_cause(root), user_action(action),
+          operation_context(context), recovery_plan(recovery),
+          retry_count(0), max_retries(max_retry) {}
+
+    // Calculate how long alert was active (ms)
+    uint32_t getActiveDuration() const {
+        if (resolved_timestamp > 0) {
+            return resolved_timestamp - timestamp;
+        }
+        return esphome::millis() - timestamp;  // Still active
+    }
+
+    // Get duration in seconds for display
+    float getActiveDurationSeconds() const {
+        return getActiveDuration() / 1000.0f;
+    }
 };
 
 /**
@@ -153,6 +204,74 @@ public:
      * Clear all active alerts
      */
     void clearAllAlerts();
+
+    /**
+     * Mark an alert as resolved (don't clear it, keep history)
+     *
+     * @param alertType The alert type to mark as resolved
+     *
+     * This transitions the alert from ACTIVE to RESOLVED state, recording
+     * the resolution timestamp. The alert remains in the list for debugging.
+     */
+    void resolveAlert(const std::string& alertType);
+    void resolveAlert(const char* alertType);
+
+    /**
+     * Update alert with comprehensive error context
+     *
+     * @param alertType Type identifier for the alert
+     * @param reason Brief reason (backward compat)
+     * @param root_cause Technical details about what failed
+     * @param user_action User-friendly next steps
+     * @param operation_context Current operation state
+     * @param recovery_plan What system will do to recover
+     * @param max_retries Maximum retry attempts (0 for no retry)
+     */
+    void updateAlertWithContext(
+        const std::string& alertType,
+        const std::string& reason,
+        const std::string& root_cause,
+        const std::string& user_action,
+        const std::string& operation_context,
+        const std::string& recovery_plan,
+        uint8_t max_retries = 0);
+
+    /**
+     * Increment retry count for an alert
+     *
+     * @param alertType The alert type to update
+     */
+    void incrementAlertRetry(const std::string& alertType);
+
+    /**
+     * Get active alerts only (filter out resolved)
+     *
+     * @return Vector of active alerts
+     */
+    std::vector<Alert> getActiveAlerts() const;
+
+    /**
+     * Get resolved alerts only (for history display)
+     *
+     * @return Vector of resolved alerts
+     */
+    std::vector<Alert> getResolvedAlerts() const;
+
+    /**
+     * Get count of resolved alerts
+     *
+     * @return Number of resolved alerts in history
+     */
+    int getResolvedAlertCount() const;
+
+    /**
+     * Clear resolved alerts older than specified time
+     *
+     * @param max_age_ms Maximum age in milliseconds (default: 1 hour)
+     *
+     * This prunes old resolved alerts to prevent memory growth.
+     */
+    void pruneResolvedAlerts(uint32_t max_age_ms = 3600000);
 
     /**
      * Update IP address from WiFi/Network component

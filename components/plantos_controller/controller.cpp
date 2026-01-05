@@ -940,9 +940,23 @@ void PlantOSController::handlePhMixing() {
     // On entry: Verify air pump state (only once!)
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
-        if (!requestPump(AIR_PUMP, true, PH_MIXING_DURATION / 1000)) {
-            ESP_LOGW(TAG, "Air pump not configured - using passive mixing period");
-            ESP_LOGI(TAG, "Waiting 2 minutes for acid to distribute naturally");
+
+        // Check if AirPump is already running (from PH_INJECTING state)
+        bool air_pump_already_on = false;
+        if (hal_) {
+            air_pump_already_on = hal_->getPumpState(AIR_PUMP);
+        }
+
+        if (air_pump_already_on) {
+            ESP_LOGI(TAG, "Air pump already active from injection - continuing 2-minute mixing");
+        } else {
+            // AirPump not running - start it now (e.g., after reboot recovery)
+            if (!requestPump(AIR_PUMP, true, PH_MIXING_DURATION / 1000)) {
+                ESP_LOGW(TAG, "Air pump not configured - using passive mixing period");
+                ESP_LOGI(TAG, "Waiting 2 minutes for acid to distribute naturally");
+            } else {
+                ESP_LOGI(TAG, "Air pump started for 2-minute mixing phase");
+            }
         }
     }
 

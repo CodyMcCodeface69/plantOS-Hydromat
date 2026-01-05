@@ -562,21 +562,13 @@ bool EZOPHUARTComponent::send_temperature_compensation(float temperature) {
     return false;
   }
 
-  this->wait_for_response_();
+  // NOTE: In RESPONSE,0 mode (non-verbose), the T command does NOT return a response.
+  // The sensor just accepts the temperature and applies compensation silently.
+  // We wait briefly to ensure the command is processed, then return success.
 
-  char response[RESPONSE_BUFFER_SIZE];
-  if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
-    if (this->check_response_code_(response)) {
-      ESP_LOGI(TAG, "Temperature compensation set to %.1f°C", temperature);
-      return true;
-    } else {
-      ESP_LOGE(TAG, "Temperature compensation failed: %s", response);
-      return false;
-    }
-  }
-
-  ESP_LOGE(TAG, "No response from sensor during temperature compensation");
-  return false;
+  delay(50);  // Brief delay to ensure command is processed
+  ESP_LOGI(TAG, "Temperature compensation command sent successfully (%.1f°C)", temperature);
+  return true;
 }
 
 // ============================================================================

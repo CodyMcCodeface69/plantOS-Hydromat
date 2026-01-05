@@ -305,6 +305,7 @@ private:
     ControllerState current_state_{ControllerState::INIT};
     uint32_t state_start_time_{0};        // millis() when state started
     uint32_t state_counter_{0};           // General-purpose counter for states
+    bool state_entry_executed_{false};    // Prevents duplicate execution of state entry code
 
     // Boot recovery: State to restore after INIT completes (if PSM had persisted state)
     ControllerState boot_restore_state_{ControllerState::IDLE};

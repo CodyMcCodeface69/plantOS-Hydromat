@@ -1543,7 +1543,7 @@ actuator_safety_gate:
 ezo_ph_uart:
   id: ezo_ph_uart_component
   uart_id: uart_bus
-  update_interval: 2s  # Read pH every 2 seconds (faster readings for better calibration stability detection)
+  update_interval: 5s  # Read pH every 5 seconds (faster readings for better calibration stability detection)
   verbose: false  # Disable verbose UART logging by default (enabled dynamically during calibration)
   # pH sensor configuration
   ph:

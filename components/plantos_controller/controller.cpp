@@ -627,8 +627,9 @@ void PlantOSController::handleShutdown() {
 
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Turn off all pumps and valves for safety
-    if (elapsed < 100) {
+    // On entry: Turn off all pumps and valves for safety (only once!)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
         turnOffAllPumps();
         ESP_LOGI(TAG, "SHUTDOWN state ACTIVE - all actuators OFF, calendar disabled");
 
@@ -664,8 +665,9 @@ void PlantOSController::handlePause() {
 
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Log state change
-    if (elapsed < 100) {
+    // On entry: Log state change (only once!)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
         ESP_LOGI(TAG, "PAUSE state ACTIVE - actuators maintained, calendar disabled");
 
         // Persist PAUSE state to NVS
@@ -696,8 +698,9 @@ void PlantOSController::handleError() {
 
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Turn off all pumps for safety
-    if (elapsed < 100) {
+    // On entry: Turn off all pumps for safety (only once!)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
         turnOffAllPumps();
         ESP_LOGE(TAG, "ERROR state: All pumps OFF for safety");
         return;
@@ -721,8 +724,9 @@ void PlantOSController::handlePhMeasuring() {
 
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Turn off all pumps for stabilization
-    if (elapsed < 100) {
+    // On entry: Turn off all pumps for stabilization (only once!)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
         turnOffAllPumps();
         ESP_LOGI(TAG, "pH measuring: All pumps OFF for 5-minute stabilization");
         ph_readings_.clear(); // Reset readings buffer
@@ -887,8 +891,10 @@ void PlantOSController::handlePhInjecting() {
 
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Activate pumps
-    if (elapsed < 100) {
+    // On entry: Activate pumps (only once!)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
+
         // Calculate duration in seconds (round up)
         uint32_t duration_sec = (ph_dose_duration_ms_ + 999) / 1000;
 
@@ -931,8 +937,9 @@ void PlantOSController::handlePhMixing() {
     // Air pump runs for 2 minutes to distribute acid throughout tank
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Verify air pump state
-    if (elapsed < 100) {
+    // On entry: Verify air pump state (only once!)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
         if (!requestPump(AIR_PUMP, true, PH_MIXING_DURATION / 1000)) {
             ESP_LOGW(TAG, "Air pump not configured - using passive mixing period");
             ESP_LOGI(TAG, "Waiting 2 minutes for acid to distribute naturally");
@@ -1445,8 +1452,9 @@ void PlantOSController::handleFeeding() {
         return;
     }
 
-    // On entry for this pump: calculate duration and activate it
-    if (elapsed < 100) {
+    // On entry for this pump: calculate duration and activate it (only once!)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
         // Convert mL to duration using HAL pumpflow (only once per pump)
         if (dose_ml > 0.0f && hal_) {
             float duration_sec = hal_->pumpflow(pump_name, dose_ml);
@@ -1533,8 +1541,9 @@ void PlantOSController::handleFeedFilling() {
         ESP_LOGW(TAG, "[FEED_FILLING] HAL not available - using fallback timeout of 10 min");
     }
 
-    // ENTRY: Log and activate water valve
-    if (elapsed < 100) {
+    // ENTRY: Log and activate water valve (only once!)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
         ESP_LOGI(TAG, "[FEED_FILLING] Starting tank fill before nutrient dosing");
 
         // Request water valve open with calculated max duration
@@ -2362,6 +2371,7 @@ void PlantOSController::transitionTo(ControllerState newState) {
     current_state_ = newState;
     state_start_time_ = esphome::millis();
     state_counter_ = 0;
+    state_entry_executed_ = false;  // Reset entry flag for new state
 
     // LED behavior transition is handled automatically in loop()
     // via led_behaviors_->update()

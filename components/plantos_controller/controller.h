@@ -338,6 +338,7 @@ private:
     uint32_t ph_attempt_count_{0};        // Number of pH correction attempts
     float ph_dose_ml_{0.0f};              // Calculated acid dose in milliliters
     uint32_t ph_dose_duration_ms_{0};     // Calculated acid dose duration (converted from mL)
+    uint32_t ph_mixing_duration_ms_{0};   // Calculated mixing duration based on tank volume
     static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
 
     // ========================================================================
@@ -441,6 +442,13 @@ private:
      */
     uint32_t getStateElapsed() const;
 
+    /**
+     * Calculate pH mixing duration based on tank volume
+     * Linear formula: 1.7L→30s, 70L→120s
+     * Returns duration in milliseconds
+     */
+    uint32_t calculatePhMixingDuration() const;
+
     // ========================================================================
     // Actuator Control Helpers (Controller → SafetyGate → HAL)
     // ========================================================================
@@ -520,7 +528,8 @@ private:
     static constexpr uint32_t INIT_DURATION = 3000;           // 3 seconds boot
     static constexpr uint32_t ERROR_DURATION = 5000;          // 5 seconds error display
     static constexpr uint32_t PH_MEASURING_DURATION = 30000;  // 30 seconds stabilization
-    static constexpr uint32_t PH_MIXING_DURATION = 120000;    // 2 minutes mixing
+    // NOTE: PH_MIXING_DURATION is now calculated dynamically based on tank volume
+    // See calculatePhMixingDuration() for linear formula (1.7L→30s, 70L→120s)
 
     // Air pump health monitoring (milliseconds)
     static constexpr uint32_t AIR_PUMP_HEALTH_CHECK_INTERVAL = 30000;  // 30 seconds between checks

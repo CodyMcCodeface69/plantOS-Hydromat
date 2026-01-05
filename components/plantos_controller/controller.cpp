@@ -934,12 +934,15 @@ void PlantOSController::handlePhInjecting() {
 
 void PlantOSController::handlePhMixing() {
     // Blue pulse - mixing after acid injection
-    // Air pump runs for 2 minutes to distribute acid throughout tank
+    // Air pump runs to distribute acid throughout tank (duration varies by tank volume)
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Verify air pump state (only once!)
+    // On entry: Calculate mixing duration and verify air pump state (only once!)
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
+
+        // Calculate mixing duration based on tank volume (linear: 1.7L→30s, 70L→120s)
+        ph_mixing_duration_ms_ = calculatePhMixingDuration();
 
         // Check if AirPump is already running (from PH_INJECTING state)
         bool air_pump_already_on = false;
@@ -948,22 +951,26 @@ void PlantOSController::handlePhMixing() {
         }
 
         if (air_pump_already_on) {
-            ESP_LOGI(TAG, "Air pump already active from injection - continuing 2-minute mixing");
+            ESP_LOGI(TAG, "Air pump already active from injection - continuing mixing for %.1f seconds",
+                     ph_mixing_duration_ms_ / 1000.0f);
         } else {
             // AirPump not running - start it now (e.g., after reboot recovery)
-            if (!requestPump(AIR_PUMP, true, PH_MIXING_DURATION / 1000)) {
+            uint32_t mixing_duration_sec = (ph_mixing_duration_ms_ + 999) / 1000;  // Round up to seconds
+            if (!requestPump(AIR_PUMP, true, mixing_duration_sec)) {
                 ESP_LOGW(TAG, "Air pump not configured - using passive mixing period");
-                ESP_LOGI(TAG, "Waiting 2 minutes for acid to distribute naturally");
+                ESP_LOGI(TAG, "Waiting %.1f seconds for acid to distribute naturally",
+                         ph_mixing_duration_ms_ / 1000.0f);
             } else {
-                ESP_LOGI(TAG, "Air pump started for 2-minute mixing phase");
+                ESP_LOGI(TAG, "Air pump started for %.1f second mixing phase",
+                         ph_mixing_duration_ms_ / 1000.0f);
             }
         }
     }
 
-    if (elapsed >= PH_MIXING_DURATION) {
+    if (elapsed >= ph_mixing_duration_ms_) {
         // Mixing complete - stop air pump (no-op if not configured)
         requestPump(AIR_PUMP, false);
-        ESP_LOGI(TAG, "pH mixing complete (2 minutes)");
+        ESP_LOGI(TAG, "pH mixing complete (%.1f seconds)", ph_mixing_duration_ms_ / 1000.0f);
 
         // Loop back to PH_MEASURING to verify correction
         // Will continue until pH is in range OR max attempts reached
@@ -2393,6 +2400,42 @@ void PlantOSController::transitionTo(ControllerState newState) {
 
 uint32_t PlantOSController::getStateElapsed() const {
     return esphome::millis() - state_start_time_;
+}
+
+uint32_t PlantOSController::calculatePhMixingDuration() const {
+    // Linear formula based on tank volume:
+    // - 1.7L → 30 seconds (30,000 ms)
+    // - 70L → 120 seconds (120,000 ms)
+    //
+    // Formula: duration_ms = slope × volume_L + intercept
+    // Slope = (120000 - 30000) / (70 - 1.7) = 90000 / 68.3 ≈ 1317.35 ms/L
+    // Intercept = 30000 - (1317.35 × 1.7) ≈ 27760.5
+    //
+    // Final: duration_ms = 1317.35 × volume_L + 27760.5
+
+    float volume_L = 10.0f;  // Default fallback
+    if (hal_) {
+        volume_L = hal_->getTankVolume();
+    }
+
+    // Apply linear formula
+    constexpr float SLOPE = 1317.35f;       // ms per liter
+    constexpr float INTERCEPT = 27760.5f;   // ms offset
+    float duration_ms = SLOPE * volume_L + INTERCEPT;
+
+    // Safety bounds: min 30s, max 120s
+    if (duration_ms < 30000.0f) {
+        ESP_LOGW(TAG, "Calculated mixing duration too short (%.1f s), using minimum 30s", duration_ms / 1000.0f);
+        duration_ms = 30000.0f;
+    } else if (duration_ms > 120000.0f) {
+        ESP_LOGW(TAG, "Calculated mixing duration too long (%.1f s), using maximum 120s", duration_ms / 1000.0f);
+        duration_ms = 120000.0f;
+    }
+
+    uint32_t duration_ms_int = static_cast<uint32_t>(duration_ms);
+    ESP_LOGI(TAG, "pH mixing duration: %.1f seconds (tank: %.1f L)", duration_ms / 1000.0f, volume_L);
+
+    return duration_ms_int;
 }
 
 // ============================================================================

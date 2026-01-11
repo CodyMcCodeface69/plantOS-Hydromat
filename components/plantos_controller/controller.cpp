@@ -71,8 +71,23 @@ void PlantOSController::setup() {
 
     // Initialize periodic pH check timer
     last_ph_check_time_ = esphome::millis();
+    if (hal_->hasTime()) {
+        last_ph_check_timestamp_ = hal_->getCurrentTimestamp();
+        ESP_LOGI(TAG, "Time source available - using clock-based pH scheduling");
+    } else {
+        last_ph_check_timestamp_ = 0;
+        ESP_LOGW(TAG, "No time source - using fallback boot-time based pH scheduling");
+    }
+
     uint32_t ph_interval_hours = hal_->get_ph_reading_interval() / 3600000;  // Convert ms to hours
-    ESP_LOGI(TAG, "Periodic pH monitoring configured: every %u hours", ph_interval_hours);
+    uint32_t ph_interval_days = ph_interval_hours / 24;
+
+    if (ph_interval_days > 0) {
+        ESP_LOGI(TAG, "Periodic pH monitoring: every %u day%s (%u hours)",
+                 ph_interval_days, ph_interval_days > 1 ? "s" : "", ph_interval_hours);
+    } else {
+        ESP_LOGI(TAG, "Periodic pH monitoring: every %u hours", ph_interval_hours);
+    }
 
     // Always start in INIT state for boot sequence
     ESP_LOGI(TAG, "Controller initialized - Starting INIT boot sequence");
@@ -483,19 +498,89 @@ void PlantOSController::handleIdle() {
         }
     }
 
-    // Periodic pH monitoring (every ph_reading_interval from HAL)
-    uint32_t ph_interval = hal_->get_ph_reading_interval();  // Default: 2 hours (7200000 ms)
+    // ========================================================================
+    // PERIODIC pH MONITORING - Time-based scheduling aligned to midnight
+    // ========================================================================
+    // Uses real-time clock to schedule pH checks at fixed intervals from 0:00
+    // Example: 2-hour interval → checks at 0:00, 2:00, 4:00, ..., 22:00
+    // Supports intervals up to 48 hours (2 days)
+    //
+    // Falls back to millis()-based scheduling if no time source available
+    // ========================================================================
 
-    if (now - last_ph_check_time_ >= ph_interval) {
-        last_ph_check_time_ = now;
+    uint32_t ph_interval_ms = hal_->get_ph_reading_interval();  // Default: 2 hours (7200000 ms)
 
-        ESP_LOGI(TAG, "========================================================");
-        ESP_LOGI(TAG, "  AUTOMATIC pH CHECK (every %u hours)", ph_interval / 3600000);
-        ESP_LOGI(TAG, "========================================================");
+    // Check if time source is available for clock-based scheduling
+    if (hal_->hasTime()) {
+        // TIME-BASED SCHEDULING (preferred)
+        int64_t current_timestamp = hal_->getCurrentTimestamp();
+        uint32_t ph_interval_seconds = ph_interval_ms / 1000;  // Convert ms to seconds
 
-        // Transition to PH_PROCESSING to check if correction needed
-        transitionTo(ControllerState::PH_PROCESSING);
-        return;  // Exit IDLE immediately
+        // Check if we should trigger a pH check
+        bool should_trigger = false;
+
+        if (ph_interval_seconds >= 86400) {
+            // MULTI-DAY INTERVAL (≥24 hours)
+            // Example: 48h interval → check every 2 days at midnight
+            // Calculate days since epoch and check if interval has passed
+            int64_t days_since_epoch = current_timestamp / 86400;
+            int64_t last_check_days = last_ph_check_timestamp_ / 86400;
+            int64_t interval_days = ph_interval_seconds / 86400;
+
+            if (days_since_epoch - last_check_days >= interval_days) {
+                // Enough days have passed - trigger if we're past midnight
+                uint32_t seconds_since_midnight = hal_->getSecondsSinceMidnight();
+                if (seconds_since_midnight >= 60) {  // Wait 1 minute after midnight for clock stability
+                    should_trigger = true;
+                    ESP_LOGI(TAG, "Multi-day pH check: %lld days since last check (interval: %lld days)",
+                             days_since_epoch - last_check_days, interval_days);
+                }
+            }
+        } else {
+            // DAILY INTERVAL (<24 hours)
+            // Example: 2h interval → slots at 0:00, 2:00, 4:00, ..., 22:00
+            uint32_t seconds_since_midnight = hal_->getSecondsSinceMidnight();
+            uint32_t current_slot = seconds_since_midnight / ph_interval_seconds;
+
+            // Calculate timestamp of current slot boundary
+            int64_t day_start = current_timestamp - seconds_since_midnight;
+            int64_t current_slot_timestamp = day_start + (current_slot * ph_interval_seconds);
+
+            // Trigger if we've crossed into a new slot since last check
+            if (current_slot_timestamp > last_ph_check_timestamp_) {
+                should_trigger = true;
+                uint32_t slot_hour = (current_slot * ph_interval_seconds) / 3600;
+                uint32_t slot_minute = ((current_slot * ph_interval_seconds) % 3600) / 60;
+                ESP_LOGI(TAG, "Daily pH check slot: %02u:%02u (slot %u of %u)",
+                         slot_hour, slot_minute, current_slot, 86400 / ph_interval_seconds);
+            }
+        }
+
+        if (should_trigger) {
+            last_ph_check_timestamp_ = current_timestamp;
+            last_ph_check_time_ = now;  // Update fallback timer too
+
+            ESP_LOGI(TAG, "========================================================");
+            ESP_LOGI(TAG, "  AUTOMATIC pH CHECK (time-based: every %u hours)",
+                     ph_interval_ms / 3600000);
+            ESP_LOGI(TAG, "========================================================");
+
+            transitionTo(ControllerState::PH_PROCESSING);
+            return;  // Exit IDLE immediately
+        }
+    } else {
+        // FALLBACK: millis()-based scheduling (no time source available)
+        if (now - last_ph_check_time_ >= ph_interval_ms) {
+            last_ph_check_time_ = now;
+
+            ESP_LOGW(TAG, "========================================================");
+            ESP_LOGW(TAG, "  AUTOMATIC pH CHECK (fallback mode: no time source)");
+            ESP_LOGW(TAG, "  Using boot-time based interval: every %u hours", ph_interval_ms / 3600000);
+            ESP_LOGW(TAG, "========================================================");
+
+            transitionTo(ControllerState::PH_PROCESSING);
+            return;  // Exit IDLE immediately
+        }
     }
 
     // Check if night mode hours started - transition to NIGHT
@@ -1043,6 +1128,15 @@ void PlantOSController::handlePhInjecting() {
         }
 
         ESP_LOGI(TAG, "Acid pump active - dosing %.1f mL", ph_dose_ml_);
+
+        // CRITICAL FIX: Reset timer to start from NOW (after HTTP delays)
+        // The AirPump HTTP request blocks for 3s, which would cause the timer to expire
+        // before the AcidPump has run for its intended duration.
+        // By resetting state_start_time_ here, we ensure the injection duration is
+        // accurate regardless of blocking HTTP calls.
+        state_start_time_ = hal_->getSystemTime();
+        ESP_LOGD(TAG, "Timer reset: injection duration starts now");
+
         return;
     }
 
@@ -1690,6 +1784,11 @@ void PlantOSController::handleFeeding() {
             }
 
             ESP_LOGI(TAG, "%s ON for %.2f mL (%d ms)", pump_name, dose_ml, current_duration_ms);
+
+            // Reset timer to start from NOW (prevents timing issues with any potential delays)
+            // This ensures the pump duration is accurate regardless of activation delays
+            state_start_time_ = hal_->getSystemTime();
+            ESP_LOGD(TAG, "Timer reset: %s duration starts now", pump_name);
         } else {
             ESP_LOGI(TAG, "%s duration is 0 - skipping", pump_name);
             // Immediately move to next pump

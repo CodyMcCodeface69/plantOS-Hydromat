@@ -4,6 +4,8 @@
 #include <functional>
 #include <map>
 #include "esphome/core/component.h"
+#include "esphome/core/time.h"
+#include "esphome/components/time/real_time_clock.h"
 
 // Forward declarations
 namespace esphome {
@@ -342,6 +344,25 @@ public:
      * @return Milliseconds since system boot (equivalent to millis())
      */
     virtual uint32_t getSystemTime() const = 0;
+
+    /**
+     * Get current timestamp (Unix epoch seconds)
+     * @return Unix timestamp (seconds since 1970-01-01 00:00:00 UTC), or 0 if time unavailable
+     */
+    virtual int64_t getCurrentTimestamp() const = 0;
+
+    /**
+     * Get seconds since midnight (0:00:00) of current day
+     * Used for time-based scheduling aligned to daily boundaries
+     * @return Seconds since midnight (0-86399), or 0 if time unavailable
+     */
+    virtual uint32_t getSecondsSinceMidnight() const = 0;
+
+    /**
+     * Check if time source is available and synchronized
+     * @return true if time is available, false otherwise
+     */
+    virtual bool hasTime() const = 0;
 };
 
 /**
@@ -366,6 +387,7 @@ public:
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
     void set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor);
+    void set_time_source(esphome::time::RealTimeClock* time_source);
 
     // Actuator output setters (Phase 2: Hardware Control)
     // NOTE: Using LEDC PWM outputs for pump control with variable intensity
@@ -435,6 +457,9 @@ public:
     bool isLEDOn() const override;
 
     uint32_t getSystemTime() const override;
+    int64_t getCurrentTimestamp() const override;
+    uint32_t getSecondsSinceMidnight() const override;
+    bool hasTime() const override;
 
 private:
     // Hardware component references (injected via Python)
@@ -447,6 +472,7 @@ private:
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_high_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_low_sensor_{nullptr};
+    esphome::time::RealTimeClock* time_source_{nullptr};
 
     // Actuator GPIO outputs (Phase 2: Hardware Control - 6 actuators)
     // NOTE: Using FloatOutput (LEDC PWM) for variable pump intensity control

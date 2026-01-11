@@ -71,6 +71,7 @@ wifi:
   # This allows OTA updates and web interface access
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  bssid: !secret wifi_bssid  # Optional: Fix to specific AP for stability
 
  # Static IP configuration for consistent web UI access
  # Uncomment if you want a fixed IP address
@@ -170,7 +171,7 @@ api:
 http_request:
   id: http_client
   useragent: esphome/plantOS
-  timeout: 5s
+  timeout: 15s
   verify_ssl: false  # Skip SSL verification for simple connectivity test
 
 ################################################################################
@@ -1293,6 +1294,7 @@ plantos_hal:
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO23
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO10
   water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO11
+  time_source: sntp_time  # Time source for clock-based pH scheduling (time_dummy for testing, can be NTP/RTC)
 
   # Actuator GPIO Outputs (Phase 2: Hardware Control - 5 GPIO actuators)
   # NOTE: Using outputs instead of switches to avoid circular dependency

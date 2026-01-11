@@ -315,7 +315,8 @@ private:
     // Periodic pH Monitoring State
     // ========================================================================
 
-    uint32_t last_ph_check_time_{0};     // Last time we checked pH (millis())
+    int64_t last_ph_check_timestamp_{0};  // Last timestamp when pH check was triggered (Unix seconds)
+    uint32_t last_ph_check_time_{0};      // Fallback: Last time we checked pH (millis()) if no time source
 
     // ========================================================================
     // Air Pump Health Monitoring State (IDLE state cycling)

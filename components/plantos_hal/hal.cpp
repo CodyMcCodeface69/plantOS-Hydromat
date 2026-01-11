@@ -7,6 +7,7 @@
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 #include "esphome/components/http_request/http_request.h"
+#include "esphome/core/time.h"
 
 namespace plantos_hal {
 
@@ -49,6 +50,11 @@ void ESPHomeHAL::set_water_level_high_sensor(esphome::binary_sensor::BinarySenso
 void ESPHomeHAL::set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor) {
     water_level_low_sensor_ = sensor;
     ESP_LOGI(TAG, "Water level LOW sensor configured");
+}
+
+void ESPHomeHAL::set_time_source(esphome::time::RealTimeClock* time_source) {
+    time_source_ = time_source;
+    ESP_LOGI(TAG, "Time source configured");
 }
 
 // ============================================================================
@@ -573,6 +579,28 @@ bool ESPHomeHAL::isLEDOn() const {
 
 uint32_t ESPHomeHAL::getSystemTime() const {
     return esphome::millis();
+}
+
+int64_t ESPHomeHAL::getCurrentTimestamp() const {
+    if (!time_source_ || !time_source_->now().is_valid()) {
+        return 0;  // Time not available
+    }
+    return time_source_->now().timestamp;
+}
+
+uint32_t ESPHomeHAL::getSecondsSinceMidnight() const {
+    if (!time_source_ || !time_source_->now().is_valid()) {
+        return 0;  // Time not available
+    }
+
+    auto now = time_source_->now();
+    // Calculate seconds since midnight: hour * 3600 + minute * 60 + second
+    uint32_t seconds = now.hour * 3600 + now.minute * 60 + now.second;
+    return seconds;
+}
+
+bool ESPHomeHAL::hasTime() const {
+    return time_source_ != nullptr && time_source_->now().is_valid();
 }
 
 } // namespace plantos_hal

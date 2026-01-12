@@ -69,12 +69,13 @@ logger:
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security
   # This allows OTA updates and web interface access
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  bssid: !secret wifi_bssid  # Optional: Fix to specific AP for stability
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+      bssid: !secret wifi_bssid  # Optional: Fix to specific AP for stability
 
- # Static IP configuration for consistent web UI access
- # Uncomment if you want a fixed IP address
+  # Static IP configuration for consistent web UI access
+  # Uncomment if you want a fixed IP address
   # manual_ip:
   #   static_ip: 192.168.0.201
   #   gateway: 192.168.0.1
@@ -1666,7 +1667,7 @@ persistent_state_manager:
 ################################################################################
 wdt_manager:
   id: my_wdt
-  timeout: 10s           # WDT timeout: 10 seconds
+  timeout: 20s           # WDT timeout: 20 seconds (increased for 15s HTTP timeout)
   feed_interval: 500ms   # Feed WDT every 500 milliseconds
   test_mode: false        # Enable crash simulation for testing
   crash_delay: 20s       # Simulate crash after 20 seconds

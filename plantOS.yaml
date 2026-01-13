@@ -322,16 +322,16 @@ i2c_scanner:
 
   # Define critical devices for your PlantOS system
   # Uncomment and modify based on your hardware configuration
-  critical_devices: 
+  critical_devices:
     - address: 0x61
       name: "EZO pH Sensor"
+    - address: 0x76
+      name: "BME280 Sensor"  # Non-critical: Shows yellow warning if missing
     # Add other critical devices as needed
     # - address: 0x48
     #   name: "ADS1115 ADC"
     # - address: 0x20
     #   name: "MCP23017 GPIO Expander"
-    # - address: 0x76
-    #   name: "BME280 Sensor"
     # - address: 0x68
     #   name: "DS3231 RTC"
 
@@ -494,6 +494,46 @@ sensor:
     accuracy_decimals: 2     # Display 2 decimal places (e.g., 24.50°C)
     resolution: 12           # 12-bit resolution (0.0625°C per bit, ~750ms conversion)
 
+  # Environmental Sensor: BME280 Temperature/Humidity/Pressure Sensor
+  #
+  # BME280 is a combined environmental sensor providing:
+  # - Temperature: -40°C to +85°C (±1°C accuracy)
+  # - Humidity: 0-100% RH (±3% accuracy)
+  # - Pressure: 300-1100 hPa (±1 hPa accuracy)
+  #
+  # Connected via I²C bus (GPIO6=SDA, GPIO7=SCL) at address 0x76 or 0x77
+  #
+  # HARDWARE: Requires 4.7kΩ pull-up resistors on SDA/SCL to 3.3V (already present on I²C bus)
+  # WIRING:
+  #   - VCC -> 3.3V
+  #   - GND -> GND
+  #   - SDA -> GPIO6 (I²C SDA with 4.7kΩ pull-up)
+  #   - SCL -> GPIO7 (I²C SCL with 4.7kΩ pull-up)
+  #
+  # NOTE: This sensor is non-critical - system operates normally if not present
+  - platform: bme280
+    i2c_id: i2c_bus
+    address: 0x76           # Default address (some modules use 0x77)
+    update_interval: 10s    # Update environmental data every 10 seconds
+
+    temperature:
+      id: bme280_temperature
+      name: "00_09_Air Temperature - BME280"
+      accuracy_decimals: 1
+      oversampling: 16x     # High oversampling for accuracy
+
+    humidity:
+      id: bme280_humidity
+      name: "00_10_Air Humidity - BME280"
+      accuracy_decimals: 1
+      oversampling: 16x
+
+    pressure:
+      id: bme280_pressure
+      name: "00_11_Air Pressure - BME280"
+      accuracy_decimals: 1
+      oversampling: 16x
+
   # Sensor Filter: Robust Averaging with Outlier Rejection
   #
   # Filters the raw sensor data using robust averaging to reject outliers.
@@ -618,6 +658,51 @@ text_sensor:
         return {buf};
       } else {
         return {"N/A"};
+      }
+    # Update every 10 seconds to match sensor update interval
+    update_interval: 10s
+
+  - platform: template
+    name: "00_09_Air Temperature"
+    id: air_temperature_text
+    # Lambda returns current air temperature from BME280
+    lambda: |-
+      if (id(bme280_temperature).has_state()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f°C", id(bme280_temperature).state);
+        return {buf};
+      } else {
+        return {"N/A (BME280 offline)"};
+      }
+    # Update every 10 seconds to match sensor update interval
+    update_interval: 10s
+
+  - platform: template
+    name: "00_10_Air Humidity"
+    id: air_humidity_text
+    # Lambda returns current relative humidity from BME280
+    lambda: |-
+      if (id(bme280_humidity).has_state()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f%%", id(bme280_humidity).state);
+        return {buf};
+      } else {
+        return {"N/A (BME280 offline)"};
+      }
+    # Update every 10 seconds to match sensor update interval
+    update_interval: 10s
+
+  - platform: template
+    name: "00_11_Air Pressure"
+    id: air_pressure_text
+    # Lambda returns current barometric pressure from BME280
+    lambda: |-
+      if (id(bme280_pressure).has_state()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f hPa", id(bme280_pressure).state);
+        return {buf};
+      } else {
+        return {"N/A (BME280 offline)"};
       }
     # Update every 10 seconds to match sensor update interval
     update_interval: 10s

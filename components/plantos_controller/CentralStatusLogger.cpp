@@ -391,7 +391,7 @@ void CentralStatusLogger::logStatus() {
                 }
             }
 
-            // Display missing critical devices in red (or yellow if UART alternative exists)
+            // Display missing critical devices in red (or yellow if non-critical or UART alternative exists)
             if (!missingCritical.empty()) {
                 for (const auto& device : missingCritical) {
                     // Special case: EZO pH I2C missing but UART version is present
@@ -408,9 +408,16 @@ void CentralStatusLogger::logStatus() {
                         }
                     }
 
+                    // Special case: BME280 environmental sensor (non-critical)
+                    bool isBME280 = (device.address == 0x76 || device.name.find("BME280") != std::string::npos);
+
                     if (isEzoPh && uartEzoPhPresent) {
                         // ANSI Yellow: \033[33m, Reset: \033[0m
                         ESP_LOGW(TAG, "    \033[33m⚠ 0x%02X: %s (I2C not used - UART version active)\033[0m",
+                                device.address, device.name.c_str());
+                    } else if (isBME280) {
+                        // ANSI Yellow: \033[33m, Reset: \033[0m
+                        ESP_LOGW(TAG, "    \033[33m⚠ 0x%02X: %s (Non-critical environmental sensor - system operates normally)\033[0m",
                                 device.address, device.name.c_str());
                     } else {
                         // ANSI Red: \033[31m, Reset: \033[0m

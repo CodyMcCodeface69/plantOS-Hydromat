@@ -21,7 +21,7 @@ Firmware: PlantOS v0.9 (MVP)
 | GPIO8 | System LED | WS2812 RGB (RMT) | Output | - | `led_` | No |
 | GPIO10 | Water Level HIGH | XKC-Y23-V Binary Sensor | Input (Digital) | - | `water_level_high_sensor_` | No |
 | GPIO11 | Water Level LOW | XKC-Y23-V Binary Sensor | Input (Digital) | - | `water_level_low_sensor_` | No |
-| GPIO16 | Available | - | - | - | - | No |
+| GPIO16 | Water Level EMPTY| XKC-Y23-V Binary Sensor | Input (Digital) | - | `water_level_empty_sensor_` | No |
 | GPIO18 | Water Valve | GPIO Output | Output | - | `mag_valve_switch_` | No |
 | GPIO19 | Acid Pump | GPIO Output | Output | - | `pump_ph_switch_` | No |
 | GPIO20 | Nutrient Pump A | GPIO Output | Output | - | `pump_grow_switch_` | No |

@@ -269,8 +269,14 @@ public:
     virtual bool readWaterLevelLow() = 0;
 
     /**
+     * Read water level EMPTY sensor (XKC-Y23-V on GPIO16)
+     * @return true if water is at or above EMPTY level (minimum safe level), false otherwise
+     */
+    virtual bool readWaterLevelEmpty() = 0;
+
+    /**
      * Check if water level sensors are configured and available
-     * @return true if both HIGH and LOW sensors are available
+     * @return true if all THREE sensors (HIGH, LOW, EMPTY) are available
      */
     virtual bool hasWaterLevelSensors() const = 0;
 
@@ -387,6 +393,7 @@ public:
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
     void set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor);
+    void set_water_level_empty_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_time_source(esphome::time::RealTimeClock* time_source);
 
     // Actuator output setters (Phase 2: Hardware Control)
@@ -442,6 +449,7 @@ public:
     bool hasWaterLevel() const override;
     bool readWaterLevelHigh() override;
     bool readWaterLevelLow() override;
+    bool readWaterLevelEmpty() override;
     bool hasWaterLevelSensors() const override;
 
     float readLightIntensity() override;
@@ -472,6 +480,7 @@ private:
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_high_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_low_sensor_{nullptr};
+    esphome::binary_sensor::BinarySensor* water_level_empty_sensor_{nullptr};
     esphome::time::RealTimeClock* time_source_{nullptr};
 
     // Actuator GPIO outputs (Phase 2: Hardware Control - 6 actuators)

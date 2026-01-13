@@ -485,6 +485,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | AUTOMATIC TRIGGER         | PRECONDITION       | TRANSITION TO        | DESCRIPTION |
 |---------------------------|--------------------|----------------------|-------------|
 | Every 2 hours (in IDLE)    | System in IDLE     | PH_PROCESSING        | Periodic pH monitoring (**NOT triggered in NIGHT**) |
+| **Automatic Feeding** ⚡   | **Water level LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)**<br>System in IDLE<br>Auto-feeding enabled<br>NOT in NIGHT/SHUTDOWN/PAUSE<br>NOT already fed today (NVS check) | **FEED_FILLING → FEEDING** | **Once-per-day automatic feeding when water reaches LOW level**<br>Stores date to NVS: `AUTOFEED_<unix_timestamp>`<br>Prevents duplicate feeds after power cycles<br>Resets at midnight UTC (new calendar day)<br>Toggle via Web UI switch: "02_02_Auto Feeding Enabled" |
 | Night mode hours start     | IDLE + night mode enabled + current hour in range | NIGHT | Automatic transition to night mode |
 | Night mode hours end       | NIGHT + (night mode disabled OR hour out of range) | IDLE | Automatic transition back to idle |
 | PSM recovery check         | Boot from INIT     | SHUTDOWN or PAUSE    | Restore persisted state after power loss |
@@ -520,10 +521,29 @@ All actuator commands flow through ActuatorSafetyGate which provides:
 - pH range checked in PH_CALCULATING before correction
 - Max 5 correction attempts before aborting to IDLE
 
-## 3. Water Level Sensor Monitoring
-- **WATER_FILLING**: Abort on HIGH sensor (prevent overflow)
-- **WATER_EMPTYING**: Abort on LOW sensor OFF (prevent dry pump)
-- **FEED_FILLING**: Pre-check both sensors OFF (tank must be empty)
+## 3. Water Level Sensor Monitoring (3-Sensor System)
+
+### Hardware Configuration
+- **GPIO10**: HIGH sensor (XKC-Y23-V) - Tank full indicator
+- **GPIO11**: LOW sensor (XKC-Y23-V) - Auto-feed trigger level (physically moved upward)
+- **GPIO16**: EMPTY sensor (XKC-Y23-V) - Minimum safe level (prevents pump dry-running)
+- **Tank Volume**: 1.7L (LOW to HIGH sensor range) - used for nutrient dose calculations
+
+### 5 Water Level States
+
+| HIGH | LOW | EMPTY | State | Description | Auto-Feed Trigger |
+|------|-----|-------|-------|-------------|-------------------|
+| ON | ON | * | **FULL** | Above HIGH sensor | No |
+| OFF | ON | * | **NORMAL** | Between HIGH and LOW | No |
+| OFF | OFF | ON | **LOW** ⚡ | Between LOW and EMPTY | **YES** (once per day) |
+| OFF | OFF | OFF | **EMPTY** ⚠️ | Below EMPTY sensor | No (danger zone) |
+| ON | OFF | * | **ERROR** | Invalid sensor state | No (check wiring) |
+
+### State-Specific Safety Actions
+- **WATER_FILLING**: Abort on HIGH sensor ON (prevent overflow)
+- **WATER_EMPTYING**: Abort on EMPTY sensor OFF (prevent dry pump)
+- **FEED_FILLING**: Pre-check all 3 sensors OFF (tank must be completely empty)
+- **AUTOMATIC FEEDING**: Triggers at LOW state (HIGH=OFF, LOW=OFF, EMPTY=ON), max once per day
 
 ## 4. Persistent State Recovery (PSM)
 - SHUTDOWN and PAUSE states persist across power loss
@@ -559,6 +579,19 @@ Sent to pH sensor before all critical readings:
   - Switch: "Night Mode Enabled" (toggle on/off)
   - Number: "Night Mode Start Hour" (0-23, default: 22)
   - Number: "Night Mode End Hour" (0-23, default: 8)
+
+## 9. Automatic Feeding Daily Limit ⚡
+**Prevents excessive feeding through NVS-backed daily tracking**:
+- **Trigger Condition**: Water level reaches LOW state (HIGH=OFF, LOW=OFF, EMPTY=ON)
+- **Daily Limit**: Maximum 1 automatic feed per calendar day (midnight UTC to midnight UTC)
+- **NVS Tracking**: Stores date as `AUTOFEED_<unix_timestamp>` event in persistent storage
+- **Power Cycle Recovery**: After power loss, checks NVS for today's feed event to prevent duplicates
+- **In-Memory Cache**: Tracks `last_auto_feed_date_` to avoid repeated NVS reads
+- **Time Source Required**: Needs NTP synchronization to calculate current date (Unix timestamp / 86400)
+- **Blocked States**: NIGHT, SHUTDOWN, PAUSE, ERROR states prevent automatic feeding
+- **Web UI Control**: Switch "02_02_Auto Feeding Enabled" (default: ON, persisted to NVS)
+- **Safety**: Prevents overfeeding if water level fluctuates near LOW threshold multiple times per day
+- **Implementation**: `shouldTriggerAutoFeeding()` checks 7 conditions before triggering feed
 
 ---
 

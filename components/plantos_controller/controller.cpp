@@ -53,6 +53,13 @@ void PlantOSController::setup() {
 
     if (psm_) {
         ESP_LOGI(TAG, "PSM configured - State persistence enabled");
+
+        // Load auto-feeding state from NVS
+        auto_feeding_enabled_ = psm_->loadState(NVS_KEY_AUTO_FEED_ENABLE, true);
+        ESP_LOGI(TAG, "Auto-feeding: %s", auto_feeding_enabled_ ? "ENABLED" : "DISABLED");
+
+        // Initialize last feed date (will be loaded from NVS on first check)
+        last_auto_feed_date_ = 0;
     } else {
         ESP_LOGW(TAG, "PSM not configured - State persistence disabled");
     }
@@ -167,17 +174,19 @@ void PlantOSController::loop() {
         // Update water temperature in sensor data section
         status_logger_.updateWaterTemperature(temp, hasReading);
 
-        // Update water level sensors in sensor data section
+        // Update water level sensors in sensor data section (3-sensor system)
         bool hasWaterLevelSensors = hal_->hasWaterLevelSensors();
         bool highSensor = false;
         bool lowSensor = false;
+        bool emptySensor = false;
 
         if (hasWaterLevelSensors) {
             highSensor = hal_->readWaterLevelHigh();
             lowSensor = hal_->readWaterLevelLow();
+            emptySensor = hal_->readWaterLevelEmpty();
         }
 
-        status_logger_.updateWaterLevelSensors(highSensor, lowSensor, hasWaterLevelSensors);
+        status_logger_.updateWaterLevelSensors(highSensor, lowSensor, emptySensor, hasWaterLevelSensors);
 
         // Update pump configurations in status logger
         std::vector<PumpConfigInfo> pumpConfigs;
@@ -232,13 +241,14 @@ void PlantOSController::loop() {
 
         status_logger_.logStatus();
 
-        // Log water level status with ASCII art visualization
+        // Log water level status with ASCII art visualization (3-sensor system)
         if (hal_->hasWaterLevelSensors()) {
             bool high = hal_->readWaterLevelHigh();
             bool low = hal_->readWaterLevelLow();
-            status_logger_.logWaterLevelStatus(high, low, true);
+            bool empty = hal_->readWaterLevelEmpty();
+            status_logger_.logWaterLevelStatus(high, low, empty, true);
         } else {
-            status_logger_.logWaterLevelStatus(false, false, false);  // Sensors offline
+            status_logger_.logWaterLevelStatus(false, false, false, false);  // Sensors offline
         }
     }
 
@@ -587,6 +597,35 @@ void PlantOSController::handleIdle() {
     if (night_mode_enabled_ && isNightModeHours()) {
         ESP_LOGI(TAG, "Night mode hours started - transitioning to NIGHT state");
         transitionTo(ControllerState::NIGHT);
+        return;
+    }
+
+    // ========================================================================
+    // AUTOMATIC FEEDING CHECK - Once per day when water level reaches LOW
+    // ========================================================================
+    if (shouldTriggerAutoFeeding()) {
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "AUTO-FEEDING TRIGGERED");
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "[AUTO-FEEDING] Water level at LOW - triggering daily feed");
+
+        // Record today's date
+        int64_t today = getCurrentDateTimestamp();
+        if (today > 0) {
+            last_auto_feed_date_ = today;
+
+            // Save to NVS with unique key per date
+            if (psm_) {
+                char date_key[32];
+                snprintf(date_key, sizeof(date_key), "AUTOFEED_%lld", (long long)today);
+                psm_->logEvent(date_key, 0);  // 0 = STARTED
+
+                ESP_LOGI(TAG, "[AUTO-FEEDING] Stored trigger date: %lld", (long long)today);
+            }
+        }
+
+        // Start feeding sequence
+        startFeed();
         return;
     }
 
@@ -1850,6 +1889,39 @@ void PlantOSController::handleFeedFilling() {
         state_entry_executed_ = true;
         ESP_LOGI(TAG, "[FEED_FILLING] Starting tank fill before nutrient dosing");
 
+        // Safety check - verify tank is EMPTY before filling (all 3 sensors OFF)
+        if (hal_->hasWaterLevelSensors()) {
+            bool high_sensor = hal_->readWaterLevelHigh();
+            bool low_sensor = hal_->readWaterLevelLow();
+            bool empty_sensor = hal_->readWaterLevelEmpty();
+
+            // Tank must be empty: All sensors OFF
+            bool tank_is_empty = (!high_sensor && !low_sensor && !empty_sensor);
+
+            if (!tank_is_empty) {
+                ESP_LOGE(TAG, "[FEED_FILLING] SAFETY ABORT: Tank not empty before fill");
+                ESP_LOGE(TAG, "[FEED_FILLING] Sensors: HIGH=%s, LOW=%s, EMPTY=%s",
+                         high_sensor ? "ON" : "OFF",
+                         low_sensor ? "ON" : "OFF",
+                         empty_sensor ? "ON" : "OFF");
+                ESP_LOGE(TAG, "[FEED_FILLING] Tank must be completely drained before feeding");
+
+                // Clear flags
+                auto_ph_correction_pending_ = false;
+
+                // Clear PSM event
+                if (psm_) {
+                    psm_->clearEvent();
+                }
+
+                // Abort sequence
+                transitionTo(ControllerState::IDLE);
+                return;
+            }
+
+            ESP_LOGI(TAG, "[FEED_FILLING] Safety check passed - tank empty (all sensors OFF)");
+        }
+
         // Request water valve open with calculated max duration
         if (safety_gate_) {
             bool approved = safety_gate_->executeCommand(WATER_VALVE, true, max_fill_duration_sec);
@@ -2126,9 +2198,9 @@ void PlantOSController::handleWaterEmptying() {
     if (elapsed < 100 && !pump_command_sent) {
         ESP_LOGI(TAG, "[WATER_EMPTYING] Starting tank drain sequence");
 
-        // Check LOW sensor before starting (prevent dry-pump immediately)
-        if (hal_->hasWaterLevelSensors() && !hal_->readWaterLevelLow()) {
-            ESP_LOGW(TAG, "[WATER_EMPTYING] LOW sensor already OFF - tank already empty");
+        // Check EMPTY sensor before starting (prevent dry-pump immediately)
+        if (hal_->hasWaterLevelSensors() && !hal_->readWaterLevelEmpty()) {
+            ESP_LOGW(TAG, "[WATER_EMPTYING] EMPTY sensor already OFF - tank already empty");
 
             // Clear PSM event
             if (psm_) {
@@ -2191,12 +2263,12 @@ void PlantOSController::handleWaterEmptying() {
 
     // MONITOR: Check water level sensors (if available)
     if (hal_->hasWaterLevelSensors()) {
-        bool high_sensor = hal_->readWaterLevelHigh();
+        bool empty_sensor = hal_->readWaterLevelEmpty();
         bool low_sensor = hal_->readWaterLevelLow();
 
-        // SUCCESS: Low level reached (tank empty)
-        if (!low_sensor) {
-            ESP_LOGI(TAG, "[WATER_EMPTYING] LOW sensor OFF - tank empty");
+        // SUCCESS: EMPTY sensor OFF (tank below minimum safe level)
+        if (!empty_sensor) {
+            ESP_LOGI(TAG, "[WATER_EMPTYING] EMPTY sensor OFF - minimum safe level reached");
 
             // Stop wastewater pump
             if (safety_gate_) {
@@ -2227,14 +2299,13 @@ void PlantOSController::handleWaterEmptying() {
             return;
         }
 
-        // MONITOR: Log progress when HIGH sensor clears
-        static bool high_sensor_logged = false;
-        if (!high_sensor && !high_sensor_logged) {
-            ESP_LOGI(TAG, "[WATER_EMPTYING] HIGH sensor OFF - draining in progress");
-            high_sensor_logged = true;
-        }
-        if (high_sensor) {
-            high_sensor_logged = false;  // Reset for next drain cycle
+        // MONITOR: Log progress every 5 seconds
+        static uint32_t last_progress_log = 0;
+        if (elapsed - last_progress_log >= 5000) {
+            ESP_LOGI(TAG, "[WATER_EMPTYING] Draining... LOW=%s, EMPTY=%s",
+                     low_sensor ? "ON" : "OFF",
+                     empty_sensor ? "ON" : "OFF");
+            last_progress_log = elapsed;
         }
     } else {
         // FALLBACK: No sensors available - use time-based limit
@@ -3223,6 +3294,117 @@ void PlantOSController::retryOperation() {
              retry_state_.retry_count + 1,
              retry_state_.max_retries,
              retry_state_.backoff_delay_ms);
+}
+
+// ============================================================================
+// Automatic Feeding System
+// ============================================================================
+
+bool PlantOSController::shouldTriggerAutoFeeding() {
+    // ========================================================================
+    // CHECK 1: Auto-feeding must be enabled
+    // ========================================================================
+    if (!auto_feeding_enabled_) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 2: Must be in IDLE state (not busy)
+    // ========================================================================
+    if (current_state_ != ControllerState::IDLE) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 3: Not in NIGHT mode hours
+    // ========================================================================
+    if (night_mode_enabled_ && isNightModeHours()) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 4: Water level sensors must be available
+    // ========================================================================
+    if (!hal_ || !hal_->hasWaterLevelSensors()) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 5: Water level must be LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)
+    // ========================================================================
+    bool high = hal_->readWaterLevelHigh();
+    bool low = hal_->readWaterLevelLow();
+    bool empty = hal_->readWaterLevelEmpty();
+
+    bool is_low_level = (!high && !low && empty);
+    if (!is_low_level) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 6: Not already fed today
+    // ========================================================================
+    int64_t today = getCurrentDateTimestamp();
+    if (today == 0) {
+        ESP_LOGW(TAG, "[AUTO-FEEDING] NTP time unavailable - cannot check date");
+        return false;
+    }
+
+    // Check in-memory cache first
+    if (last_auto_feed_date_ == today) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 7: Verify no NVS event for today (power cycle recovery)
+    // ========================================================================
+    if (psm_) {
+        char date_key[32];
+        snprintf(date_key, sizeof(date_key), "AUTOFEED_%lld", (long long)today);
+
+        esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+        if (strncmp(event.eventID, date_key, sizeof(event.eventID)) == 0) {
+            // Event exists - feeding already triggered today
+            ESP_LOGI(TAG, "[AUTO-FEEDING] Already fed today - cached from NVS");
+            last_auto_feed_date_ = today;  // Update cache
+            return false;
+        }
+    }
+
+    // All checks passed - trigger feeding
+    return true;
+}
+
+int64_t PlantOSController::getCurrentDateTimestamp() {
+    if (!hal_) {
+        return 0;
+    }
+
+    // Get current Unix timestamp
+    int64_t now = hal_->getCurrentTimestamp();
+
+    if (now == 0) {
+        ESP_LOGW(TAG, "[AUTO-FEEDING] NTP time unavailable");
+        return 0;
+    }
+
+    // Calculate midnight UTC (start of current day)
+    // Unix time / 86400 = days since epoch
+    // Multiply back by 86400 = timestamp at midnight
+    int64_t days_since_epoch = now / 86400;
+    int64_t midnight_timestamp = days_since_epoch * 86400;
+
+    return midnight_timestamp;
+}
+
+void PlantOSController::setAutoFeedingEnabled(bool enabled) {
+    auto_feeding_enabled_ = enabled;
+
+    if (psm_) {
+        psm_->saveState(NVS_KEY_AUTO_FEED_ENABLE, enabled);
+    }
+
+    ESP_LOGI(TAG, "Auto-feeding %s", enabled ? "ENABLED" : "DISABLED");
 }
 
 } // namespace plantos_controller

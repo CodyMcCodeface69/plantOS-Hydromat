@@ -511,28 +511,29 @@ sensor:
   #   - SCL -> GPIO7 (I²C SCL with 4.7kΩ pull-up)
   #
   # NOTE: This sensor is non-critical - system operates normally if not present
-  - platform: bme280
-    i2c_id: i2c_bus
-    address: 0x76           # Default address (some modules use 0x77)
-    update_interval: 10s    # Update environmental data every 10 seconds
-
-    temperature:
-      id: bme280_temperature
-      name: "00_09_Air Temperature - BME280"
-      accuracy_decimals: 1
-      oversampling: 16x     # High oversampling for accuracy
-
-    humidity:
-      id: bme280_humidity
-      name: "00_10_Air Humidity - BME280"
-      accuracy_decimals: 1
-      oversampling: 16x
-
-    pressure:
-      id: bme280_pressure
-      name: "00_11_Air Pressure - BME280"
-      accuracy_decimals: 1
-      oversampling: 16x
+  # TEMPORARILY DISABLED: BME280 component not available in current ESPHome build
+  # - platform: bme280
+  #   i2c_id: i2c_bus
+  #   address: 0x76           # Default address (some modules use 0x77)
+  #   update_interval: 10s    # Update environmental data every 10 seconds
+  #
+  #   temperature:
+  #     id: bme280_temperature
+  #     name: "00_09_Air Temperature - BME280"
+  #     accuracy_decimals: 1
+  #     oversampling: 16x     # High oversampling for accuracy
+  #
+  #   humidity:
+  #     id: bme280_humidity
+  #     name: "00_10_Air Humidity - BME280"
+  #     accuracy_decimals: 1
+  #     oversampling: 16x
+  #
+  #   pressure:
+  #     id: bme280_pressure
+  #     name: "00_11_Air Pressure - BME280"
+  #     accuracy_decimals: 1
+  #     oversampling: 16x
 
   # Sensor Filter: Robust Averaging with Outlier Rejection
   #
@@ -560,15 +561,18 @@ sensor:
 ################################################################################
 # Binary Sensors: Water Level Sensors (XKC-Y23-V)
 #
-# Two capacitive non-contact water level sensors for tank fill monitoring
+# Three capacitive non-contact water level sensors for tank monitoring and
+# automatic feeding:
 # - HIGH sensor (GPIO10): Tank full indicator
-# - LOW sensor (GPIO11): Tank minimum level indicator
+# - LOW sensor (GPIO11): Auto-feed trigger level (moved up from original position)
+# - EMPTY sensor (GPIO16): Minimum safe level (prevents pump dry-running)
 #
-# Sensor Logic:
-# - Both ON: Tank FULL (water above HIGH level)
-# - Only LOW ON: Tank NORMAL (water between HIGH and LOW)
-# - Both OFF: Tank LOW (water below LOW level)
-# - HIGH ON, LOW OFF: ERROR (invalid state - check wiring)
+# 5 Tank States (3-Sensor System):
+# - HIGH=ON, LOW=ON:         FULL (above HIGH)
+# - HIGH=OFF, LOW=ON:        NORMAL (between HIGH and LOW)
+# - HIGH=OFF, LOW=OFF, EMPTY=ON:  LOW (auto-feed trigger zone ⚡)
+# - HIGH=OFF, LOW=OFF, EMPTY=OFF: EMPTY (danger - below safe level ⚠️)
+# - HIGH=ON, LOW=OFF:        ERROR (invalid - check wiring)
 ################################################################################
 binary_sensor:
   # XKC-Y23-V Water Level HIGH Sensor (GPIO10)
@@ -593,7 +597,8 @@ binary_sensor:
         - logger.log: "Water level HIGH cleared - tank below high level"
 
   # XKC-Y23-V Water Level LOW Sensor (GPIO11)
-  # Triggers when water reaches minimum safe level
+  # Triggers when water reaches auto-feed trigger level (moved up from original position)
+  # When OFF (with EMPTY=ON), triggers automatic feeding once per day
   - platform: gpio
     id: water_level_low_sensor
     name: "00_08_Water Level LOW"
@@ -608,10 +613,32 @@ binary_sensor:
       - delayed_off: 500ms
     on_press:
       then:
-        - logger.log: "Water level LOW detected - tank above minimum"
+        - logger.log: "Water level LOW detected - tank above auto-feed trigger"
     on_release:
       then:
-        - logger.log: "Water level LOW cleared - tank below minimum level"
+        - logger.log: "Water level LOW cleared - entering auto-feed trigger zone"
+
+  # XKC-Y23-V Water Level EMPTY Sensor (GPIO16)
+  # Triggers when water is at absolute minimum safe level
+  # Prevents pump dry-running during drain operations
+  - platform: gpio
+    id: water_level_empty_sensor
+    name: "00_09_Water Level EMPTY"
+    pin:
+      number: GPIO16
+      mode:
+        input: true
+        pulldown: true  # Pull down when sensor not active
+    filters:
+      # Debounce: sensor must be stable for 500ms to prevent water ripple false triggers
+      - delayed_on: 500ms
+      - delayed_off: 500ms
+    on_press:
+      then:
+        - logger.log: "Water level EMPTY detected - water at minimum safe level"
+    on_release:
+      then:
+        - logger.log: "Water level EMPTY cleared - DANGER: Tank below safe level!"
 
 
 ################################################################################
@@ -662,50 +689,51 @@ text_sensor:
     # Update every 10 seconds to match sensor update interval
     update_interval: 10s
 
-  - platform: template
-    name: "00_09_Air Temperature"
-    id: air_temperature_text
-    # Lambda returns current air temperature from BME280
-    lambda: |-
-      if (id(bme280_temperature).has_state()) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%.1f°C", id(bme280_temperature).state);
-        return {buf};
-      } else {
-        return {"N/A (BME280 offline)"};
-      }
-    # Update every 10 seconds to match sensor update interval
-    update_interval: 10s
-
-  - platform: template
-    name: "00_10_Air Humidity"
-    id: air_humidity_text
-    # Lambda returns current relative humidity from BME280
-    lambda: |-
-      if (id(bme280_humidity).has_state()) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%.1f%%", id(bme280_humidity).state);
-        return {buf};
-      } else {
-        return {"N/A (BME280 offline)"};
-      }
-    # Update every 10 seconds to match sensor update interval
-    update_interval: 10s
-
-  - platform: template
-    name: "00_11_Air Pressure"
-    id: air_pressure_text
-    # Lambda returns current barometric pressure from BME280
-    lambda: |-
-      if (id(bme280_pressure).has_state()) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%.1f hPa", id(bme280_pressure).state);
-        return {buf};
-      } else {
-        return {"N/A (BME280 offline)"};
-      }
-    # Update every 10 seconds to match sensor update interval
-    update_interval: 10s
+  # TEMPORARILY DISABLED: BME280-dependent text sensors
+  # - platform: template
+  #   name: "00_09_Air Temperature"
+  #   id: air_temperature_text
+  #   # Lambda returns current air temperature from BME280
+  #   lambda: |-
+  #     if (id(bme280_temperature).has_state()) {
+  #       char buf[32];
+  #       snprintf(buf, sizeof(buf), "%.1f°C", id(bme280_temperature).state);
+  #       return {buf};
+  #     } else {
+  #       return {"N/A (BME280 offline)"};
+  #     }
+  #   # Update every 10 seconds to match sensor update interval
+  #   update_interval: 10s
+  #
+  # - platform: template
+  #   name: "00_10_Air Humidity"
+  #   id: air_humidity_text
+  #   # Lambda returns current relative humidity from BME280
+  #   lambda: |-
+  #     if (id(bme280_humidity).has_state()) {
+  #       char buf[32];
+  #       snprintf(buf, sizeof(buf), "%.1f%%", id(bme280_humidity).state);
+  #       return {buf};
+  #     } else {
+  #       return {"N/A (BME280 offline)"};
+  #     }
+  #   # Update every 10 seconds to match sensor update interval
+  #   update_interval: 10s
+  #
+  # - platform: template
+  #   name: "00_11_Air Pressure"
+  #   id: air_pressure_text
+  #   # Lambda returns current barometric pressure from BME280
+  #   lambda: |-
+  #     if (id(bme280_pressure).has_state()) {
+  #       char buf[32];
+  #       snprintf(buf, sizeof(buf), "%.1f hPa", id(bme280_pressure).state);
+  #       return {buf};
+  #     } else {
+  #       return {"N/A (BME280 offline)"};
+  #     }
+  #   # Update every 10 seconds to match sensor update interval
+  #   update_interval: 10s
 
   - platform: template
     name: "00_06_Tank Volume"
@@ -1379,7 +1407,8 @@ plantos_hal:
   # light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0) - COMMENTED OUT
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO23
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO10
-  water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO11
+  water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO11 (auto-feed trigger level)
+  water_level_empty_sensor: water_level_empty_sensor  # XKC-Y23-V capacitive sensor on GPIO16 (minimum safe level)
   time_source: sntp_time  # Time source for clock-based pH scheduling (time_dummy for testing, can be NTP/RTC)
 
   # Actuator GPIO Outputs (Phase 2: Hardware Control - 5 GPIO actuators)
@@ -1996,6 +2025,47 @@ switch:
       - lambda: |-
           ESP_LOGW("switch", "Actuator Safety Gate DISABLED - manual control mode");
           id(actuator_safety)->setEnabled(false);
+
+  # === 02 - Automatic Feeding Control ===
+  - platform: template
+    id: auto_feeding_enabled_switch
+    name: "02_02_Auto Feeding Enabled"
+    icon: "mdi:robot"
+    restore_mode: RESTORE_DEFAULT_ON  # Auto-feeding enabled by default
+    optimistic: false  # State determined by lambda return value
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "====================================");
+          ESP_LOGI("switch", "AUTO-FEEDING ENABLED");
+          ESP_LOGI("switch", "====================================");
+          ESP_LOGI("switch", "System will automatically trigger feeding when:");
+          ESP_LOGI("switch", "  1. Water level reaches LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)");
+          ESP_LOGI("switch", "  2. Controller in IDLE state");
+          ESP_LOGI("switch", "  3. NOT in NIGHT/SHUTDOWN/PAUSE/ERROR mode");
+          ESP_LOGI("switch", "  4. Feeding not already triggered today");
+          ESP_LOGI("switch", "====================================");
+
+          // Save state to NVS
+          id(psm).saveState("AutoFeedEnable", true);
+
+          // Update controller state
+          id(unified_controller).setAutoFeedingEnabled(true);
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGW("switch", "====================================");
+          ESP_LOGW("switch", "AUTO-FEEDING DISABLED");
+          ESP_LOGW("switch", "====================================");
+          ESP_LOGW("switch", "Manual feeding only - no automatic triggers");
+          ESP_LOGW("switch", "====================================");
+
+          // Save state to NVS
+          id(psm).saveState("AutoFeedEnable", false);
+
+          // Update controller state
+          id(unified_controller).setAutoFeedingEnabled(false);
+    lambda: |-
+      // Read state from NVS (default: true if not set)
+      return id(psm).loadState("AutoFeedEnable", true);
 
   # === 10 - Actuator Control (Manual Toggle Switches via Safety Gate) ===
   # These switches toggle actuators through the safety gate for monitored control

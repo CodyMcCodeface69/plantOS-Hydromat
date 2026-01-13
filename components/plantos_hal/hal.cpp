@@ -49,7 +49,12 @@ void ESPHomeHAL::set_water_level_high_sensor(esphome::binary_sensor::BinarySenso
 
 void ESPHomeHAL::set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor) {
     water_level_low_sensor_ = sensor;
-    ESP_LOGI(TAG, "Water level LOW sensor configured");
+    ESP_LOGI(TAG, "Water level LOW sensor configured (GPIO11 - auto-feed trigger level)");
+}
+
+void ESPHomeHAL::set_water_level_empty_sensor(esphome::binary_sensor::BinarySensor* sensor) {
+    water_level_empty_sensor_ = sensor;
+    ESP_LOGI(TAG, "Water level EMPTY sensor configured (GPIO16 - minimum safe level)");
 }
 
 void ESPHomeHAL::set_time_source(esphome::time::RealTimeClock* time_source) {
@@ -480,9 +485,18 @@ bool ESPHomeHAL::readWaterLevelLow() {
     return water_level_low_sensor_->state;
 }
 
+bool ESPHomeHAL::readWaterLevelEmpty() {
+    if (!water_level_empty_sensor_) {
+        ESP_LOGW(TAG, "EMPTY sensor not configured - returning false");
+        return false;
+    }
+    return water_level_empty_sensor_->state;
+}
+
 bool ESPHomeHAL::hasWaterLevelSensors() const {
     return water_level_high_sensor_ != nullptr &&
-           water_level_low_sensor_ != nullptr;
+           water_level_low_sensor_ != nullptr &&
+           water_level_empty_sensor_ != nullptr;  // All 3 sensors required
 }
 
 float ESPHomeHAL::readLightIntensity() {

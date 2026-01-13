@@ -156,12 +156,13 @@ public:
     void updateWaterTemperature(float temp, bool available);
 
     /**
-     * Update water level sensor states
+     * Update water level sensor states (3-sensor system)
      * @param high_sensor State of HIGH water level sensor (true = water present)
      * @param low_sensor State of LOW water level sensor (true = water present)
-     * @param available Whether water level sensors are configured
+     * @param empty_sensor State of EMPTY water level sensor (true = water present)
+     * @param available Whether all water level sensors are configured
      */
-    void updateWaterLevelSensors(bool high_sensor, bool low_sensor, bool available);
+    void updateWaterLevelSensors(bool high_sensor, bool low_sensor, bool empty_sensor, bool available);
 
     /**
      * Update unified controller state
@@ -356,12 +357,13 @@ public:
     void print420Art();
 
     /**
-     * Log water level status with ASCII art visualization
+     * Log water level status with ASCII art visualization (5-state system)
      * @param high_sensor State of HIGH water level sensor (true = water present)
      * @param low_sensor State of LOW water level sensor (true = water present)
-     * @param sensors_available Whether sensors are configured and available
+     * @param empty_sensor State of EMPTY water level sensor (true = water present)
+     * @param sensors_available Whether all sensors are configured and available
      */
-    void logWaterLevelStatus(bool high_sensor, bool low_sensor, bool sensors_available);
+    void logWaterLevelStatus(bool high_sensor, bool low_sensor, bool empty_sensor, bool sensors_available);
 
     /**
      * Configure status logger behavior
@@ -395,7 +397,8 @@ private:
     bool waterTempAvailable;             // Whether temperature reading is available
     bool waterLevelHighSensor;           // HIGH water level sensor state
     bool waterLevelLowSensor;            // LOW water level sensor state
-    bool waterLevelSensorsAvailable;     // Whether water level sensors are configured
+    bool waterLevelEmptySensor;          // EMPTY water level sensor state
+    bool waterLevelSensorsAvailable;     // Whether all water level sensors are configured
 
     // Web server status
     bool webServerOnline;

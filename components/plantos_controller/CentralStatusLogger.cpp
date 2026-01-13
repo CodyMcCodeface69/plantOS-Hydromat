@@ -78,9 +78,10 @@ void CentralStatusLogger::updateWaterTemperature(float temp, bool available) {
     waterTempAvailable = available;
 }
 
-void CentralStatusLogger::updateWaterLevelSensors(bool high_sensor, bool low_sensor, bool available) {
+void CentralStatusLogger::updateWaterLevelSensors(bool high_sensor, bool low_sensor, bool empty_sensor, bool available) {
     waterLevelHighSensor = high_sensor;
     waterLevelLowSensor = low_sensor;
+    waterLevelEmptySensor = empty_sensor;
     waterLevelSensorsAvailable = available;
 }
 
@@ -802,53 +803,87 @@ void CentralStatusLogger::print420Art() {
     ESP_LOGI(TAG, "============================        +          ");
 }
 
-void CentralStatusLogger::logWaterLevelStatus(bool high_sensor, bool low_sensor, bool sensors_available) {
+void CentralStatusLogger::logWaterLevelStatus(bool high_sensor, bool low_sensor, bool empty_sensor, bool sensors_available) {
     ESP_LOGI(TAG, "--- WATER LEVEL STATUS ---");
 
     if (!sensors_available) {
-        ESP_LOGI(TAG, "  Status: Using time-based fill/drain limits");
+        ESP_LOGI(TAG, "  Status: Using time-based fill/drain limits (no sensors)");
         return;
     }
 
-    // Determine level status based on sensor states
+    // ========================================================================
+    // 5-STATE WATER LEVEL SYSTEM
+    // ========================================================================
     std::string level_status;
+
+    // STATE 1: FULL (HIGH=ON, LOW=ON)
     if (high_sensor && low_sensor) {
         level_status = "FULL (above HIGH sensor)";
-        // ASCII Art: Tank FULL
         ESP_LOGI(TAG, "  ┌─────────┐");
         ESP_LOGI(TAG, "  │█████████│ ← HIGH");
         ESP_LOGI(TAG, "  │█████████│");
         ESP_LOGI(TAG, "  │█████████│ ← LOW");
+        ESP_LOGI(TAG, "  │█████████│");
+        ESP_LOGI(TAG, "  │█████████│ ← EMPTY");
         ESP_LOGI(TAG, "  └─────────┘");
-    } else if (!high_sensor && low_sensor) {
+    }
+    // STATE 2: NORMAL (HIGH=OFF, LOW=ON)
+    else if (!high_sensor && low_sensor) {
         level_status = "NORMAL (between HIGH and LOW)";
-        // ASCII Art: Tank NORMAL
         ESP_LOGI(TAG, "  ┌─────────┐");
         ESP_LOGI(TAG, "  │         │ ← HIGH");
         ESP_LOGI(TAG, "  │█████████│");
         ESP_LOGI(TAG, "  │█████████│ ← LOW");
+        ESP_LOGI(TAG, "  │█████████│");
+        ESP_LOGI(TAG, "  │█████████│ ← EMPTY");
         ESP_LOGI(TAG, "  └─────────┘");
-    } else if (!high_sensor && !low_sensor) {
-        level_status = "LOW (below LOW sensor)";
-        // ASCII Art: Tank LOW
+    }
+    // STATE 3: LOW (HIGH=OFF, LOW=OFF, EMPTY=ON) - AUTO-FEED TRIGGER ZONE
+    else if (!high_sensor && !low_sensor && empty_sensor) {
+        level_status = "LOW (between LOW and EMPTY) ⚡ AUTO-FEED ZONE";
         ESP_LOGI(TAG, "  ┌─────────┐");
         ESP_LOGI(TAG, "  │         │ ← HIGH");
         ESP_LOGI(TAG, "  │         │");
-        ESP_LOGI(TAG, "  │▒▒▒▒▒▒▒▒▒│ ← LOW");
+        ESP_LOGI(TAG, "  │         │ ← LOW");
+        ESP_LOGI(TAG, "  │▒▒▒▒▒▒▒▒▒│ ⚡ AUTO-FEED");
+        ESP_LOGI(TAG, "  │▒▒▒▒▒▒▒▒▒│ ← EMPTY");
         ESP_LOGI(TAG, "  └─────────┘");
-    } else {
-        // Invalid state: HIGH ON but LOW OFF (physically impossible)
-        level_status = "ERROR (invalid sensor state)";
-        ESP_LOGE(TAG, "  ALERT: Invalid sensor state - HIGH=ON, LOW=OFF (check wiring)");
-        // ASCII Art: ERROR
+        ESP_LOGW(TAG, "  ⚡ AUTO-FEEDING TRIGGER ZONE");
+        ESP_LOGI(TAG, "     (will trigger if enabled & not fed today)");
+    }
+    // STATE 4: EMPTY (HIGH=OFF, LOW=OFF, EMPTY=OFF) - DANGER ZONE
+    else if (!high_sensor && !low_sensor && !empty_sensor) {
+        level_status = "EMPTY (below EMPTY sensor) ⚠️ DANGER";
         ESP_LOGI(TAG, "  ┌─────────┐");
-        ESP_LOGI(TAG, "  │  ERROR  │ ← HIGH");
-        ESP_LOGI(TAG, "  │ INVALID │");
-        ESP_LOGI(TAG, "  │  STATE  │ ← LOW");
+        ESP_LOGI(TAG, "  │         │ ← HIGH");
+        ESP_LOGI(TAG, "  │         │");
+        ESP_LOGI(TAG, "  │         │ ← LOW");
+        ESP_LOGI(TAG, "  │         │");
+        ESP_LOGI(TAG, "  │         │ ← EMPTY");
         ESP_LOGI(TAG, "  └─────────┘");
+        ESP_LOGE(TAG, "  ⚠️⚠️⚠️ DANGER ZONE ⚠️⚠️⚠️");
+        ESP_LOGE(TAG, "  Tank below EMPTY sensor - risk of pump damage!");
+        ESP_LOGE(TAG, "  Add water immediately or disable pumps!");
+    }
+    // STATE 5: ERROR (HIGH=ON, LOW=OFF) - INVALID STATE
+    else {
+        level_status = "ERROR (invalid sensor state)";
+        ESP_LOGE(TAG, "  ┌─────────┐");
+        ESP_LOGE(TAG, "  │ !ERROR! │");
+        ESP_LOGE(TAG, "  │  CHECK  │");
+        ESP_LOGE(TAG, "  │  WIRING │");
+        ESP_LOGE(TAG, "  │ INVALID │");
+        ESP_LOGE(TAG, "  │  STATE  │");
+        ESP_LOGE(TAG, "  └─────────┘");
+        ESP_LOGE(TAG, "  ALERT: Invalid sensor combination detected");
+        ESP_LOGE(TAG, "  Possible causes: Loose wiring, sensor failure, debris");
     }
 
     ESP_LOGI(TAG, "  Water Level: %s", level_status.c_str());
+    ESP_LOGI(TAG, "  Sensors: HIGH=%s, LOW=%s, EMPTY=%s",
+             high_sensor ? "ON" : "OFF",
+             low_sensor ? "ON" : "OFF",
+             empty_sensor ? "ON" : "OFF");
 }
 
 void CentralStatusLogger::configure(bool enableReports, uint32_t reportIntervalMs, bool verboseMode) {

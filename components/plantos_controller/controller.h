@@ -210,6 +210,20 @@ public:
     void startReservoirChange();
 
     /**
+     * Enable or disable automatic feeding
+     * When enabled, feeding triggers automatically once per day when water level reaches LOW
+     * Conditions: IDLE state, not NIGHT/SHUTDOWN/PAUSE, sensors show LOW level (HIGH=OFF, LOW=OFF, EMPTY=ON)
+     * @param enabled true to enable auto-feeding, false to disable
+     */
+    void setAutoFeedingEnabled(bool enabled);
+
+    /**
+     * Check if automatic feeding is enabled
+     * @return true if auto-feeding is enabled
+     */
+    bool isAutoFeedingEnabled() const { return auto_feeding_enabled_; }
+
+    /**
      * Set controller to SHUTDOWN state
      * Turns off all actuators and disables time-based events
      * Persists to NVS - will resume in SHUTDOWN if power cycled
@@ -331,6 +345,22 @@ private:
     bool auto_ph_correction_pending_{false};  // Flag: trigger pH correction after current operation
 
     // ========================================================================
+    // Automatic Feeding State
+    // ========================================================================
+
+    /// Enable/disable automatic feeding (persisted to NVS)
+    bool auto_feeding_enabled_{true};
+
+    /// Last date when auto-feeding was triggered (Unix timestamp at midnight UTC)
+    int64_t last_auto_feed_date_{0};
+
+    /// NVS key for storing last auto-feed date
+    static constexpr const char* NVS_KEY_AUTO_FEED_DATE = "AutoFeedDate";
+
+    /// NVS key for auto-feeding enable/disable state
+    static constexpr const char* NVS_KEY_AUTO_FEED_ENABLE = "AutoFeedEnable";
+
+    // ========================================================================
     // pH Correction State
     // ========================================================================
 
@@ -449,6 +479,20 @@ private:
      * Returns duration in milliseconds
      */
     uint32_t calculatePhMixingDuration() const;
+
+    /**
+     * Check if automatic feeding should trigger
+     * Checks all conditions: water level, state, mode, daily limit
+     * @return true if all conditions met for auto-feeding
+     */
+    bool shouldTriggerAutoFeeding();
+
+    /**
+     * Get current date as Unix timestamp (midnight UTC)
+     * Used for daily feeding limit tracking
+     * @return Unix timestamp at start of current day, or 0 if NTP unavailable
+     */
+    int64_t getCurrentDateTimestamp();
 
     // ========================================================================
     // Actuator Control Helpers (Controller → SafetyGate → HAL)

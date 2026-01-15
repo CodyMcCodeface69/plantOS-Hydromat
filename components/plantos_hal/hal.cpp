@@ -231,10 +231,14 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
         ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 HTTP: %s", state ? "ON" : "OFF");
     }
     else if (pumpId == "AirPump") {
-        // Air pump via Shelly Socket 0 (HTTP direct control with retry)
-        std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=0&on=" + (state ? "true" : "false");
-        sendShellyCommand(url, "AirPump (Socket 0)");
-        ESP_LOGD(TAG, "AirPump → Shelly Socket 0 HTTP: %s", state ? "ON" : "OFF");
+        // Air pump via Shelly Socket 0 - SIMPLIFIED: hardcoded fire-and-forget
+        if (http_request_) {
+            if (state) {
+                http_request_->get("http://192.168.0.130/rpc/Switch.Set?id=0&on=true");
+            } else {
+                http_request_->get("http://192.168.0.130/rpc/Switch.Set?id=0&on=false");
+            }
+        }
     }
     else if (pumpId == "GrowLight") {
         // Grow light via Shelly Socket 3 (HTTP direct control with retry)
@@ -357,21 +361,21 @@ bool ESPHomeHAL::sendShellyCommand(const std::string& url, const char* deviceNam
         return false;
     }
 
-    // Send the command once and wait long enough for completion
+    // Send the command asynchronously (fire-and-forget)
     // The ESPHome http_request component handles retries internally
     ESP_LOGI(TAG, "%s: Sending HTTP command", deviceName);
     ESP_LOGD(TAG, "%s: URL: %s", deviceName, url.c_str());
 
+    // CRITICAL FIX: Cache URL to prevent use-after-free
+    // The http_request component uses the URL asynchronously, so we must keep it alive
+    // by storing it in a member variable that persists beyond this function call
+    url_cache_ = url;
+
     // Send HTTP request (asynchronous - returns immediately)
-    http_request_->get(url);
+    // Pass cached URL to prevent memory access fault when the local 'url' is destroyed
+    http_request_->get(url_cache_);
 
-    // Wait 3 seconds for the request to complete
-    // This is generous for a local network and allows the ESPHome component
-    // to handle any internal retries or connection delays
-    ESP_LOGD(TAG, "%s: Waiting 3s for HTTP completion...", deviceName);
-    esphome::delay(3000);
-
-    ESP_LOGI(TAG, "%s: HTTP command completed", deviceName);
+    ESP_LOGI(TAG, "%s: HTTP command sent (async)", deviceName);
     return true;
 }
 

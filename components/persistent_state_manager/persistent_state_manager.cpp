@@ -102,12 +102,10 @@ void PersistentStateManager::logEvent(const char* id, int status) {
             ESP_LOGE(TAG, ">>> FLASH COMMIT FAILED!");
         }
 
-        // Add delay to ensure NVS flash write completes
+        // CRITICAL FIX: Removed 200ms blocking delay that could contribute to WDT timeouts
+        // sync() should be synchronous and wait for completion internally
         // Critical for STATE_SHUTDOWN and STATE_PAUSE persistence
         if (strcmp(id, "STATE_SHUTDOWN") == 0 || strcmp(id, "STATE_PAUSE") == 0) {
-            ESP_LOGW(TAG, ">>> CRITICAL STATE: Adding 200ms delay for NVS flush");
-            delay(200);
-
             // Verify what was actually written to NVS
             CriticalEventLog verify_event;
             if (pref_.load(&verify_event)) {
@@ -160,8 +158,8 @@ void PersistentStateManager::clearEvent() {
             ESP_LOGE(TAG, ">>> FLASH COMMIT FAILED!");
         }
 
-        // Add delay to ensure NVS flash write completes
-        delay(100);
+        // CRITICAL FIX: Removed 100ms blocking delay that could contribute to WDT timeouts
+        // sync() should be synchronous and wait for completion internally
 
         // Verify the clear
         CriticalEventLog verify_event;
@@ -257,10 +255,10 @@ bool PersistentStateManager::loadState(const char* key, bool default_value) {
     // Attempt to load the boolean value from NVS
     bool loaded_value = default_value;
     if (pref.load(&loaded_value)) {
-        ESP_LOGD(TAG, "State loaded from NVS: %s = %s", key, loaded_value ? "true" : "false");
+        ESP_LOGV(TAG, "State loaded from NVS: %s = %s", key, loaded_value ? "true" : "false");
         return loaded_value;
     } else {
-        ESP_LOGD(TAG, "No state found in NVS for key: %s (using default: %s)",
+        ESP_LOGV(TAG, "No state found in NVS for key: %s (using default: %s)",
                  key, default_value ? "true" : "false");
         return default_value;
     }

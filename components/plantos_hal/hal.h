@@ -499,6 +499,10 @@ private:
     // HTTP request component for direct Shelly control
     esphome::http_request::HttpRequestComponent* http_request_{nullptr};
 
+    // URL cache to prevent use-after-free in async HTTP requests
+    // The http_request component uses the URL asynchronously, so we must keep it alive
+    std::string url_cache_;
+
     // Shelly IP address
     static constexpr const char* SHELLY_IP = "192.168.0.130";
 

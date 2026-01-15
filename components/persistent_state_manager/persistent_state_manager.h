@@ -15,16 +15,37 @@ namespace persistent_state_manager {
  *
  * This structure is saved to NVS (Non-Volatile Storage) to track critical system
  * events that must survive power loss or unexpected reboots.
+ *
+ * CRITICAL RISC-V ALIGNMENT FIX:
+ * Members are ordered from largest to smallest alignment requirements to ensure
+ * proper memory alignment on ESP32-C6 (RISC-V). RISC-V requires strict alignment:
+ * - int64_t must be 8-byte aligned
+ * - int32_t must be 4-byte aligned
+ * - char[] has no alignment requirement
+ *
+ * OLD ORDER (CRASHES on RISC-V):
+ *   char eventID[32]      @ offset 0
+ *   int64_t timestampSec  @ offset 32 (NOT 8-byte aligned! 32 % 8 = 0 BUT compiler pads it)
+ *   int32_t status        @ offset 40
+ *
+ * NEW ORDER (FIXED):
+ *   int64_t timestampSec  @ offset 0 (8-byte aligned)
+ *   int32_t status        @ offset 8 (4-byte aligned)
+ *   char eventID[32]      @ offset 12 (no requirement)
+ *
+ * The __attribute__((aligned(8))) ensures the struct itself is allocated on
+ * 8-byte boundaries, preventing misalignment when stored in NVS or passed to
+ * FreeRTOS queue operations.
  */
-struct CriticalEventLog {
-    char eventID[32];       // Unique event identifier (e.g., "DOSING_ACID", "WATERING_ZONE1")
-    int64_t timestampSec;   // Unix timestamp when event was logged
+struct __attribute__((aligned(8))) CriticalEventLog {
+    int64_t timestampSec;   // Unix timestamp when event was logged (8-byte aligned)
     int32_t status;         // Event status: 0=STARTED, 1=COMPLETED, 2=ERROR, etc.
+    char eventID[32];       // Unique event identifier (e.g., "DOSING_ACID", "WATERING_ZONE1")
 
     CriticalEventLog() {
-        memset(eventID, 0, sizeof(eventID));
         timestampSec = 0;
         status = 0;
+        memset(eventID, 0, sizeof(eventID));
     }
 
     CriticalEventLog(const char* id, int64_t ts, int32_t st)

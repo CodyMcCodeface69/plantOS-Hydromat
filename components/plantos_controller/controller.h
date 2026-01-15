@@ -339,6 +339,15 @@ private:
     uint32_t last_air_pump_check_time_{0};  // Last time we verified air pump state (millis())
 
     // ========================================================================
+    // Sensor Change Flags (ISR-safe)
+    // ========================================================================
+    // These flags are set by sensor callbacks which may run in ISR context.
+    // Using volatile to ensure proper memory synchronization.
+
+    volatile bool temperature_changed_{false};  // Set by ISR callback, cleared by loop()
+    float last_temperature_{0.0f};              // Last temperature value received
+
+    // ========================================================================
     // Feed Operation State (Fill + Nutrients + pH)
     // ========================================================================
 

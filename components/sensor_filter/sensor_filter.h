@@ -94,10 +94,10 @@ public:
   /**
    * loop() is called repeatedly by ESPHome's main loop.
    *
-   * For this event-driven component, loop() is not used. All processing
-   * happens in on_sensor_update() callback triggered by source sensor.
+   * Used for ISR-safe deferred logging. Sensor callbacks can be called from
+   * ISR context, so we cannot log there. Instead, we set flags and log here.
    */
-  void loop() override {}
+  void loop() override;
 
 protected:
   /**
@@ -116,6 +116,17 @@ protected:
 
   // RobustAverager instance (created in setup() with config parameters)
   RobustAverager<float> *averager_{nullptr};
+
+  // ISR-safe deferred logging flags
+  // Sensor callbacks may run in ISR context, so we cannot log there.
+  // Instead, we set these flags and handle logging in loop().
+  volatile bool has_new_reading_{false};
+  volatile bool has_nan_reading_{false};
+  volatile bool has_filtered_value_{false};
+  float last_raw_value_{0.0f};
+  int last_buffer_count_{0};
+  float last_filtered_value_{0.0f};
+  int last_readings_count_{0};
 };
 
 } // namespace sensor_filter

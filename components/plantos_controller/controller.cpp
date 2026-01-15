@@ -64,14 +64,17 @@ void PlantOSController::setup() {
         ESP_LOGW(TAG, "PSM not configured - State persistence disabled");
     }
 
-    // Register temperature change callback for verbose logging
+    // Register temperature change callback (ISR-safe - no logging in callback!)
+    // Temperature sensor callbacks can be triggered from ISR context (ADC interrupts),
+    // so we must NOT call ESP_LOGI or any FreeRTOS queue operations here.
+    // Instead, we set a volatile flag and handle logging in the main loop.
     if (hal_->hasTemperature()) {
         hal_->onTemperatureChange([this](float temp) {
-            if (status_logger_.isVerboseMode()) {
-                ESP_LOGI(TAG, "Temperature changed: %.1f°C", temp);
-            }
+            // ISR-SAFE: Only update volatile members, no logging!
+            last_temperature_ = temp;
+            temperature_changed_ = true;
         });
-        ESP_LOGI(TAG, "Temperature sensor callback registered");
+        ESP_LOGI(TAG, "Temperature sensor callback registered (ISR-safe)");
     } else {
         ESP_LOGW(TAG, "Temperature sensor not available - temperature compensation disabled");
     }
@@ -109,6 +112,17 @@ void PlantOSController::loop() {
     // Update LED behavior for current state
     uint32_t elapsed = getStateElapsed();
     led_behaviors_->update(current_state_, elapsed, hal_);
+
+    // Handle temperature change notifications (ISR-safe deferred logging)
+    // The callback sets temperature_changed_ flag from ISR context,
+    // and we do the actual logging here in the main loop to avoid
+    // calling ESP_LOGI from ISR which causes alignment crashes on RISC-V.
+    if (temperature_changed_) {
+        temperature_changed_ = false;  // Clear flag
+        if (status_logger_.isVerboseMode()) {
+            ESP_LOGI(TAG, "Temperature changed: %.1f°C", last_temperature_);
+        }
+    }
 
     // Check if we should print periodic status report
     if (status_logger_.shouldPrintStatusReport()) {

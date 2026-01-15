@@ -50,11 +50,20 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
   /**
    * @brief Poll sensor for pH reading (called at update_interval)
    *
-   * - Sends temperature compensation if configured
-   * - Requests single pH measurement
-   * - Validates and publishes result
+   * - Initiates non-blocking pH reading sequence
+   * - Temperature compensation and pH read commands are sent
+   * - Actual response handling happens in loop()
    */
   void update() override;
+
+  /**
+   * @brief Non-blocking state machine processing (called every loop iteration)
+   *
+   * - Handles delayed response reading for EZO commands
+   * - Prevents WDT timeouts by avoiding delay() calls
+   * - Processes state machine: IDLE → SENT_TEMP_COMP → SENT_READ_CMD → IDLE
+   */
+  void loop() override;
 
   /**
    * @brief Log component configuration
@@ -283,6 +292,15 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
   uint8_t error_count_{0};                   ///< Consecutive error counter for fault detection
   bool continuous_mode_active_{false};       ///< True if continuous reading mode is enabled
   bool verbose_{false};                      ///< True if verbose UART logging is enabled
+
+  // Non-blocking state machine for polling mode (prevents WDT timeouts)
+  enum class ReadingState {
+    IDLE,                    ///< Not currently reading
+    SENT_TEMP_COMP,          ///< Sent temperature compensation, waiting for response
+    SENT_READ_CMD,           ///< Sent "R" command, waiting for pH response
+  };
+  ReadingState reading_state_{ReadingState::IDLE};  ///< Current state in non-blocking FSM
+  uint32_t command_sent_time_{0};                   ///< Timestamp when last command was sent (millis())
 
   // Stability detection buffer (rolling window for standard deviation)
   static constexpr size_t STABILITY_BUFFER_SIZE = 10;  ///< Number of readings to track

@@ -24,57 +24,19 @@ void EZOPHUARTComponent::setup() {
   // Clear any pending data in UART buffer from power-up
   this->flush();
 
-  // CRITICAL: Disable verbose responses first
-  // This makes the sensor respond with just data instead of "*OK,data"
-  ESP_LOGI(TAG, "Configuring response format...");
-  if (this->send_command_("RESPONSE,0")) {
-    this->wait_for_response_();
-    char response[RESPONSE_BUFFER_SIZE];
-    if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
-      ESP_LOGD(TAG, "Response format set to data-only mode: %s", response);
-    }
-    // Flush any remaining data
-    this->flush();
-    delay(100);  // Give sensor time to switch modes
-  }
+  // NOTE: We skip synchronous setup commands to avoid blocking boot
+  // The sensor will respond to commands once update() is called
+  // If needed, configuration commands can be sent via ESPHome services
 
-  // Test UART communication with device info command
-  if (!this->send_command_("i")) {
-    ESP_LOGE(TAG, "Failed to send device info command");
-    this->mark_failed();
-    return;
-  }
-
-  // Wait for sensor to process command
-  this->wait_for_response_();
-
-  // Read and log device information
-  char response[RESPONSE_BUFFER_SIZE];
-  if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
-    ESP_LOGI(TAG, "EZO pH device info: %s", response);
-  } else {
-    ESP_LOGW(TAG, "Failed to read device info - check UART connection");
-  }
-
-  // Disable continuous reading mode (we use polling instead)
-  if (!this->send_command_("C,0")) {
-    ESP_LOGW(TAG, "Failed to disable continuous reading mode");
-  } else {
-    this->wait_for_response_();
-    if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
-      ESP_LOGD(TAG, "Continuous reading mode disabled: %s", response);
-    }
-  }
-
-  // Sensor is ready for operation
+  // Sensor is ready for operation (optimistic approach)
   this->sensor_ready_ = true;
   this->error_count_ = 0;
-  ESP_LOGI(TAG, "EZO pH sensor setup complete");
+  ESP_LOGI(TAG, "EZO pH sensor setup complete (non-blocking mode)");
 }
 
 void EZOPHUARTComponent::update() {
   if (!this->sensor_ready_) {
-    ESP_LOGW(TAG, "Sensor not ready, skipping update");
+    ESP_LOGV(TAG, "Sensor not ready, skipping update");
     return;
   }
 
@@ -105,7 +67,7 @@ void EZOPHUARTComponent::update() {
       return;
     }
 
-   // Validate pH range - (Commented out for testing continuous mode behavior)
+   // Validate pH range
     if (ph_value < PH_MIN || ph_value > PH_MAX || std::isnan(ph_value)) {
       ESP_LOGW(TAG, "Continuous mode: pH value out of valid range: %.2f", ph_value);
       return;
@@ -119,14 +81,19 @@ void EZOPHUARTComponent::update() {
       this->ph_sensor_->publish_state(ph_value);
     }
 
-    // Log each reading in continuous mode (DEBUG level - controlled by verbose toggle)
     ESP_LOGD(TAG, "📊 Continuous pH Reading: %.2f", ph_value);
     return;
   }
 
   // ========================================
-  // Normal Polling Mode (below)
+  // Normal Polling Mode (Non-Blocking)
   // ========================================
+
+  // Only start new reading if not already in progress
+  if (this->reading_state_ != ReadingState::IDLE) {
+    ESP_LOGV(TAG, "Reading already in progress, skipping update");
+    return;
+  }
 
   // Step 1: Send temperature compensation if configured
   if (this->temp_sensor_ != nullptr && this->temp_sensor_->has_state()) {
@@ -135,76 +102,125 @@ void EZOPHUARTComponent::update() {
     snprintf(temp_cmd, sizeof(temp_cmd), "T,%.1f", temp);
 
     if (this->send_command_(temp_cmd)) {
-      this->wait_for_response_();
-      char response[RESPONSE_BUFFER_SIZE];
-      if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
-        if (this->check_response_code_(response)) {
-          ESP_LOGV(TAG, "Temperature compensation set to %.1f°C", temp);
-        }
+      this->reading_state_ = ReadingState::SENT_TEMP_COMP;
+      this->command_sent_time_ = millis();
+      ESP_LOGV(TAG, "Temperature compensation command sent: %.1f°C", temp);
+      return;  // Exit - loop() will handle response
+    } else {
+      ESP_LOGW(TAG, "Failed to send temperature compensation command");
+    }
+  }
+
+  // Step 2: No temp comp needed, send pH read command directly
+  if (this->send_command_("R")) {
+    this->reading_state_ = ReadingState::SENT_READ_CMD;
+    this->command_sent_time_ = millis();
+    ESP_LOGV(TAG, "pH read command sent");
+  } else {
+    ESP_LOGW(TAG, "Failed to send pH read command");
+    this->error_count_++;
+    if (this->error_count_ > MAX_ERRORS) {
+      ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
+      this->sensor_ready_ = false;
+    }
+  }
+}
+
+void EZOPHUARTComponent::loop() {
+  // Feed watchdog to prevent WDT timeout
+  yield();
+
+  // Only process if we're waiting for a response
+  if (this->reading_state_ == ReadingState::IDLE) {
+    return;
+  }
+
+  // Check if enough time has passed (300ms for EZO processing)
+  uint32_t elapsed = millis() - this->command_sent_time_;
+  if (elapsed < RESPONSE_DELAY_MS) {
+    return;  // Not ready yet - exit immediately (non-blocking)
+  }
+
+  // Time has passed - read response
+  char response[RESPONSE_BUFFER_SIZE];
+
+  if (this->reading_state_ == ReadingState::SENT_TEMP_COMP) {
+    // Handle temperature compensation response
+    if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+      if (this->check_response_code_(response)) {
+        ESP_LOGV(TAG, "Temperature compensation acknowledged");
       }
     }
-  }
 
-  // Step 2: Request single pH reading
-  if (!this->send_command_("R")) {
-    ESP_LOGW(TAG, "Failed to send read command");
-    this->error_count_++;
-    if (this->error_count_ > MAX_ERRORS) {
-      ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
-      this->sensor_ready_ = false;
+    // Flush any remaining data
+    this->flush();
+
+    // Now send pH read command
+    if (this->send_command_("R")) {
+      this->reading_state_ = ReadingState::SENT_READ_CMD;
+      this->command_sent_time_ = millis();
+      ESP_LOGV(TAG, "pH read command sent after temp comp");
+    } else {
+      ESP_LOGW(TAG, "Failed to send pH read command after temp comp");
+      this->reading_state_ = ReadingState::IDLE;
+      this->error_count_++;
+      if (this->error_count_ > MAX_ERRORS) {
+        ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
+        this->sensor_ready_ = false;
+      }
     }
     return;
   }
 
-  // Wait for sensor to acquire and process pH measurement
-  // Critical timing: EZO circuit needs 300ms to complete measurement
-  this->wait_for_response_();
-
-  // Step 3: Read and parse pH response
-  char response[RESPONSE_BUFFER_SIZE];
-  if (!this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
-    ESP_LOGW(TAG, "Failed to read pH value from UART");
-    this->error_count_++;
-    if (this->error_count_ > MAX_ERRORS) {
-      ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
-      this->sensor_ready_ = false;
+  if (this->reading_state_ == ReadingState::SENT_READ_CMD) {
+    // Handle pH reading response
+    if (!this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+      ESP_LOGW(TAG, "Failed to read pH value from UART");
+      this->reading_state_ = ReadingState::IDLE;
+      this->error_count_++;
+      if (this->error_count_ > MAX_ERRORS) {
+        ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
+        this->sensor_ready_ = false;
+      }
+      return;
     }
-    return;
-  }
 
-  // Parse pH value from ASCII response
-  float ph_value;
-  if (!this->parse_ph_value_(response, ph_value)) {
-    ESP_LOGW(TAG, "Failed to parse pH value from response: %s", response);
-    this->error_count_++;
-    if (this->error_count_ > MAX_ERRORS) {
-      ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
-      this->sensor_ready_ = false;
+    // Parse pH value from ASCII response
+    float ph_value;
+    if (!this->parse_ph_value_(response, ph_value)) {
+      ESP_LOGW(TAG, "Failed to parse pH value from response: %s", response);
+      this->reading_state_ = ReadingState::IDLE;
+      this->error_count_++;
+      if (this->error_count_ > MAX_ERRORS) {
+        ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
+        this->sensor_ready_ = false;
+      }
+      return;
     }
-    return;
-  }
 
-  // Step 4: Validate pH range
-  if (ph_value < PH_MIN || ph_value > PH_MAX || std::isnan(ph_value)) {
-    ESP_LOGW(TAG, "pH value out of valid range: %.2f", ph_value);
-    this->error_count_++;
-    if (this->error_count_ > MAX_ERRORS) {
-      ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
-      this->sensor_ready_ = false;
+    // Validate pH range
+    if (ph_value < PH_MIN || ph_value > PH_MAX || std::isnan(ph_value)) {
+      ESP_LOGW(TAG, "pH value out of valid range: %.2f", ph_value);
+      this->reading_state_ = ReadingState::IDLE;
+      this->error_count_++;
+      if (this->error_count_ > MAX_ERRORS) {
+        ESP_LOGE(TAG, "Too many consecutive errors, marking sensor as not ready");
+        this->sensor_ready_ = false;
+      }
+      return;
     }
-    return;
-  }
 
-  // Step 5: Success - reset error counter and publish
-  this->error_count_ = 0;
+    // Success - reset error counter and publish
+    this->error_count_ = 0;
+    this->update_stability_buffer_(ph_value);
 
-  // Update stability tracking buffer
-  this->update_stability_buffer_(ph_value);
+    if (this->ph_sensor_ != nullptr) {
+      this->ph_sensor_->publish_state(ph_value);
+      ESP_LOGD(TAG, "pH: %.2f", ph_value);
+    }
 
-  // Publish pH value to ESPHome sensor
-  if (this->ph_sensor_ != nullptr) {
-    this->ph_sensor_->publish_state(ph_value);
-    ESP_LOGD(TAG, "pH: %.2f", ph_value);
+    // Reset state machine
+    this->reading_state_ = ReadingState::IDLE;
   }
 }
 

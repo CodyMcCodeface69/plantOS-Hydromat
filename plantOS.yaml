@@ -45,7 +45,7 @@ logger:
   # DEBUGNOLED mode: DEBUG level + light component filtered to INFO
   # This suppresses LED brightness/color change messages while keeping all other debug info
   # In production, consider INFO or WARN to reduce log noise
-  level: DEBUG
+  level: INFO
   # ESP32-C6 uses built-in USB Serial/JTAG controller for logging
   # This must be explicitly configured or boot will hang
   hardware_uart: USB_SERIAL_JTAG
@@ -172,7 +172,7 @@ api:
 http_request:
   id: http_client
   useragent: esphome/plantOS
-  timeout: 15s
+  timeout: 5s  # Reduced from 15s to prevent WDT timeouts on unreachable devices
   verify_ssl: false  # Skip SSL verification for simple connectivity test
 
 ################################################################################
@@ -511,29 +511,29 @@ sensor:
   #   - SCL -> GPIO7 (I²C SCL with 4.7kΩ pull-up)
   #
   # NOTE: This sensor is non-critical - system operates normally if not present
-  # TEMPORARILY DISABLED: BME280 component not available in current ESPHome build
-  # - platform: bme280
-  #   i2c_id: i2c_bus
-  #   address: 0x76           # Default address (some modules use 0x77)
-  #   update_interval: 10s    # Update environmental data every 10 seconds
-  #
-  #   temperature:
-  #     id: bme280_temperature
-  #     name: "00_09_Air Temperature - BME280"
-  #     accuracy_decimals: 1
-  #     oversampling: 16x     # High oversampling for accuracy
-  #
-  #   humidity:
-  #     id: bme280_humidity
-  #     name: "00_10_Air Humidity - BME280"
-  #     accuracy_decimals: 1
-  #     oversampling: 16x
-  #
-  #   pressure:
-  #     id: bme280_pressure
-  #     name: "00_11_Air Pressure - BME280"
-  #     accuracy_decimals: 1
-  #     oversampling: 16x
+  # FIXED: Changed platform from 'bme280' to 'bme280_i2c' (ESPHome 2024.2.0+ requirement)
+  - platform: bme280_i2c
+    i2c_id: i2c_bus
+    address: 0x76           # Default address (some modules use 0x77)
+    update_interval: 10s    # Update environmental data every 10 seconds
+
+    temperature:
+      id: bme280_temperature
+      name: "00_09_Air Temperature - BME280"
+      accuracy_decimals: 1
+      oversampling: 16x     # High oversampling for accuracy
+
+    humidity:
+      id: bme280_humidity
+      name: "00_10_Air Humidity - BME280"
+      accuracy_decimals: 1
+      oversampling: 16x
+
+    pressure:
+      id: bme280_pressure
+      name: "00_11_Air Pressure - BME280"
+      accuracy_decimals: 1
+      oversampling: 16x
 
   # Sensor Filter: Robust Averaging with Outlier Rejection
   #
@@ -689,51 +689,50 @@ text_sensor:
     # Update every 10 seconds to match sensor update interval
     update_interval: 10s
 
-  # TEMPORARILY DISABLED: BME280-dependent text sensors
-  # - platform: template
-  #   name: "00_09_Air Temperature"
-  #   id: air_temperature_text
-  #   # Lambda returns current air temperature from BME280
-  #   lambda: |-
-  #     if (id(bme280_temperature).has_state()) {
-  #       char buf[32];
-  #       snprintf(buf, sizeof(buf), "%.1f°C", id(bme280_temperature).state);
-  #       return {buf};
-  #     } else {
-  #       return {"N/A (BME280 offline)"};
-  #     }
-  #   # Update every 10 seconds to match sensor update interval
-  #   update_interval: 10s
-  #
-  # - platform: template
-  #   name: "00_10_Air Humidity"
-  #   id: air_humidity_text
-  #   # Lambda returns current relative humidity from BME280
-  #   lambda: |-
-  #     if (id(bme280_humidity).has_state()) {
-  #       char buf[32];
-  #       snprintf(buf, sizeof(buf), "%.1f%%", id(bme280_humidity).state);
-  #       return {buf};
-  #     } else {
-  #       return {"N/A (BME280 offline)"};
-  #     }
-  #   # Update every 10 seconds to match sensor update interval
-  #   update_interval: 10s
-  #
-  # - platform: template
-  #   name: "00_11_Air Pressure"
-  #   id: air_pressure_text
-  #   # Lambda returns current barometric pressure from BME280
-  #   lambda: |-
-  #     if (id(bme280_pressure).has_state()) {
-  #       char buf[32];
-  #       snprintf(buf, sizeof(buf), "%.1f hPa", id(bme280_pressure).state);
-  #       return {buf};
-  #     } else {
-  #       return {"N/A (BME280 offline)"};
-  #     }
-  #   # Update every 10 seconds to match sensor update interval
-  #   update_interval: 10s
+  - platform: template
+    name: "00_09_Air Temperature"
+    id: air_temperature_text
+    # Lambda returns current air temperature from BME280
+    lambda: |-
+      if (id(bme280_temperature).has_state()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f°C", id(bme280_temperature).state);
+        return {buf};
+      } else {
+        return {"N/A (BME280 offline)"};
+      }
+    # Update every 10 seconds to match sensor update interval
+    update_interval: 10s
+
+  - platform: template
+    name: "00_10_Air Humidity"
+    id: air_humidity_text
+    # Lambda returns current relative humidity from BME280
+    lambda: |-
+      if (id(bme280_humidity).has_state()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f%%", id(bme280_humidity).state);
+        return {buf};
+      } else {
+        return {"N/A (BME280 offline)"};
+      }
+    # Update every 10 seconds to match sensor update interval
+    update_interval: 10s
+
+  - platform: template
+    name: "00_11_Air Pressure"
+    id: air_pressure_text
+    # Lambda returns current barometric pressure from BME280
+    lambda: |-
+      if (id(bme280_pressure).has_state()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f hPa", id(bme280_pressure).state);
+        return {buf};
+      } else {
+        return {"N/A (BME280 offline)"};
+      }
+    # Update every 10 seconds to match sensor update interval
+    update_interval: 10s
 
   - platform: template
     name: "00_06_Tank Volume"
@@ -1491,7 +1490,7 @@ plantos_controller:
 
   # Status Logger Configuration
   enable_status_reports: false  # Enable/disable periodic status reports (default: false, use switch 11_10)
-  status_report_interval: 10s   # How often to print status reports (default: 30s)
+  status_report_interval: 60s   # How often to print status reports (default: 30s)
   verbose_mode: false           # Enable instant verbose logging of all events (default: false)
                                 # Verbose mode logs state changes, sensor readings, and actuator
                                 # commands in real-time without waiting for periodic reports.
@@ -2464,10 +2463,10 @@ switch:
           format: "Enabling periodic system status reports"
           level: INFO
       - lambda: |-
-          // Enable status reports with current interval (10s) and verbose mode
+          // Enable status reports with configured interval (60s) and verbose mode
           auto logger = id(unified_controller)->getStatusLogger();
           if (logger) {
-            logger->configure(true, 10000, false);  // 10s interval, verbose off
+            logger->configure(true, 60000, false);  // Use configured 60s interval
           }
     turn_off_action:
       - logger.log:
@@ -2477,7 +2476,7 @@ switch:
           // Disable status reports
           auto logger = id(unified_controller)->getStatusLogger();
           if (logger) {
-            logger->configure(false, 10000, false);
+            logger->configure(false, 60000, false);
           }
 
   - platform: template

@@ -22,7 +22,7 @@ tasks:
       - esphome upload {{.ENTRY_POINT}}
 
   run:
-    desc: Builds, flashes and attaches to MCU log stream. Use 'task run OTA=true' to flash via OTA instead of serial.
+    desc: Builds, flashes and attaches to MCU log stream. Use 'task run OTA=true' for OTA flash, 'task run IDFMON=true' for esp-idf-monitor with decoded backtraces.
     cmds:
       - |
         {{if eq .OTA "true"}}
@@ -43,6 +43,67 @@ tasks:
           fi
           echo "Attempting OTA flash to $DEVICE_IP..."
           esphome run {{.ENTRY_POINT}} --device "$DEVICE_IP"
+        '
+        {{else if eq .IDFMON "true"}}
+        bash -c '
+          echo "Building and flashing via serial/USB (IDFMON mode)..."
+          devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null))
+          if [ ${#devices[@]} -eq 0 ]; then
+            echo "No serial devices found. Please connect the device and try again."
+            exit 1
+          elif [ ${#devices[@]} -eq 1 ]; then
+            device=${devices[0]}
+            echo "Using device: $device"
+          else
+            echo "Multiple serial devices found. Please select one:"
+            select device in "${devices[@]}"; do
+              if [ -n "$device" ]; then
+                echo "Selected: $device"
+                break
+              else
+                echo "Invalid selection. Please try again."
+              fi
+            done
+          fi
+
+          # Compile first
+          echo ""
+          echo "=============================================="
+          echo "Compiling..."
+          echo "=============================================="
+          esphome compile {{.ENTRY_POINT}} || exit 1
+
+          # Upload firmware
+          echo ""
+          echo "=============================================="
+          echo "Uploading..."
+          echo "=============================================="
+          esphome upload {{.ENTRY_POINT}} --device "$device" || exit 1
+
+          # Find ELF file
+          ELF_FILE=".esphome/build/plantos/.pioenvs/plantos/firmware.elf"
+          if [ ! -f "$ELF_FILE" ]; then
+            echo "Warning: ELF file not found at $ELF_FILE"
+            echo "Backtrace decoding may not work."
+            ELF_FILE=""
+          fi
+
+          # Attach with esp-idf-monitor
+          echo ""
+          echo "=============================================="
+          echo "Attaching with esp-idf-monitor (decoded backtraces)..."
+          echo "Press Ctrl+] to exit"
+          echo "=============================================="
+          echo ""
+
+          # ESP32-C6 uses RISC-V toolchain (not Xtensa)
+          TOOLCHAIN_PREFIX="$HOME/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-"
+
+          if [ -n "$ELF_FILE" ]; then
+            idf-monitor --port "$device" --target esp32c6 --toolchain-prefix "$TOOLCHAIN_PREFIX" "$ELF_FILE"
+          else
+            idf-monitor --port "$device" --target esp32c6 --toolchain-prefix "$TOOLCHAIN_PREFIX"
+          fi
         '
         {{else}}
         bash -c '
@@ -75,9 +136,66 @@ tasks:
       - esphome clean {{.ENTRY_POINT}}
 
   snoop:
-    desc: Attach to device logs via serial port (USB) or OTA fallback with auto-reconnect.
+    desc: Attach to device logs via serial port (USB) or OTA fallback with auto-reconnect. Use 'task snoop IDFMON=true' for esp-idf-monitor with decoded backtraces.
     cmds:
       - |
+        {{if eq .IDFMON "true"}}
+        bash -c '
+          trap "echo \"\nExiting...\"; exit 0" INT
+
+          # IDFMON mode - serial only (esp-idf-monitor doesnt support network)
+          devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null))
+
+          if [ ${#devices[@]} -eq 0 ]; then
+            echo "No serial devices found. IDFMON mode requires a serial connection."
+            echo "Please connect the device via USB and try again."
+            exit 1
+          elif [ ${#devices[@]} -eq 1 ]; then
+            device=${devices[0]}
+            echo "Using device: $device"
+          else
+            echo "Multiple serial devices found. Please select one:"
+            select device in "${devices[@]}"; do
+              if [ -n "$device" ]; then
+                echo "Selected: $device"
+                break
+              else
+                echo "Invalid selection. Please try again."
+              fi
+            done
+          fi
+
+          # Find ELF file for backtrace decoding
+          ELF_FILE=".esphome/build/plantos/.pioenvs/plantos/firmware.elf"
+          if [ ! -f "$ELF_FILE" ]; then
+            echo "Warning: ELF file not found at $ELF_FILE"
+            echo "Backtrace decoding may not work. Run '\''task build'\'' first."
+            ELF_FILE=""
+          fi
+
+          # ESP32-C6 uses RISC-V toolchain (not Xtensa)
+          TOOLCHAIN_PREFIX="$HOME/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-"
+
+          # Connect with esp-idf-monitor with auto-reconnect
+          while true; do
+            echo ""
+            echo "=============================================="
+            echo "Connecting to $device with esp-idf-monitor..."
+            echo "Press Ctrl+] to exit monitor, Ctrl+C to exit completely"
+            echo "=============================================="
+            echo ""
+
+            if [ -n "$ELF_FILE" ]; then
+              idf-monitor --port "$device" --target esp32c6 --toolchain-prefix "$TOOLCHAIN_PREFIX" "$ELF_FILE" || true
+            else
+              idf-monitor --port "$device" --target esp32c6 --toolchain-prefix "$TOOLCHAIN_PREFIX" || true
+            fi
+            echo ""
+            echo "Connection lost. Retrying in 0.5 seconds..."
+            sleep 0.5
+          done
+        '
+        {{else}}
         bash -c '
           trap "echo \"\nExiting...\"; exit 0" INT
 
@@ -163,6 +281,7 @@ tasks:
             done
           fi
         '
+        {{end}}
 
   push:
     desc: Push updated configuration to github.
@@ -254,3 +373,40 @@ tasks:
     desc: Validate plantOS.yaml configuration for syntax and structural errors.
     cmds:
       - esphome config {{.ENTRY_POINT}}
+
+  decode:
+    desc: Decode crash addresses using RISC-V addr2line. Usage - task decode -- 0x420d9443 0x42018682
+    cmds:
+      - |
+        bash -c '
+          ADDR2LINE="$HOME/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-addr2line"
+          ELF_FILE=".esphome/build/plantos/.pioenvs/plantos/firmware.elf"
+
+          if [ ! -f "$ADDR2LINE" ]; then
+            echo "Error: RISC-V addr2line not found at $ADDR2LINE"
+            echo "Please ensure PlatformIO toolchain is installed."
+            exit 1
+          fi
+
+          if [ ! -f "$ELF_FILE" ]; then
+            echo "Error: ELF file not found at $ELF_FILE"
+            echo "Please run '\''task build'\'' first to generate the firmware."
+            exit 1
+          fi
+
+          if [ $# -eq 0 ]; then
+            echo "Usage: task decode -- <address1> [address2] [address3] ..."
+            echo ""
+            echo "Example: task decode -- 0x420d9443 0x42018682"
+            echo ""
+            echo "Addresses can be found in crash dumps (PC, RA, stack addresses)."
+            exit 1
+          fi
+
+          echo "Decoding addresses with: $ADDR2LINE"
+          echo "ELF file: $ELF_FILE"
+          echo ""
+          echo "=============================================="
+
+          "$ADDR2LINE" -fiaC -e "$ELF_FILE" "$@"
+        ' -- {{.CLI_ARGS}}

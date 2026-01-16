@@ -110,21 +110,21 @@ wifi:
     # Wait 2 seconds for network stack to fully initialize
     - delay: 2s
 
-    # Perform online connectivity check
-    - logger.log: "Performing online connectivity check (ping www.google.com)..."
-    # Start timeout handler first (will be stopped if HTTP succeeds)
-    - script.execute: connectivity_check_timeout
-    - http_request.get:
-        url: http://www.google.com/generate_204
-        on_response:
-          then:
-            - lambda: |-
-                // Note: Any successful response (even error codes) means network is working
-                // Only timeouts indicate mesh network issues
-                ESP_LOGI("wifi", "✓ Online connectivity check PASSED - HTTP response received");
-                id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
-            # Stop the timeout script since we got a response
-            - script.stop: connectivity_check_timeout
+    # # Perform online connectivity check
+    # - logger.log: "Performing online connectivity check (ping www.google.com)..."
+    # # Start timeout handler first (will be stopped if HTTP succeeds)
+    # - script.execute: connectivity_check_timeout
+    # - http_request.get:
+    #     url: http://www.google.com/generate_204
+    #     on_response:
+    #       then:
+    #         - lambda: |-
+    #             // Note: Any successful response (even error codes) means network is working
+    #             // Only timeouts indicate mesh network issues
+    #             ESP_LOGI("wifi", "✓ Online connectivity check PASSED - HTTP response received");
+    #             id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
+    #         # Stop the timeout script since we got a response
+    #         - script.stop: connectivity_check_timeout
 
   # ==============================================================
   # FALLBACK ACCESS POINT (AP) FOR DEBUGGING
@@ -172,7 +172,7 @@ api:
 http_request:
   id: http_client
   useragent: esphome/plantOS
-  timeout: 5s  # Reduced from 15s to prevent WDT timeouts on unreachable devices
+  timeout: 1s  # Reduced from 15s to prevent WDT timeouts on unreachable devices
   verify_ssl: false  # Skip SSL verification for simple connectivity test
 
 ################################################################################
@@ -218,12 +218,12 @@ external_components:
   # This fork fixes the issue and works on GPIO0 (ADC1_CH0)
   # Source: https://github.com/esphome/issues/issues/6038#issuecomment-2287359862
   # To Do: Switch to github://PhracturedBlue/c6_adc to allow multiple GPIO ADC pins (for TDS meter, Light sensor, etc.)
-  - source:
-      type: git
-      url: https://github.com/lboue/esphome
-      ref: adc_oneshot
-    components: [ adc ]
-    refresh: 0s
+  # - source:
+  #     type: git
+  #     url: https://github.com/lboue/esphome
+  #     ref: adc_oneshot
+  #   components: [ adc ]
+  #   refresh: 0s
 
 ################################################################################
 # I²C Bus Configuration
@@ -306,11 +306,11 @@ i2c_scanner:
   i2c_id: i2c_bus
 
   # Scan once at boot to validate hardware setup
-  scan_on_boot: true
+  scan_on_boot: false
 
   # Periodic scanning (0s = disabled, only boot-time scan)
   # Set to 30s, 60s, etc. to detect hot-plug events or hardware failures
-  scan_interval: 5s
+  scan_interval: 0s
 
   # Verbose mode: Enable detailed I²C scan logging to serial
   # true (default): Log detailed scan results every scan_interval
@@ -490,7 +490,7 @@ sensor:
     one_wire_id: one_wire_bus
     id: water_temperature
     name: "Water Temperature - DS18B20"
-    update_interval: 6s     # Update temperature every 6 seconds (offset from EZO pH 10s interval)
+    update_interval: 60s     # Update temperature every 6 seconds (offset from EZO pH 10s interval)
     accuracy_decimals: 2     # Display 2 decimal places (e.g., 24.50°C)
     resolution: 12           # 12-bit resolution (0.0625°C per bit, ~750ms conversion)
 
@@ -515,7 +515,7 @@ sensor:
   - platform: bme280_i2c
     i2c_id: i2c_bus
     address: 0x76           # Default address (some modules use 0x77)
-    update_interval: 10s    # Update environmental data every 10 seconds
+    update_interval: 60s    # Update environmental data every 60 seconds
 
     temperature:
       id: bme280_temperature
@@ -656,8 +656,8 @@ text_sensor:
     # Lambda returns current controller state as string
     lambda: |-
       return id(unified_controller)->getStateAsString();
-    # Update every 500ms to show real-time state changes
-    update_interval: 500ms
+    # Update every 5s to show real-time state changes
+    update_interval: 5s
 
   # - platform: template
   #   name: "Light Intensity"
@@ -743,8 +743,8 @@ text_sensor:
       float volume_liters = id(hal)->getTankVolume();
       snprintf(buf, sizeof(buf), "%.1f L (LOW to HIGH)", volume_liters);
       return {buf};
-    # Update every 30 seconds (static configuration value)
-    update_interval: 30s
+    # Update every 60 seconds (static configuration value)
+    update_interval: 60s
 
   - platform: template
     name: "00_02_Current Time (Dummy)"
@@ -773,8 +773,8 @@ text_sensor:
       char buf[32];
       snprintf(buf, sizeof(buf), "Day %d / 120", day);
       return {buf};
-    # Update every 10 seconds
-    update_interval: 10s
+    # Update every 60 seconds
+    update_interval: 60s
 
 ################################################################################
 # Button: Controller Management and Manual Routines
@@ -1665,7 +1665,7 @@ actuator_safety_gate:
 ezo_ph_uart:
   id: ezo_ph_uart_component
   uart_id: uart_bus
-  update_interval: 5s  # Read pH every 5 seconds (faster readings for better calibration stability detection)
+  update_interval: 60s  # Read pH every 5 seconds (faster readings for better calibration stability detection)
   verbose: false  # Disable verbose UART logging by default (enabled dynamically during calibration)
   # pH sensor configuration
   ph:
@@ -2063,8 +2063,9 @@ switch:
           // Update controller state
           id(unified_controller).setAutoFeedingEnabled(false);
     lambda: |-
-      // Read state from NVS (default: true if not set)
-      return id(psm).loadState("AutoFeedEnable", true);
+      // Return cached value from controller (loaded from NVS at setup)
+      // DO NOT call loadState() here - it allocates memory on each call!
+      return id(unified_controller).isAutoFeedingEnabled();
 
   # === 10 - Actuator Control (Manual Toggle Switches via Safety Gate) ===
   # These switches toggle actuators through the safety gate for monitored control

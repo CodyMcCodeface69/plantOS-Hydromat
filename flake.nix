@@ -52,6 +52,7 @@
                 buildInputs = with pkgs; [
                   esphome
                   python3
+                  pipx
                   git
                   cmake
                   ninja
@@ -69,6 +70,14 @@
                   echo '     ##    ###     ##   ##    @+++%%%%#%=%%@   '
                   echo '     ##  ########   #####        @#%=@%%@      '
                   echo '============================        +          '
+
+                  # Install esp-idf-monitor for IDFMON mode (decoded backtraces)
+                  if ! command -v idf-monitor &>/dev/null; then
+                    echo "Installing esp-idf-monitor via pipx..."
+                    pipx install esp-idf-monitor --quiet 2>/dev/null || pipx install esp-idf-monitor
+                  fi
+                  # Ensure pipx binaries are in PATH
+                  export PATH="$HOME/.local/bin:$PATH"
                 '';
               };
             };

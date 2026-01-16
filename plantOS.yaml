@@ -99,7 +99,7 @@ wifi:
   reboot_timeout: 2min
 
   # Update status logger with IP address when WiFi connects
-  # Also perform online connectivity check on first connection
+  # Also activate air pump once on connection
   on_connect:
     - lambda: |-
         auto ip = wifi::global_wifi_component->get_ip_addresses()[0].str();
@@ -109,6 +109,11 @@ wifi:
 
     # Wait 2 seconds for network stack to fully initialize
     - delay: 2s
+
+    # Activate air pump once on WiFi connect (single command, no periodic health checks)
+    - lambda: |-
+        ESP_LOGI("wifi", "Activating air pump via Shelly HTTP...");
+        id(unified_controller)->activateAirPump();
 
     # # Perform online connectivity check
     # - logger.log: "Performing online connectivity check (ping www.google.com)..."
@@ -172,7 +177,7 @@ api:
 http_request:
   id: http_client
   useragent: esphome/plantOS
-  timeout: 1s  # Reduced from 15s to prevent WDT timeouts on unreachable devices
+  timeout: 5s  # Reduced from 15s to prevent WDT timeouts on unreachable devices
   verify_ssl: false  # Skip SSL verification for simple connectivity test
 
 ################################################################################
@@ -306,11 +311,11 @@ i2c_scanner:
   i2c_id: i2c_bus
 
   # Scan once at boot to validate hardware setup
-  scan_on_boot: false
+  scan_on_boot: true
 
   # Periodic scanning (0s = disabled, only boot-time scan)
   # Set to 30s, 60s, etc. to detect hot-plug events or hardware failures
-  scan_interval: 0s
+  scan_interval: 60s
 
   # Verbose mode: Enable detailed I²C scan logging to serial
   # true (default): Log detailed scan results every scan_interval

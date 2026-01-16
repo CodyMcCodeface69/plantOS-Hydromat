@@ -245,6 +245,13 @@ public:
     void setToIdle();
 
     /**
+     * Activate air pump once (for WiFi on_connect)
+     * Sends a single command to turn on the air pump
+     * Does not set up periodic health checks - just a one-time activation
+     */
+    void activateAirPump();
+
+    /**
      * Reset controller to INIT state
      * Used for error recovery
      */
@@ -331,12 +338,6 @@ private:
 
     int64_t last_ph_check_timestamp_{0};  // Last timestamp when pH check was triggered (Unix seconds)
     uint32_t last_ph_check_time_{0};      // Fallback: Last time we checked pH (millis()) if no time source
-
-    // ========================================================================
-    // Air Pump Health Monitoring State (IDLE state cycling)
-    // ========================================================================
-
-    uint32_t last_air_pump_check_time_{0};  // Last time we verified air pump state (millis())
 
     // ========================================================================
     // Sensor Change Flags (ISR-safe)
@@ -584,9 +585,6 @@ private:
     static constexpr uint32_t PH_MEASURING_DURATION = 30000;  // 30 seconds stabilization
     // NOTE: PH_MIXING_DURATION is now calculated dynamically based on tank volume
     // See calculatePhMixingDuration() for linear formula (1.7L→30s, 70L→120s)
-
-    // Air pump health monitoring (milliseconds)
-    static constexpr uint32_t AIR_PUMP_HEALTH_CHECK_INTERVAL = 30000;  // 30 seconds between checks
 
     // pH correction parameters
     static constexpr float PH_TARGET_MIN = 5.5f;

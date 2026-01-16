@@ -643,37 +643,6 @@ void PlantOSController::handleIdle() {
         return;
     }
 
-    // ========================================================================
-    // Air Pump Health Monitoring - Ensure cycling continues even if manually turned off
-    // ========================================================================
-    if (safety_gate_ && now - last_air_pump_check_time_ >= AIR_PUMP_HEALTH_CHECK_INTERVAL) {
-        last_air_pump_check_time_ = now;
-
-        // Check if air pump cycling is enabled
-        if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
-            // Cycling Mode: Get expected state from SafetyGate and force re-send
-            bool expected_state = safety_gate_->getState(AIR_PUMP);
-
-            // Re-send the command to ensure pump is in correct state
-            // This handles cases where:
-            // 1. User manually turned off pump via Shelly web interface
-            // 2. Pump lost power/connection and didn't receive previous command
-            // 3. Network hiccup caused HTTP command to fail
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Cycling enabled - verifying state (expected: %s)",
-                     expected_state ? "ON" : "OFF");
-
-            // Re-send command through SafetyGate with forceExecute to bypass debouncing
-            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0, true);  // forceExecute=true
-
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] State verification complete - pump should be %s",
-                     expected_state ? "ON" : "OFF");
-        } else {
-            // Normal Mode (24/7): Force pump ON every 30s for continuous operation
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Normal mode - forcing pump ON");
-            requestPump(AIR_PUMP, true, 0, true);  // forceExecute=true, unlimited duration
-        }
-    }
-
     // Future: Check for other scheduled tasks, sensor thresholds, etc.
 }
 
@@ -725,33 +694,6 @@ void PlantOSController::handleNight() {
         }
         transitionTo(ControllerState::IDLE);
         return;
-    }
-
-    // ========================================================================
-    // Air Pump Health Monitoring - Continue cycling during night mode for oxygenation
-    // ========================================================================
-    if (safety_gate_ && now - last_air_pump_check_time_ >= AIR_PUMP_HEALTH_CHECK_INTERVAL) {
-        last_air_pump_check_time_ = now;
-
-        // Check if air pump cycling is enabled
-        if (safety_gate_->isCyclingEnabled(AIR_PUMP)) {
-            // Cycling Mode: Get expected state from SafetyGate and force re-send
-            bool expected_state = safety_gate_->getState(AIR_PUMP);
-
-            // Re-send the command to ensure pump is in correct state
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Night mode - cycling enabled, verifying state (expected: %s)",
-                     expected_state ? "ON" : "OFF");
-
-            // Re-send command through SafetyGate with forceExecute to bypass debouncing
-            requestPump(AIR_PUMP, expected_state, expected_state ? 600 : 0, true);  // forceExecute=true
-
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] State verification complete - pump should be %s",
-                     expected_state ? "ON" : "OFF");
-        } else {
-            // Normal Mode (24/7): Force pump ON every 30s for continuous operation
-            ESP_LOGD(TAG, "[AIR PUMP HEALTH] Night mode - Normal mode active, forcing pump ON");
-            requestPump(AIR_PUMP, true, 0, true);  // forceExecute=true, unlimited duration
-        }
     }
 
     // During night mode: No automatic pH monitoring, no feeding, no water management
@@ -2780,6 +2722,16 @@ void PlantOSController::setToIdle() {
     } else {
         ESP_LOGW(TAG, "setToIdle() called but not in SHUTDOWN or PAUSE state (current: %d)",
                  static_cast<int>(current_state_));
+    }
+}
+
+void PlantOSController::activateAirPump() {
+    ESP_LOGI(TAG, "Activating air pump (WiFi on_connect)");
+
+    // Send single command to turn on air pump
+    // Uses unlimited duration (0) as this is the initial activation
+    if (!requestPump(AIR_PUMP, true, 0, true)) {  // forceExecute=true to bypass debouncing
+        ESP_LOGW(TAG, "Air pump activation failed - pump may not be configured");
     }
 }
 

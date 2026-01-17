@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and control system built on ESPHome. The project implements **~10,000 lines of code** organized into **15 custom components** that manage pH correction, nutrient dosing, water management, and system safety. The architecture follows a **3-layer HAL (Hardware Abstraction Layer) design** with clear separation between the unified controller (Layer 1), safety gate (Layer 2), and hardware abstraction (Layer 3).
+PlantOS is a sophisticated ESP32-C6 based hydroponic plant monitoring and control system built on ESPHome. The project implements **~10,000 lines of code** organized into **14 custom components** that manage pH correction, nutrient dosing, water management, and system safety. The architecture follows a **3-layer HAL (Hardware Abstraction Layer) design** with clear separation between the unified controller (Layer 1), safety gate (Layer 2), and hardware abstraction (Layer 3).
 
 ### Key Statistics
 - **Total Lines of Code**: ~10,000
-- **Custom Components**: 18 (15 core + 3 utility)
+- **Custom Components**: 14 (10 core + 4 utility)
 - **Programming Languages**: C++ (implementation), Python (ESPHome integration), YAML (configuration), Nix (environment)
 - **Main Configuration**: 942 lines (plantOS.yaml)
 - **Architecture**: 3-layer HAL (Controller → SafetyGate → HAL)
@@ -547,8 +547,6 @@ sensor:
     update_interval: 60s
 ```
 
-**Note**: Legacy I2C version (`components/ezo_ph/`) exists but is not used. UART version is preferred for reliability.
-
 ---
 
 #### DS18B20 Temperature Sensor
@@ -652,26 +650,6 @@ sensor:
 - `0x61`: EZO pH circuit
 
 ### Layer 5: Utility Components
-
-#### time_logger
-
-**Purpose**: NTP time logging demonstration
-**Location**: `components/time_logger/`
-**Output Format**: `dd.mm.yyyy HH:MM:SS`
-**Interval**: Configurable (default: 1 min)
-
-#### ip_logger
-
-**Purpose**: Network status logging
-**Location**: `components/ip_logger/`
-**Status**: Currently disabled (superseded by CentralStatusLogger)
-
-#### i2c_mutex_demo
-
-**Purpose**: FreeRTOS mutex for thread-safe I2C access
-**Location**: `components/i2c_mutex_demo/`
-**Global Mutex**: `I2CMutexDemo::i2c_mutex_`
-**Production Mode**: Mutex only (no test overhead)
 
 #### dummy_actuator_trigger
 

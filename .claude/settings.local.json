@@ -25,7 +25,8 @@
       "Bash(python3:*)",
       "Bash(~/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-addr2line:*)",
       "Bash(nix develop:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

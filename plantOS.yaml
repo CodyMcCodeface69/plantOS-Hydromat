@@ -84,7 +84,7 @@ wifi:
 
   # WiFi optimization for mesh networks (TP-Link Deco, etc.)
   # These settings improve compatibility with WiFi mesh systems
-  # Mesh settings: Deactivate Fast Roaming and Beamforming, Deactiate Mesh for plantOS client, Deactivate 5 GHz band
+  # Mesh settings: Deactivate Fast Roaming and Beamforming, Deactivate Mesh for plantOS client, Deactivate 5 GHz band
   power_save_mode: none    # Disable power saving for better connectivity
   # fast_connect: true       # Skip channel scanning for faster connection
 
@@ -157,14 +157,7 @@ web_server:
   js_url: "/local/www/webserver-v2.min.js"
   local: true  # Embed all JS/CSS locally for offline operation
 
-################################################################################
-# API Services
-#
-# ESPHome API allows external systems (Home Assistant, custom scripts, etc.)
-# to call services on the device. Temporarily disabled calibration services
-# due to ESPHome variable parsing issue - will enable in a future update.
-# For now, calibration can be done via direct I2C commands or custom code.
-################################################################################
+# API for Home Assistant integration and external service calls
 api:
 
 ################################################################################
@@ -215,41 +208,11 @@ external_components:
   - source: components
     components: [sensor_dummy, sensor_filter, ezo_ph_uart,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
-                 i2c_scanner, time_logger, time_dummy, wdt_manager, i2c_mutex_demo, plantos_hal,
+                 i2c_scanner, time_dummy, wdt_manager, plantos_hal,
                  plantos_controller]
 
-  # ESP32-C6 ADC Fix: Use lboue's working implementation with adc_oneshot API
-  # Official ESPHome ADC has bugs on C6 (no ADC2 support causes compilation errors)
-  # This fork fixes the issue and works on GPIO0 (ADC1_CH0)
-  # Source: https://github.com/esphome/issues/issues/6038#issuecomment-2287359862
-  # To Do: Switch to github://PhracturedBlue/c6_adc to allow multiple GPIO ADC pins (for TDS meter, Light sensor, etc.)
-  # - source:
-  #     type: git
-  #     url: https://github.com/lboue/esphome
-  #     ref: adc_oneshot
-  #   components: [ adc ]
-  #   refresh: 0s
-
-################################################################################
-# I²C Bus Configuration
-#
-# Configures the I²C bus for communication with external sensors and peripherals.
-# I²C (Inter-Integrated Circuit) is a multi-master, multi-slave serial communication
-# protocol commonly used for sensor integration.
-#
-# ESP32-C6 I²C Pins:
-# - SDA (Serial Data): GPIO6 (default) - bidirectional data line
-# - SCL (Serial Clock): GPIO7 (default) - clock signal line
-#
-# IMPORTANT: I²C requires external pull-up resistors on SDA and SCL lines
-# - Typical values: 4.7kΩ to 10kΩ (4.7kΩ recommended for most applications)
-# - Pull-ups connect SDA/SCL to 3.3V
-# - Without pull-ups, I²C communication will fail
-#
-# Bus Speed:
-# - 100kHz: Standard mode (default, most compatible)
-# - 400kHz: Fast mode (higher speed, may require lower pull-up resistance)
-################################################################################
+# I²C Bus - SDA: GPIO6, SCL: GPIO7
+# Requires 4.7kΩ external pull-ups to 3.3V
 i2c:
   id: i2c_bus
   sda: GPIO6  # Serial Data Line (change if using different pins)
@@ -257,20 +220,7 @@ i2c:
   scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
   frequency: 100kHz  # Standard mode - change to 400kHz for fast mode if needed
 
-################################################################################
-# UART Configuration
-#
-# Serial communication for EZO pH sensor via UART.
-# The EZO Carrier pH Click board uses UART protocol with ASCII commands.
-#
-# Hardware Configuration:
-# - TX (Transmit): GPIO4 - Connects to RX on EZO carrier board
-# - RX (Receive): GPIO5 - Connects to TX on EZO carrier board
-# - Baud Rate: 115200 (default for EZO carrier boards)
-# - Protocol: 8N1 (8 data bits, no parity, 1 stop bit)
-#
-# IMPORTANT: Ensure proper voltage levels (3.3V logic)
-################################################################################
+# UART for EZO pH sensor - TX: GPIO4, RX: GPIO5, 9600 baud
 uart:
   id: uart_bus
   tx_pin: GPIO4  # ESP32-C6 TX -> EZO RX
@@ -280,32 +230,7 @@ uart:
   parity: NONE
   stop_bits: 1
 
-################################################################################
-# I²C Bus Scanner
-#
-# Scans the I²C bus for connected devices and validates critical device presence.
-# This component provides comprehensive diagnostic information during boot and
-# optionally during runtime.
-#
-# FEATURES:
-# - Scans all valid 7-bit I²C addresses (0x01 to 0x77)
-# - Identifies connected devices by address
-# - Validates critical device presence for PlantOS operation
-# - Detailed logging with warnings for missing critical devices
-#
-# SCAN MODES:
-# - Boot-time scan: Runs once during setup (scan_on_boot: true)
-# - Periodic scan: Runs at interval (scan_interval: >0)
-# - Disabled: Set scan_on_boot: false and scan_interval: 0s
-#
-# CRITICAL DEVICES:
-# Define the I²C devices required for your PlantOS configuration.
-# Common PlantOS devices:
-# - 0x48: ADS1115 (16-bit ADC for analog sensors)
-# - 0x20: MCP23017 (16-bit GPIO expander)
-# - 0x76: BME280 (temperature/humidity/pressure sensor)
-# - 0x68: DS3231 (RTC for timekeeping)
-################################################################################
+# I²C Scanner - validates critical devices at boot and periodically
 i2c_scanner:
   id: my_i2c_scanner
   i2c_id: i2c_bus
@@ -433,53 +358,8 @@ one_wire:
     pin: GPIO23
     id: one_wire_bus
 
-################################################################################
-# Sensor Input: Dummy Sensor
-#
-# Development/testing sensor that generates predictable cycling values.
-# In production, replace with actual plant sensors (moisture, light, etc.)
-################################################################################
+# Sensor Configuration
 sensor:
-  # - id: sensor_dummy_id
-  #   platform: sensor_dummy
-  #   name: "Dummy Sensor"
-
-  #   # 1 second polling interval provides frequent updates for responsive
-  #   # controller behavior without overwhelming the ESP32 event loop.
-  #   # Real sensors might use different intervals based on measurement
-  #   # characteristics (e.g., soil moisture changes slowly, could poll every 60s)
-  #   update_interval: 1s
-
-  # Light Intensity Sensor: KY-046 Analog Light Sensor
-  #
-  # Keyes KY-046 light sensor module connected to GPIO0 (ADC1_CH0)
-  # Outputs analog voltage proportional to light intensity
-  #
-  # HARDWARE: Wire KY-046 signal pin to GPIO0 (ADC1_CH0)
-  # NOTE: GPIO0 is a boot pin - keep it floating or HIGH during boot
-  #       The analog sensor output should not interfere with boot
-  #
-  # ESP32-C6 ADC Fix: Using lboue's fork with adc_oneshot API
-  # Official ESPHome has bugs with ESP32-C6 ADC (no ADC2 support)
-  # This fork currently works on GPIO0 only
-  # - platform: adc
-  #   id: light_intensity_raw
-  #   name: "Light Intensity Raw"
-  #   pin: GPIO0              # ADC1_CH0 (currently only supported pin in fork)
-  #   update_interval: 5s     # Read light level every 5 seconds
-  #   accuracy_decimals: 2
-  #   # Note: attenuation parameter not supported in lboue's fork
-  #   # The fork may use a fixed attenuation (likely 11/12dB for 0-3.3V range)
-  #   filters:
-  #     # Convert raw voltage to percentage (0-100%)
-  #     # Multiply by 100/3.3 to convert voltage to percentage
-  #     - multiply: 30.30303    # 100/3.3 = 30.30303
-  #     - lambda: |-
-  #         // Clamp to 0-100% range
-  #         if (x < 0.0) return 0.0f;
-  #         if (x > 100.0) return 100.0f;
-  #         return x;
-
   # Temperature Sensor: DS18B20 Digital Temperature Sensor
   #
   # DS18B20 is a 1-Wire digital temperature sensor providing accurate readings
@@ -495,7 +375,7 @@ sensor:
     one_wire_id: one_wire_bus
     id: water_temperature
     name: "Water Temperature - DS18B20"
-    update_interval: 60s     # Update temperature every 6 seconds (offset from EZO pH 10s interval)
+    update_interval: 60s     # Update temperature every 60 seconds
     accuracy_decimals: 2     # Display 2 decimal places (e.g., 24.50°C)
     resolution: 12           # 12-bit resolution (0.0625°C per bit, ~750ms conversion)
 
@@ -524,19 +404,19 @@ sensor:
 
     temperature:
       id: bme280_temperature
-      name: "00_09_Air Temperature - BME280"
+      name: "00_12_Air Temperature - BME280"
       accuracy_decimals: 1
       oversampling: 16x     # High oversampling for accuracy
 
     humidity:
       id: bme280_humidity
-      name: "00_10_Air Humidity - BME280"
+      name: "00_13_Air Humidity - BME280"
       accuracy_decimals: 1
       oversampling: 16x
 
     pressure:
       id: bme280_pressure
-      name: "00_11_Air Pressure - BME280"
+      name: "00_14_Air Pressure - BME280"
       accuracy_decimals: 1
       oversampling: 16x
 
@@ -677,21 +557,6 @@ text_sensor:
       return {buf};
     update_interval: 1s
 
-  # - platform: template
-  #   name: "Light Intensity"
-  #   id: light_intensity_text
-  #   # Lambda returns current light intensity value from HAL
-  #   lambda: |-
-  #     if (id(hal)->hasLightIntensity()) {
-  #       char buf[32];
-  #       snprintf(buf, sizeof(buf), "%.1f%%", id(hal)->readLightIntensity());
-  #       return {buf};
-  #     } else {
-  #       return {"N/A"};
-  #     }
-  #   # Update every 5 seconds to match sensor update interval
-  #   update_interval: 5s
-
   - platform: template
     name: "00_04_Water Temperature - HAL"
     id: water_temperature_text
@@ -708,7 +573,7 @@ text_sensor:
     update_interval: 10s
 
   - platform: template
-    name: "00_09_Air Temperature"
+    name: "00_12_Air Temperature"
     id: air_temperature_text
     # Lambda returns current air temperature from BME280
     lambda: |-
@@ -723,7 +588,7 @@ text_sensor:
     update_interval: 10s
 
   - platform: template
-    name: "00_10_Air Humidity"
+    name: "00_13_Air Humidity"
     id: air_humidity_text
     # Lambda returns current relative humidity from BME280
     lambda: |-
@@ -738,7 +603,7 @@ text_sensor:
     update_interval: 10s
 
   - platform: template
-    name: "00_11_Air Pressure"
+    name: "00_14_Air Pressure"
     id: air_pressure_text
     # Lambda returns current barometric pressure from BME280
     lambda: |-
@@ -1101,9 +966,9 @@ button:
         - lambda: |-
             id(ezo_ph_uart_component)->query_calibration_status();
 
-  # === 10 - Actuator Testing (3-Second Auto-Off) ===
+  # === 12 - Actuator Timed Tests ===
   - platform: template
-    name: "10_01_Test Magnetic Valve (3s)"
+    name: "12_01_Test Magnetic Valve (3s)"
     on_press:
       # Turn ON magnetic valve for 3 seconds, then auto turn OFF
       # Maps to "WaterValve" actuator ID
@@ -1122,7 +987,7 @@ button:
             }
 
   - platform: template
-    name: "10_02_Test pH Pump (10s)"
+    name: "12_02_Test pH Pump (10s)"
     on_press:
       # Turn ON pH pump for 10 seconds at current PWM slider value
       # Maps to "AcidPump" actuator ID
@@ -1150,7 +1015,7 @@ button:
             ESP_LOGI("button", "================================");
 
   - platform: template
-    name: "10_03_Test Grow Pump (10s)"
+    name: "12_03_Test Grow Pump (10s)"
     on_press:
       # Turn ON grow pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpA" actuator ID
@@ -1178,7 +1043,7 @@ button:
             ESP_LOGI("button", "===================================");
 
   - platform: template
-    name: "10_04_Test Micro Pump (10s)"
+    name: "12_04_Test Micro Pump (10s)"
     on_press:
       # Turn ON micro pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpB" actuator ID
@@ -1206,7 +1071,7 @@ button:
             ESP_LOGI("button", "====================================");
 
   - platform: template
-    name: "10_05_Test Bloom Pump (10s)"
+    name: "12_05_Test Bloom Pump (10s)"
     on_press:
       # Turn ON bloom pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpC" actuator ID
@@ -1233,8 +1098,9 @@ button:
             ESP_LOGI("button", "Bloom Pump auto-OFF after 10s");
             ESP_LOGI("button", "====================================");
 
+  # === 13 - Precision Dosing Tests (2cl/20mL) ===
   - platform: template
-    name: "10_06_Test Grow Pump (2cl = 20mL)"
+    name: "13_01_Test Grow Pump (2cl = 20mL)"
     on_press:
       # Test precise volume output: 2cl (20mL) from Grow Pump
       # Uses HAL pumpflow() to convert mL to seconds based on calibration
@@ -1263,7 +1129,7 @@ button:
             ESP_LOGI("button", "==========================");
 
   - platform: template
-    name: "10_06b_Test pH Pump (2cl = 20mL)"
+    name: "13_02_Test pH Pump (2cl = 20mL)"
     on_press:
       # Test precise volume output: 2cl (20mL) from pH Pump
       # Uses HAL pumpflow() to convert mL to seconds based on calibration
@@ -1292,7 +1158,7 @@ button:
             ESP_LOGI("button", "==========================");
 
   - platform: template
-    name: "10_06c_Test Micro Pump (2cl = 20mL)"
+    name: "13_03_Test Micro Pump (2cl = 20mL)"
     on_press:
       # Test precise volume output: 2cl (20mL) from Micro Pump
       # Uses HAL pumpflow() to convert mL to seconds based on calibration
@@ -1321,7 +1187,7 @@ button:
             ESP_LOGI("button", "==========================");
 
   - platform: template
-    name: "10_06d_Test Bloom Pump (2cl = 20mL)"
+    name: "13_04_Test Bloom Pump (2cl = 20mL)"
     on_press:
       # Test precise volume output: 2cl (20mL) from Bloom Pump
       # Uses HAL pumpflow() to convert mL to seconds based on calibration
@@ -1350,7 +1216,7 @@ button:
             ESP_LOGI("button", "==========================");
 
   - platform: template
-    name: "10_07_Test Air Pump (Shelly Socket 0)"
+    name: "12_06_Test Air Pump (Shelly Socket 0)"
     on_press:
       # Turn ON air pump via Shelly for 5 seconds
       # Tests HTTP communication and Shelly socket control
@@ -1366,7 +1232,7 @@ button:
             ESP_LOGI("button", "========================================");
 
   - platform: template
-    name: "10_08_Test Wastewater Pump (Shelly Socket 2)"
+    name: "12_07_Test Wastewater Pump (Shelly Socket 2)"
     on_press:
       # Turn ON wastewater pump via Shelly for 5 seconds
       # Tests HTTP communication and Shelly socket control
@@ -1382,7 +1248,7 @@ button:
             ESP_LOGI("button", "==============================================");
 
   - platform: template
-    name: "10_09_Test Grow Light (Shelly Socket 3)"
+    name: "12_08_Test Grow Light (Shelly Socket 3)"
     on_press:
       # Turn ON grow light via Shelly for 3 seconds
       # Tests HTTP communication and Shelly socket control
@@ -1441,7 +1307,6 @@ plantos_hal:
   system_led: system_led
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
-  # light_sensor: light_intensity_raw  # KY-046 light sensor on GPIO0 (ADC1_CH0) - COMMENTED OUT
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO23
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO10
   water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO11 (auto-feed trigger level)
@@ -1547,134 +1412,11 @@ plantos_controller:
                                 # backoff, comprehensive 4-part error messages, and RESOLVED state
                                 # tracking. Disable for backward-compatible legacy behavior.
 
-################################################################################
-# Time Logger: Periodic Time Logging
-#
-# Demonstrates non-blocking periodic execution by logging the current date and
-# time to the serial monitor. Uses NTP-synchronized time from the time component
-# and formats output as: dd.mm.yyyy HH:MM:SS
-#
-# This component showcases:
-# - Non-blocking delays using millis() instead of delay()
-# - Integration with ESPHome's time component
-# - Formatted time output for monitoring and debugging
-################################################################################
-time_logger:
-  id: my_time_logger
-
-  # time_source: ID reference to the time component (NTP-synchronized)
-  # The logger queries this component for current date/time
-  time_source: sntp_time
-
-  # log_interval: How often to log the time (default: 5 seconds)
-  # Accepts time strings: "1s", "5s", "10s", "1min", etc.
-  log_interval: 30min
-
-################################################################################
-# Actuator Safety Gate - Centralized Actuator Control Safety Layer
-#
-# Provides comprehensive safety features for all system actuators:
-# - Debouncing: Prevents redundant commands
-# - Duration Limits: Enforces maximum runtime for critical actuators
-# - Runtime Tracking: Monitors actuator runtime and detects violations
-# - Safety Logging: Logs all rejections with clear reasons
-# - Soft-Start/Soft-Stop: PWM ramping to protect circuits from inrush current
-#
-# This is a critical safety component that should be used for all actuators
-# that could cause damage if left running too long (pumps, valves, heaters, etc.)
-#
-# Soft-Start/Soft-Stop Feature:
-# When controlling pumps, motors, or other inductive loads via MOSFETs, use
-# the soft-start/soft-stop feature to gradually ramp PWM duty cycle from 0% to
-# 100% (or vice versa) over a configurable duration. This protects circuits from
-# inrush current spikes and back-EMF damage.
-#
-# Usage Example (in lambda or script):
-#   // Configure 2-second ramp duration for acid pump
-#   id(actuator_safety).setRampDuration("AcidPump", 2000);
-#
-#   // Set maximum duration limit (safety feature)
-#   id(actuator_safety).setMaxDuration("AcidPump", 30);
-#
-#   // Request pump ON - will start ramping up from 0% to 100%
-#   if (id(actuator_safety).executeCommand("AcidPump", true, 10)) {
-#     // Command approved - ramping started
-#   }
-#
-#   // In an interval component (50-100ms recommended), apply duty cycle to PWM:
-#   float duty = id(actuator_safety).getDutyCycle("AcidPump");
-#   id(acid_pump_pwm).set_level(duty);  // Apply to LEDC output (0.0 to 1.0)
-#
+# Actuator Safety Gate (Layer 2) - Debouncing, Duration Limits, Soft-Start/Stop
 # See components/actuator_safety_gate/README.md for complete documentation.
-################################################################################
-################################################################################
-# Actuator Safety Gate (Layer 2) - Phase 2 HAL Integration
-#
-# Centralized safety layer for all actuator control with:
-# - Debouncing, Duration Limits, Runtime Tracking
-# - Soft-Start/Soft-Stop ramping
-# - HAL integration for hardware control
-################################################################################
 actuator_safety_gate:
   id: actuator_safety
   hal: hal  # Phase 2: Inject HAL dependency for hardware control
-
-################################################################################
-# EZO pH Sensor Component (Atlas Scientific)
-#
-# Production pH sensor using I2C communication with Atlas Scientific EZO circuit.
-# Replaces dummy sensor for accurate pH monitoring in nutrient solutions.
-#
-# Hardware Requirements:
-# - Atlas Scientific EZO pH Circuit
-# - pH probe (included with EZO kit)
-# - I2C connection to ESP32-C6 (SDA=GPIO6, SCL=GPIO7)
-# - 3.3V power supply
-#
-# Calibration:
-# - Use ESPHome API services to calibrate (see api section)
-# - Mid-point: pH 7.00 buffer solution (required first)
-# - Low-point: pH 4.00 buffer solution (optional)
-# - High-point: pH 10.00 buffer solution (optional)
-#
-# Temperature Compensation:
-# - Configure temperature_compensation parameter below
-# - Links to a temperature sensor for improved accuracy
-# - Improves accuracy from ±0.1 pH to ±0.02 pH
-#
-# IMPORTANT: New EZO sensors ship in UART mode!
-# - Must send "I2C,97" command via UART first to switch to I2C mode at address 0x61
-# - Or use hardware jumper if available on carrier board
-#
-# NOTE: This I2C version is DISABLED in favor of UART version below.
-################################################################################
-# ezo_ph:
-#   id: ezo_ph_component
-#   i2c_id: i2c_bus
-#   address: 0x61  # Default I2C address for EZO pH circuit (97 decimal)
-#   update_interval: 60s  # Read pH every 60 seconds (recommended for production)
-#
-#   # pH sensor configuration
-#   ph:
-#     name: "Nutrient Solution pH"
-#     id: ph_sensor_real
-#     accuracy_decimals: 2
-#     filters:
-#       # Sliding window moving average smooths out minor fluctuations
-#       - sliding_window_moving_average:
-#           window_size: 5     # Average last 5 readings
-#           send_every: 1      # Publish every reading (after averaging)
-#       # Lambda filter for range validation and outlier rejection
-#       - lambda: |-
-#           if (x < 0.0 || x > 14.0) {
-#             ESP_LOGW("ezo_ph", "pH value out of typical range: %.2f", x);
-#             return {};  // Reject outliers
-#           }
-#           return x;
-#
-#   # Optional: Temperature compensation for improved accuracy
-#   # Uncomment and link to your temperature sensor when available
-#   # temperature_compensation: water_temp_sensor
 
 ################################################################################
 # EZO pH Sensor Component via UART (Atlas Scientific)
@@ -1701,7 +1443,7 @@ actuator_safety_gate:
 # - Improves accuracy from ±0.1 pH to ±0.02 pH
 #
 # UART Protocol Details:
-# - Baud Rate: 115200 (default for EZO carrier boards)
+# - Baud Rate: 9600 (EZO UART mode)
 # - ASCII text commands terminated with \r (carriage return)
 # - 300ms response delay required after each command
 ################################################################################
@@ -1731,34 +1473,6 @@ ezo_ph_uart:
   # Optional: Temperature compensation for improved accuracy
   # Uncomment and link to your temperature sensor when available
   # temperature_compensation: water_temp_sensor
-
-################################################################################
-# Dummy Actuator Trigger - Test Component for Safety Gate
-#
-# Automated test component that validates the ActuatorSafetyGate functionality
-# by running periodic test sequences:
-#
-# Test 1 - Debouncing Protection:
-#   - Attempts to turn ON actuator multiple times rapidly
-#   - Expected: 1st command approved, 2nd command rejected (debouncing)
-#
-# Test 2 - Maximum Duration Enforcement:
-#   - Requests 3-second duration (within 5s limit): approved
-#   - Requests 10-second duration (exceeds 5s limit): rejected
-#
-# Test 3 - Normal Operation:
-#   - Standard ON/OFF cycles with valid durations
-#   - All commands should be approved
-#
-# Visual Feedback: LED on GPIO 4 controlled by safety gate approvals
-# Test Interval: Runs test sequences every 15 seconds
-################################################################################
-# DEACTIVATED: Dummy Actuator Trigger test
-# dummy_actuator_trigger:
-#   id: test_trigger
-#   safety_gate: actuator_safety
-#   led_pin: GPIO4  # Test LED (GPIO 4 is free, GPIO 8 is built-in LED)
-#   test_interval: 15s  # Run test sequences every 15 seconds
 
 ################################################################################
 # Persistent State Manager - NVS-Based Critical Event Logging
@@ -1827,49 +1541,6 @@ wdt_manager:
   feed_interval: 500ms   # Feed WDT every 500 milliseconds
   test_mode: false        # Enable crash simulation for testing
   crash_delay: 20s       # Simulate crash after 20 seconds
-
-################################################################################
-# I²C Mutex Protection - FreeRTOS Mutex for Thread-Safe I²C Bus Access
-#
-# PRODUCTION-READY: This component creates a global FreeRTOS Mutex that protects
-# the shared I²C bus from concurrent access by multiple tasks.
-#
-# IMPORTANT: The mutex is ALWAYS created and available, regardless of test_mode.
-# Other components can use I2CMutexDemo::i2c_mutex_ to protect their I²C operations.
-#
-# Modes of Operation:
-# - test_mode: false (PRODUCTION, default)
-#   * Mutex is created and available globally
-#   * No test tasks are created (clean logs, no extra overhead)
-#   * Use mutex in your I²C components for thread safety
-#   * Component can even be commented out if not needed
-#
-# - test_mode: true (DEMONSTRATION)
-#   * Mutex is created and available globally
-#   * Two test tasks (Task_A, Task_B) demonstrate mutex usage
-#   * Detailed serial logging shows mutex acquisition/release
-#   * Educational - shows how mutex prevents concurrent I²C access
-#
-# Usage in Other Components:
-# To protect I²C operations in your custom components, use:
-#   xSemaphoreTake(I2CMutexDemo::i2c_mutex_, portMAX_DELAY);
-#   // Your I²C operation here
-#   xSemaphoreGive(I2CMutexDemo::i2c_mutex_);
-#
-# Expected Serial Monitor Output (test_mode: true):
-# - [Task_A] Attempting to acquire I²C Mutex...
-# - [Task_A] ✓ Mutex ACQUIRED - entering critical section
-# - [Task_A] Performing I²C transaction (50ms delay)...
-# - [Task_B] Attempting to acquire I²C Mutex... (BLOCKED, waiting)
-# - [Task_A] ✓ Mutex RELEASED - exiting critical section
-# - [Task_B] ✓ Mutex ACQUIRED - entering critical section (now can proceed)
-#
-# This proves mutual exclusion: only ONE task accesses I²C bus at a time.
-################################################################################
-i2c_mutex_demo:
-  id: my_i2c_mutex_demo
-  test_mode: false  # PRODUCTION: false = mutex only, no test tasks
-                    # DEMO: true = mutex + test tasks with logging
 
 ################################################################################
 # CalendarManager - Daily Schedule Management for 120-Day Grow Cycle
@@ -2593,12 +2264,11 @@ switch:
   # - Direct GPIO output control via output.turn_on/turn_off
   #
   # PURPOSE: Hardware testing and wiring validation only
-  # TODO: REMOVE BEFORE FINAL RELEASE
   ################################################################################
 
   - platform: template
     id: direct_gpio18_switch
-    name: "12_01_Set GPIO18 - Water Valve to HIGH"
+    name: "14_01_Set GPIO18 - Water Valve to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
@@ -2611,7 +2281,7 @@ switch:
 
   - platform: template
     id: direct_gpio19_switch
-    name: "12_02_Set GPIO19 - Acid Pump to HIGH"
+    name: "14_02_Set GPIO19 - Acid Pump to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
@@ -2624,7 +2294,7 @@ switch:
 
   - platform: template
     id: direct_gpio20_switch
-    name: "12_03_Set GPIO20 - Nutrient Pump A to HIGH"
+    name: "14_03_Set GPIO20 - Nutrient Pump A to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
@@ -2637,7 +2307,7 @@ switch:
 
   - platform: template
     id: direct_gpio21_switch
-    name: "12_04_Set GPIO21 - Nutrient Pump B to HIGH"
+    name: "14_04_Set GPIO21 - Nutrient Pump B to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
@@ -2650,7 +2320,7 @@ switch:
 
   - platform: template
     id: direct_gpio22_switch
-    name: "12_05_Set GPIO22 - Nutrient Pump C to HIGH"
+    name: "14_05_Set GPIO22 - Nutrient Pump C to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
@@ -2664,12 +2334,11 @@ switch:
 ################################################################################
 # Number Components: PWM Sliders for Direct GPIO Control
 #
-# Section 13 - PWM Control Sliders (HARDWARE TESTING ONLY)
+# Section 15 - PWM Control Sliders (HARDWARE TESTING ONLY)
 # These sliders provide direct PWM control (0-100%) of GPIO outputs
 # bypassing ALL safety and abstraction layers.
 #
 # WARNING: Use only for hardware testing and calibration!
-# TODO: REMOVE BEFORE FINAL RELEASE
 ################################################################################
 number:
   # === Night Mode Time Configuration ===
@@ -2726,10 +2395,10 @@ number:
           ESP_LOGI("number", "Auto Reservoir Change Day set to: %d (%s)", day, day_names[day]);
           id(unified_controller).setAutoReservoirChangeDay(day);
 
-  # === 13 - PWM Control Sliders ===
+  # === 15 - PWM Control Sliders ===
   - platform: template
     id: pwm_gpio18_slider
-    name: "13_01_GPIO18 - Water Valve PWM"
+    name: "15_01_GPIO18 - Water Valve PWM"
     icon: "mdi:water-percent"
     optimistic: true
     min_value: 0
@@ -2749,7 +2418,7 @@ number:
 
   - platform: template
     id: pwm_gpio19_slider
-    name: "13_02_GPIO19 - Acid Pump PWM"
+    name: "15_02_GPIO19 - Acid Pump PWM"
     icon: "mdi:flask-percent"
     optimistic: true
     min_value: 0
@@ -2769,7 +2438,7 @@ number:
 
   - platform: template
     id: pwm_gpio20_slider
-    name: "13_03_GPIO20 - Nutrient Pump A PWM"
+    name: "15_03_GPIO20 - Nutrient Pump A PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0
@@ -2789,7 +2458,7 @@ number:
 
   - platform: template
     id: pwm_gpio21_slider
-    name: "13_04_GPIO21 - Nutrient Pump B PWM"
+    name: "15_04_GPIO21 - Nutrient Pump B PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0
@@ -2809,7 +2478,7 @@ number:
 
   - platform: template
     id: pwm_gpio22_slider
-    name: "13_05_GPIO22 - Nutrient Pump C PWM"
+    name: "15_05_GPIO22 - Nutrient Pump C PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0

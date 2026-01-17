@@ -170,7 +170,7 @@ api:
 http_request:
   id: http_client
   useragent: esphome/plantOS
-  timeout: 5s  # Reduced from 15s to prevent WDT timeouts on unreachable devices
+  timeout: 2s  # Reduced from 5s - fail fast, rely on multi-attempt retries
   verify_ssl: false  # Skip SSL verification for simple connectivity test
 
 ################################################################################

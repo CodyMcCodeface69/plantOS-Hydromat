@@ -583,6 +583,16 @@ private:
     uint32_t ph_reading_interval_ms_{7200000};  // Default: 2 hours
     float ph_min_{5.5f};                         // Default: pH 5.5
     float ph_max_{6.5f};                         // Default: pH 6.5
+
+    // Simple multi-attempt retry state for Shelly HTTP commands
+    // Works around transient connection failures without complex error detection
+    std::string shelly_retry_url_;
+    std::string shelly_retry_device_name_;
+    uint8_t shelly_retry_attempts_{0};
+    uint32_t shelly_retry_next_time_{0};
+
+    // Multi-attempt send helper for Shelly commands
+    void sendShellyMultiAttempt(const std::string& url, const char* deviceName, uint8_t attempts = 3);
 };
 
 } // namespace plantos_hal

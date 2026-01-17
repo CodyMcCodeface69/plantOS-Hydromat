@@ -187,6 +187,17 @@ function stopSequence(switchId) {
 
 // Action Handlers
 
+// Lightweight ping endpoint - fast health check with minimal processing
+let handlePing = function (qsParams, response) {
+  response.code = 200;
+  response.body = JSON.stringify({
+    status: "ok",
+    uptime: Shelly.getComponentStatus("sys").uptime,
+    ts: Date.now()
+  });
+  response.send();
+};
+
 let handleSequence = function (qsParams, response) {
   let switchId = getSwitchId(qsParams);
   if (switchId === null) {
@@ -324,18 +335,24 @@ let handleStatus = function (qsParams, response) {
   }
 
   let state = sequenceStates[switchId];
-  let status = {
-    switch_id: switchId,
-    running: state.running,
-    current_step: state.currentStep,
-    total_steps: state.steps.length
-  };
+  let currentStep = state.steps[state.currentStep] || null;
 
-  // Get actual switch state
+  // Get actual switch state with enhanced info
   Shelly.call("Switch.GetStatus", { id: switchId }, function (res, err_code, err_msg) {
-    if (err_code === 0) {
-      status.switch_on = res.output;
-    }
+    let status = {
+      switch_id: switchId,
+      switch_on: err_code === 0 ? res.output : null,
+      sequence: {
+        running: state.running,
+        current_step: state.currentStep,
+        total_steps: state.steps.length,
+        current_action: currentStep ? (currentStep.state ? "on" : "off") : null,
+        final_state: state.finalState ? "on" : "off"
+      },
+      device: {
+        uptime: Shelly.getComponentStatus("sys").uptime
+      }
+    };
     response.code = 200;
     response.body = JSON.stringify(status);
     response.send();
@@ -387,6 +404,7 @@ let handleOff = function (qsParams, response) {
 };
 
 // Register action handlers
+CONFIG.registerActionHandler("ping", handlePing);
 CONFIG.registerActionHandler("sequence", handleSequence);
 CONFIG.registerActionHandler("stop", handleStop);
 CONFIG.registerActionHandler("status", handleStatus);
@@ -420,8 +438,9 @@ function httpServerHandler(request, response) {
     response.code = 400;
     response.body = JSON.stringify({
       error: "Unknown action",
-      available_actions: ["sequence", "stop", "status", "on", "off"],
+      available_actions: ["ping", "sequence", "stop", "status", "on", "off"],
       usage: {
+        ping: "?action=ping",
         sequence: "?action=sequence&id=0&pattern=30,120,30&finalstate=0",
         stop: "?action=stop&id=0",
         status: "?action=status&id=0",

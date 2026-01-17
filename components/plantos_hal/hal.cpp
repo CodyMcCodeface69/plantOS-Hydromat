@@ -164,8 +164,24 @@ void ESPHomeHAL::setup() {
 }
 
 void ESPHomeHAL::loop() {
-    // HAL is passive - no active loop processing needed
-    // All actions are triggered by Controller/SafetyGate calls
+    // Process scheduled Shelly HTTP retry attempts
+    // This handles transient connection failures by sending commands multiple times
+    if (shelly_retry_attempts_ > 0) {
+        uint32_t now = esphome::millis();
+        if (now >= shelly_retry_next_time_) {
+            shelly_retry_attempts_--;
+            ESP_LOGD(TAG, "%s: Retry attempt (%d remaining)",
+                     shelly_retry_device_name_.c_str(), shelly_retry_attempts_);
+
+            // Send retry - use retry URL (may be different from url_cache_ if another command was sent)
+            url_cache_ = shelly_retry_url_;
+            http_request_->get(url_cache_);
+
+            if (shelly_retry_attempts_ > 0) {
+                shelly_retry_next_time_ = now + 500;  // Schedule next attempt in 500ms
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -233,11 +249,11 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
     else if (pumpId == "AirPump") {
         // Air pump via Shelly Socket 0 - Use sequence API for consistency
         // This also stops any running sequence when turning on/off manually
+        // Uses multi-attempt to handle transient HTTP connection failures
         if (http_request_) {
-            url_cache_ = std::string("http://") + SHELLY_IP +
-                         "/script/1/api?action=" + (state ? "on" : "off") + "&id=0";
-            http_request_->get(url_cache_);
-            ESP_LOGD(TAG, "AirPump → Shelly sequence API: %s", state ? "ON" : "OFF");
+            std::string url = std::string("http://") + SHELLY_IP +
+                              "/script/1/api?action=" + (state ? "on" : "off") + "&id=0";
+            sendShellyMultiAttempt(url, "AirPump", 1);  // Single attempt (retries disabled for now)
         }
     }
     else if (pumpId == "GrowLight") {
@@ -388,6 +404,37 @@ bool ESPHomeHAL::sendShellyCommand(const std::string& url, const char* deviceNam
     return true;
 }
 
+void ESPHomeHAL::sendShellyMultiAttempt(const std::string& url, const char* deviceName, uint8_t attempts) {
+    // Send HTTP command multiple times with delay between attempts
+    // Works around transient connection failures without complex error detection
+    // Safe because Shelly commands are idempotent (sending ON twice is harmless)
+    //
+    // This works for ALL Shelly command types:
+    // - Simple ON/OFF: /script/1/api?action=on&id=0
+    // - Pattern/Sequence: /script/1/api?action=sequence&id=0&pattern=30,120,30&finalstate=1
+    // - Stop: /script/1/api?action=stop&id=0
+
+    if (!http_request_ || attempts == 0) {
+        ESP_LOGW(TAG, "%s: Cannot send - HTTP not configured or 0 attempts", deviceName);
+        return;
+    }
+
+    ESP_LOGI(TAG, "%s: Sending HTTP command (%d attempts): %s", deviceName, attempts, url.c_str());
+
+    // First attempt immediately - cache URL to prevent use-after-free
+    url_cache_ = url;
+    http_request_->get(url_cache_);
+
+    // Schedule additional attempts if needed
+    if (attempts > 1) {
+        // Store URL and device name for retry (must persist beyond this function)
+        shelly_retry_url_ = url;
+        shelly_retry_device_name_ = deviceName;
+        shelly_retry_attempts_ = attempts - 1;
+        shelly_retry_next_time_ = esphome::millis() + 500;  // 500ms delay between attempts
+    }
+}
+
 bool ESPHomeHAL::checkShellySwitchStatus(const std::string& pumpId) {
     // TODO: Query Shelly via HTTP GET /rpc/Switch.GetStatus?id=X
     // ESPHome's callback-based HTTP makes synchronous requests difficult
@@ -414,14 +461,15 @@ bool ESPHomeHAL::setAirPumpPattern(const std::vector<uint32_t>& pattern, bool fi
 
     // Build URL for Shelly script sequence API
     // API: http://192.168.0.130/script/1/api?action=sequence&id=0&pattern=X,Y,Z&finalstate=F
-    url_cache_ = std::string("http://") + SHELLY_IP +
-                 "/script/1/api?action=sequence&id=0&pattern=" +
-                 patternStr + "&finalstate=" + (finalState ? "1" : "0");
+    std::string url = std::string("http://") + SHELLY_IP +
+                      "/script/1/api?action=sequence&id=0&pattern=" +
+                      patternStr + "&finalstate=" + (finalState ? "1" : "0");
 
     ESP_LOGI(TAG, "AirPump pattern: [%s], finalstate=%s", patternStr.c_str(), finalState ? "ON" : "OFF");
-    ESP_LOGD(TAG, "URL: %s", url_cache_.c_str());
 
-    http_request_->get(url_cache_);
+    // Use multi-attempt to handle transient HTTP connection failures
+    // Pattern commands are idempotent - Shelly script stops any existing sequence before starting new one
+    sendShellyMultiAttempt(url, "AirPump Pattern", 1);  // Single attempt (retries disabled for now)
 
     // Update tracked state to finalState (what it will be after pattern completes)
     pump_states_["AirPump"] = finalState;
@@ -437,13 +485,13 @@ bool ESPHomeHAL::stopAirPumpSequence(bool finalState) {
 
     // Use sequence API to stop and set final state
     // action=on or action=off stops any running sequence and sets state
-    url_cache_ = std::string("http://") + SHELLY_IP +
-                 "/script/1/api?action=" + (finalState ? "on" : "off") + "&id=0";
+    std::string url = std::string("http://") + SHELLY_IP +
+                      "/script/1/api?action=" + (finalState ? "on" : "off") + "&id=0";
 
     ESP_LOGI(TAG, "AirPump sequence stop → %s", finalState ? "ON" : "OFF");
-    ESP_LOGD(TAG, "URL: %s", url_cache_.c_str());
 
-    http_request_->get(url_cache_);
+    // Use multi-attempt to handle transient HTTP connection failures
+    sendShellyMultiAttempt(url, "AirPump Stop", 1);  // Single attempt (retries disabled for now)
 
     // Update tracked state
     pump_states_["AirPump"] = finalState;

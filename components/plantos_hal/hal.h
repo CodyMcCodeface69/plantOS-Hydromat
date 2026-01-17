@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <map>
+#include <vector>
 #include "esphome/core/component.h"
 #include "esphome/core/time.h"
 #include "esphome/components/time/real_time_clock.h"
@@ -199,6 +200,36 @@ public:
      * ESPHome's callback-based HTTP makes synchronous requests difficult.
      */
     virtual bool checkShellySwitchStatus(const std::string& pumpId) = 0;
+
+    // ============================================================================
+    // SHELLY PATTERN API - AirPump Sequence Control
+    // ============================================================================
+
+    /**
+     * Set AirPump pattern via Shelly sequence API
+     *
+     * Sends a single HTTP request with alternating ON/OFF pattern.
+     * Pattern format: [on_sec, off_sec, on_sec, ...] alternating, starting with ON.
+     * Use 0 as first element to start with OFF.
+     *
+     * Shelly API: http://192.168.0.130/script/1/api?action=sequence&id=0&pattern=X,Y,Z&finalstate=F
+     *
+     * @param pattern Vector of durations in seconds [on, off, on, off, ...]
+     * @param finalState Desired switch state after pattern completes (true=ON, false=OFF)
+     * @return true if HTTP request was sent successfully
+     *
+     * Example: setAirPumpPattern({30, 120, 30}, true)
+     *   → 30s ON, 120s OFF, 30s ON, then stays ON
+     */
+    virtual bool setAirPumpPattern(const std::vector<uint32_t>& pattern, bool finalState) = 0;
+
+    /**
+     * Stop any running AirPump sequence and set final state
+     *
+     * @param finalState Desired switch state after stop (true=ON, false=OFF)
+     * @return true if HTTP request was sent successfully
+     */
+    virtual bool stopAirPumpSequence(bool finalState) = 0;
 
     // ============================================================================
     // SENSORS - Called by Controller
@@ -461,6 +492,8 @@ public:
     bool getPumpState(const std::string& pumpId) const override;
     bool getValveState(const std::string& valveId) const override;
     bool checkShellySwitchStatus(const std::string& pumpId) override;
+    bool setAirPumpPattern(const std::vector<uint32_t>& pattern, bool finalState) override;
+    bool stopAirPumpSequence(bool finalState) override;
 
     float readPH() override;
     bool hasPhValue() const override;

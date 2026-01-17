@@ -1117,23 +1117,46 @@ void PlantOSController::handlePhInjecting() {
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
 
-        // Calculate duration in seconds (round up)
-        uint32_t duration_sec = (ph_dose_duration_ms_ + 999) / 1000;
+        // Calculate injection duration in seconds (round up)
+        uint32_t injection_sec = (ph_dose_duration_ms_ + 999) / 1000;
 
-        ESP_LOGI(TAG, "Starting acid injection: %.1f mL (%.2f sec)", ph_dose_ml_, duration_sec / 1.0f);
+        // Calculate mixing duration (same as handlePhMixing does)
+        uint32_t mixing_duration_ms = calculatePhMixingDuration();
+        uint32_t mixing_sec = (mixing_duration_ms + 999) / 1000;
 
-        // Try to start air pump for mixing (no-op if not configured)
-        // Brief air pump activation during acid injection for initial mixing
-        if (!requestPump(AIR_PUMP, true, 0)) {
-            ESP_LOGD(TAG, "Air pump not configured - relying on natural mixing");
+        // Total AirPump ON time = injection + mixing
+        uint32_t total_air_pump_sec = injection_sec + mixing_sec;
+
+        ESP_LOGI(TAG, "Starting acid injection: %.1f mL (%.2f sec)", ph_dose_ml_, injection_sec / 1.0f);
+        ESP_LOGI(TAG, "AirPump pattern: %u sec (injection) + %u sec (mixing) = %u sec total",
+                 injection_sec, mixing_sec, total_air_pump_sec);
+
+        // Send AirPump pattern via Shelly sequence API (single HTTP call for entire pH correction)
+        // Pattern: single ON duration covering injection+mixing, finalstate=ON (for IDLE mode)
+        if (hal_) {
+            std::vector<uint32_t> pattern = {total_air_pump_sec};
+
+            // Validate pattern through SafetyGate if available
+            if (safety_gate_ && !safety_gate_->validateAirPumpPattern(pattern)) {
+                ESP_LOGW(TAG, "AirPump pattern rejected by SafetyGate - using simple ON command");
+                // Fall back to simple ON (no duration limit)
+                requestPump(AIR_PUMP, true, 0);
+            } else {
+                // Send pattern to Shelly: ON for total duration, then stay ON (finalstate=1 for IDLE)
+                hal_->setAirPumpPattern(pattern, true);
+                ESP_LOGI(TAG, "AirPump Shelly pattern sent: %u sec ON, then stay ON", total_air_pump_sec);
+            }
         } else {
-            ESP_LOGI(TAG, "Air pump active for mixing during injection");
+            ESP_LOGD(TAG, "HAL not configured - air pump control skipped");
         }
 
         // Request acid pump via SafetyGate with adaptive duration (will auto-adapt if needed)
-        if (!requestPumpAdaptive(ACID_PUMP, true, duration_sec, false)) {
+        if (!requestPumpAdaptive(ACID_PUMP, true, injection_sec, false)) {
             ESP_LOGE(TAG, "Acid pump rejected by SafetyGate even after adaptation - aborting");
-            requestPump(AIR_PUMP, false); // Stop air pump too (if it was started)
+            // Stop air pump sequence since we're aborting
+            if (hal_) {
+                hal_->stopAirPumpSequence(true);  // Stop but keep ON for normal operation
+            }
 
             // Set comprehensive alert before ERROR transition
             status_logger_.updateAlertWithContext(
@@ -1154,10 +1177,7 @@ void PlantOSController::handlePhInjecting() {
         ESP_LOGI(TAG, "Acid pump active - dosing %.1f mL", ph_dose_ml_);
 
         // CRITICAL FIX: Reset timer to start from NOW (after HTTP delays)
-        // The AirPump HTTP request blocks for 3s, which would cause the timer to expire
-        // before the AcidPump has run for its intended duration.
-        // By resetting state_start_time_ here, we ensure the injection duration is
-        // accurate regardless of blocking HTTP calls.
+        // The AirPump HTTP request is async, but we reset timer for consistency.
         state_start_time_ = hal_->getSystemTime();
         ESP_LOGD(TAG, "Timer reset: injection duration starts now");
 
@@ -1171,7 +1191,7 @@ void PlantOSController::handlePhInjecting() {
         // Injection complete - explicitly stop acid pump
         requestPump(ACID_PUMP, false);
 
-        ESP_LOGI(TAG, "Acid dosing complete: %.1f mL added - starting 2-minute mixing phase", ph_dose_ml_);
+        ESP_LOGI(TAG, "Acid dosing complete: %.1f mL added - starting mixing phase", ph_dose_ml_);
         transitionTo(ControllerState::PH_MIXING);
     }
 }
@@ -1179,42 +1199,32 @@ void PlantOSController::handlePhInjecting() {
 void PlantOSController::handlePhMixing() {
     // Blue pulse - mixing after acid injection
     // Air pump runs to distribute acid throughout tank (duration varies by tank volume)
+    // NOTE: AirPump is controlled via Shelly pattern API - pattern was sent in PH_INJECTING
     uint32_t elapsed = getStateElapsed();
 
-    // On entry: Calculate mixing duration and verify air pump state (only once!)
+    // On entry: Calculate mixing duration for timer only (air pump already running via pattern)
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
 
         // Calculate mixing duration based on tank volume (linear: 1.7L→30s, 70L→120s)
         ph_mixing_duration_ms_ = calculatePhMixingDuration();
 
-        // Check if AirPump is already running (from PH_INJECTING state)
-        bool air_pump_already_on = false;
-        if (hal_) {
-            air_pump_already_on = hal_->getPumpState(AIR_PUMP);
-        }
+        ESP_LOGI(TAG, "Mixing phase: waiting %.1f seconds (air pump controlled by Shelly pattern)",
+                 ph_mixing_duration_ms_ / 1000.0f);
 
-        if (air_pump_already_on) {
-            ESP_LOGI(TAG, "Air pump already active from injection - continuing mixing for %.1f seconds",
-                     ph_mixing_duration_ms_ / 1000.0f);
-        } else {
-            // AirPump not running - start it now (e.g., after reboot recovery)
-            uint32_t mixing_duration_sec = (ph_mixing_duration_ms_ + 999) / 1000;  // Round up to seconds
-            if (!requestPump(AIR_PUMP, true, mixing_duration_sec)) {
-                ESP_LOGW(TAG, "Air pump not configured - using passive mixing period");
-                ESP_LOGI(TAG, "Waiting %.1f seconds for acid to distribute naturally",
-                         ph_mixing_duration_ms_ / 1000.0f);
-            } else {
-                ESP_LOGI(TAG, "Air pump started for %.1f second mixing phase",
-                         ph_mixing_duration_ms_ / 1000.0f);
-            }
-        }
+        // No air pump commands here - Shelly pattern handles the full injection+mixing duration
     }
 
     if (elapsed >= ph_mixing_duration_ms_) {
-        // Mixing complete - stop air pump (no-op if not configured)
-        requestPump(AIR_PUMP, false);
         ESP_LOGI(TAG, "pH mixing complete (%.1f seconds)", ph_mixing_duration_ms_ / 1000.0f);
+
+        // Check if cycling was enabled before pH correction
+        // If so, restore the cycling pattern on Shelly
+        if (safety_gate_ && safety_gate_->isCyclingEnabled(AIR_PUMP)) {
+            ESP_LOGI(TAG, "Restoring AirPump cycling pattern");
+            safety_gate_->enableCycling(AIR_PUMP, true);  // Re-sends pattern to Shelly
+        }
+        // If cycling not enabled, the pattern's finalstate=ON keeps pump ON (Normal mode)
 
         // Loop back to PH_MEASURING to verify correction
         // Will continue until pH is in range OR max attempts reached
@@ -3038,7 +3048,15 @@ void PlantOSController::turnOffAllPumps() {
     requestPump(NUTRIENT_PUMP_B, false);
     requestPump(NUTRIENT_PUMP_C, false);
     requestPump(WASTEWATER_PUMP, false);
-    requestPump(AIR_PUMP, false);
+
+    // Stop any running AirPump Shelly sequence and turn OFF
+    if (hal_) {
+        hal_->stopAirPumpSequence(false);  // Stop sequence and turn OFF
+        ESP_LOGI(TAG, "AirPump Shelly sequence stopped - pump OFF");
+    } else {
+        // Fallback to simple command if HAL not available
+        requestPump(AIR_PUMP, false);
+    }
 
     // Close all valves
     requestValve(WATER_VALVE, false);

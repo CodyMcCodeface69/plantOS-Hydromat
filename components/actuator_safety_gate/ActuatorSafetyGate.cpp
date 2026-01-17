@@ -187,6 +187,57 @@ void ActuatorSafetyGate::enableCycling(const char* actuatorID, bool enabled) {
 
     state.cyclingEnabled = enabled;
 
+    // ========================================================================
+    // SPECIAL HANDLING FOR AIRPUMP - Use Shelly Pattern API
+    // ========================================================================
+    if (id == "AirPump" && hal_) {
+        if (enabled) {
+            // Build repeating pattern for ~10 minutes, then refresh
+            // Pattern: [on, off, on, off, ...] up to ~10 min total
+            uint32_t on_sec = state.cyclingOnPeriod / 1000;
+            uint32_t off_sec = state.cyclingOffPeriod / 1000;
+
+            if (on_sec == 0 || off_sec == 0) {
+                ESP_LOGW(TAG, "AirPump cycling periods not configured (ON=%us, OFF=%us)", on_sec, off_sec);
+                return;
+            }
+
+            uint32_t cycle_sec = on_sec + off_sec;
+            uint32_t cycles_per_10min = (10 * 60) / cycle_sec;
+            if (cycles_per_10min < 1) cycles_per_10min = 1;
+
+            std::vector<uint32_t> pattern;
+            for (uint32_t i = 0; i < cycles_per_10min; i++) {
+                pattern.push_back(on_sec);
+                if (i < cycles_per_10min - 1) {  // No trailing OFF on last cycle
+                    pattern.push_back(off_sec);
+                }
+            }
+
+            // Validate and send pattern (finalstate=1 to keep ON after pattern completes)
+            if (validateAirPumpPattern(pattern)) {
+                hal_->setAirPumpPattern(pattern, true);
+                shelly_cycling_active_ = true;
+                shelly_cycling_on_period_ = on_sec;
+                shelly_cycling_off_period_ = off_sec;
+                last_shelly_refresh_ = esphome::millis();
+                ESP_LOGI(TAG, "AirPump Shelly cycling started: %u cycles of %us ON / %us OFF",
+                         cycles_per_10min, on_sec, off_sec);
+            } else {
+                ESP_LOGE(TAG, "AirPump pattern validation failed - cycling not started");
+            }
+        } else {
+            // Stop cycling - turn ON (Normal mode = 24/7 ON)
+            hal_->stopAirPumpSequence(true);
+            shelly_cycling_active_ = false;
+            ESP_LOGI(TAG, "AirPump Shelly cycling stopped - continuous ON");
+        }
+        return;  // Don't use internal cycling logic for AirPump
+    }
+
+    // ========================================================================
+    // STANDARD CYCLING FOR OTHER ACTUATORS
+    // ========================================================================
     if (enabled) {
         ESP_LOGI(TAG, "Intermittent cycling ENABLED for %s (ON: %us, OFF: %us)",
                  actuatorID,
@@ -232,6 +283,20 @@ void ActuatorSafetyGate::setCyclingPeriods(const char* actuatorID, uint32_t onPe
 void ActuatorSafetyGate::loop() {
     uint32_t currentTime = esphome::millis();
 
+    // ========================================================================
+    // SHELLY AIRPUMP PATTERN REFRESH
+    // ========================================================================
+    // Refresh Shelly AirPump cycling pattern every 9 minutes (before 10min pattern ends)
+    if (shelly_cycling_active_ && hal_ && (currentTime - last_shelly_refresh_ > 9 * 60 * 1000)) {
+        auto it = actuators_.find("AirPump");
+        if (it != actuators_.end() && it->second.cyclingEnabled) {
+            // Re-send the cycling pattern
+            ESP_LOGI(TAG, "Refreshing AirPump Shelly cycling pattern");
+            enableCycling("AirPump", true);  // Re-sends pattern to Shelly
+            last_shelly_refresh_ = currentTime;
+        }
+    }
+
     for (auto& pair : actuators_) {
         const std::string& id = pair.first;
         ActuatorState& state = pair.second;
@@ -239,6 +304,14 @@ void ActuatorSafetyGate::loop() {
         // ====================================================================
         // INTERMITTENT CYCLING
         // ====================================================================
+        // Skip internal cycling for AirPump (handled by Shelly pattern API)
+        if (id == "AirPump" && shelly_cycling_active_) {
+            // AirPump cycling handled by Shelly - skip internal loop logic
+            // Just update ramping state (even though AirPump doesn't use PWM ramping)
+            updateRamping(id, state, currentTime);
+            continue;
+        }
+
         // Check if intermittent cycling is enabled for this actuator
         if (state.cyclingEnabled &&
             state.cyclingOnPeriod > 0 &&
@@ -465,6 +538,30 @@ uint32_t ActuatorSafetyGate::getAdaptedDuration(const char* actuatorID, uint32_t
     ESP_LOGW(TAG, "Adapting duration for %s: requested %us > max %us, using %us",
              actuatorID, requested_duration_sec, max_duration_sec, max_duration_sec);
     return max_duration_sec;
+}
+
+// ============================================================================
+// SHELLY PATTERN API VALIDATION
+// ============================================================================
+
+bool ActuatorSafetyGate::validateAirPumpPattern(const std::vector<uint32_t>& pattern) const {
+    auto it = actuators_.find("AirPump");
+    uint32_t maxDuration = (it != actuators_.end()) ? it->second.maxDuration : 0;
+
+    // If no limit configured (0), all patterns are valid
+    if (maxDuration == 0) {
+        return true;
+    }
+
+    // Check each ON duration (positions 0, 2, 4, ...)
+    for (size_t i = 0; i < pattern.size(); i += 2) {
+        if (pattern[i] * 1000 > maxDuration) {
+            ESP_LOGW(TAG, "AirPump pattern rejected: ON duration %u sec at position %zu exceeds max %u ms",
+                     pattern[i], i, maxDuration);
+            return false;
+        }
+    }
+    return true;
 }
 
 // ============================================================================

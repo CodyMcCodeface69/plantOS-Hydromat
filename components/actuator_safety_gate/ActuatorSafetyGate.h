@@ -5,6 +5,7 @@
 #include "esphome/core/log.h"
 #include <string>
 #include <map>
+#include <vector>
 
 // Forward declaration for HAL
 namespace plantos_hal {
@@ -271,6 +272,22 @@ public:
      */
     bool isCyclingEnabled(const char* actuatorID) const;
 
+    // ========================================================================
+    // SHELLY PATTERN API VALIDATION
+    // ========================================================================
+
+    /**
+     * Validate an AirPump pattern against safety limits
+     *
+     * @param pattern Vector of durations in seconds [on, off, on, off, ...]
+     * @return true if all ON durations are within max duration limit
+     *
+     * Checks each ON duration (positions 0, 2, 4, ...) against the configured
+     * maximum duration for AirPump. If no max is configured (0), all patterns
+     * are considered valid.
+     */
+    bool validateAirPumpPattern(const std::vector<uint32_t>& pattern) const;
+
     /**
      * Get the current runtime of an actuator (in seconds)
      *
@@ -453,6 +470,20 @@ private:
 
     // Map of actuator ID to state tracking info
     std::map<std::string, ActuatorState> actuators_;
+
+    // ========================================================================
+    // SHELLY AIRPUMP CYCLING STATE
+    // ========================================================================
+
+    // Track if Shelly cycling pattern is active (to avoid redundant calls)
+    bool shelly_cycling_active_{false};
+
+    // Configured cycling periods (in seconds) for pattern generation
+    uint32_t shelly_cycling_on_period_{0};
+    uint32_t shelly_cycling_off_period_{0};
+
+    // Timestamp of last Shelly pattern refresh
+    uint32_t last_shelly_refresh_{0};
 
     // ========================================================================
     // HELPER METHODS

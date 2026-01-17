@@ -231,13 +231,13 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
         ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 HTTP: %s", state ? "ON" : "OFF");
     }
     else if (pumpId == "AirPump") {
-        // Air pump via Shelly Socket 0 - SIMPLIFIED: hardcoded fire-and-forget
+        // Air pump via Shelly Socket 0 - Use sequence API for consistency
+        // This also stops any running sequence when turning on/off manually
         if (http_request_) {
-            if (state) {
-                http_request_->get("http://192.168.0.130/rpc/Switch.Set?id=0&on=true");
-            } else {
-                http_request_->get("http://192.168.0.130/rpc/Switch.Set?id=0&on=false");
-            }
+            url_cache_ = std::string("http://") + SHELLY_IP +
+                         "/script/1/api?action=" + (state ? "on" : "off") + "&id=0";
+            http_request_->get(url_cache_);
+            ESP_LOGD(TAG, "AirPump → Shelly sequence API: %s", state ? "ON" : "OFF");
         }
     }
     else if (pumpId == "GrowLight") {
@@ -393,6 +393,62 @@ bool ESPHomeHAL::checkShellySwitchStatus(const std::string& pumpId) {
     // ESPHome's callback-based HTTP makes synchronous requests difficult
     // For now, return tracked state
     return getPumpState(pumpId);
+}
+
+// ============================================================================
+// SHELLY PATTERN API - AirPump Sequence Control
+// ============================================================================
+
+bool ESPHomeHAL::setAirPumpPattern(const std::vector<uint32_t>& pattern, bool finalState) {
+    if (!http_request_ || pattern.empty()) {
+        ESP_LOGW(TAG, "setAirPumpPattern: HTTP not configured or empty pattern");
+        return false;
+    }
+
+    // Build pattern string: "30,120,30"
+    std::string patternStr;
+    for (size_t i = 0; i < pattern.size(); i++) {
+        if (i > 0) patternStr += ",";
+        patternStr += std::to_string(pattern[i]);
+    }
+
+    // Build URL for Shelly script sequence API
+    // API: http://192.168.0.130/script/1/api?action=sequence&id=0&pattern=X,Y,Z&finalstate=F
+    url_cache_ = std::string("http://") + SHELLY_IP +
+                 "/script/1/api?action=sequence&id=0&pattern=" +
+                 patternStr + "&finalstate=" + (finalState ? "1" : "0");
+
+    ESP_LOGI(TAG, "AirPump pattern: [%s], finalstate=%s", patternStr.c_str(), finalState ? "ON" : "OFF");
+    ESP_LOGD(TAG, "URL: %s", url_cache_.c_str());
+
+    http_request_->get(url_cache_);
+
+    // Update tracked state to finalState (what it will be after pattern completes)
+    pump_states_["AirPump"] = finalState;
+
+    return true;
+}
+
+bool ESPHomeHAL::stopAirPumpSequence(bool finalState) {
+    if (!http_request_) {
+        ESP_LOGW(TAG, "stopAirPumpSequence: HTTP not configured");
+        return false;
+    }
+
+    // Use sequence API to stop and set final state
+    // action=on or action=off stops any running sequence and sets state
+    url_cache_ = std::string("http://") + SHELLY_IP +
+                 "/script/1/api?action=" + (finalState ? "on" : "off") + "&id=0";
+
+    ESP_LOGI(TAG, "AirPump sequence stop → %s", finalState ? "ON" : "OFF");
+    ESP_LOGD(TAG, "URL: %s", url_cache_.c_str());
+
+    http_request_->get(url_cache_);
+
+    // Update tracked state
+    pump_states_["AirPump"] = finalState;
+
+    return true;
 }
 
 // ============================================================================

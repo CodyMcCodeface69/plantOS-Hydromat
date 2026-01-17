@@ -1662,6 +1662,11 @@ void PlantOSController::handlePhCalibrating() {
             // Query calibration status to verify
             ph_sensor_->query_calibration_status();
 
+            // Clear any calibration failure alerts from previous attempts
+            status_logger_.resolveAlert("CALIBRATION_FAILED_MID");
+            status_logger_.resolveAlert("CALIBRATION_FAILED_LOW");
+            status_logger_.resolveAlert("CALIBRATION_FAILED_HIGH");
+
             // Clear PSM event
             if (psm_) {
                 psm_->clearEvent();

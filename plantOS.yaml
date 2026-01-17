@@ -664,6 +664,19 @@ text_sensor:
     # Update every 5s to show real-time state changes
     update_interval: 5s
 
+  - platform: template
+    name: "00_02a_Uptime"
+    id: uptime_text
+    lambda: |-
+      uint32_t sec = millis() / 1000;
+      uint32_t h = sec / 3600;
+      uint32_t m = (sec % 3600) / 60;
+      uint32_t s = sec % 60;
+      char buf[12];
+      snprintf(buf, sizeof(buf), "%02u:%02u:%02u", h, m, s);
+      return {buf};
+    update_interval: 1s
+
   # - platform: template
   #   name: "Light Intensity"
   #   id: light_intensity_text

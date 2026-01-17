@@ -24,7 +24,8 @@
       "Bash(esphome version:*)",
       "Bash(python3:*)",
       "Bash(~/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-addr2line:*)",
-      "Bash(nix develop:*)"
+      "Bash(nix develop:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

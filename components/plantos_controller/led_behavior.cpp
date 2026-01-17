@@ -104,13 +104,13 @@ void LedBehaviorSystem::transitionToBehavior(ControllerState newState) {
             break;
 
         case ControllerState::IDLE:
-            newBehavior = std::make_unique<BreathingGreenBehavior>();
-            ESP_LOGI(TAG, "LED: Breathing Green");
+            newBehavior = std::make_unique<SolidYellowBehavior>();
+            ESP_LOGI(TAG, "LED: Solid Yellow (Idle)");
             break;
 
         case ControllerState::NIGHT:
-            newBehavior = std::make_unique<DimBreathingGreenBehavior>();
-            ESP_LOGI(TAG, "LED: Dim Breathing Green (Night Mode)");
+            newBehavior = std::make_unique<SolidYellowBehavior>();
+            ESP_LOGI(TAG, "LED: Solid Yellow (Night Mode)");
             break;
 
         case ControllerState::SHUTDOWN:

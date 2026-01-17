@@ -643,6 +643,35 @@ void PlantOSController::handleIdle() {
         return;
     }
 
+    // ========================================================================
+    // AUTOMATIC RESERVOIR CHANGE CHECK - Once per week on configured day
+    // ========================================================================
+    if (shouldTriggerAutoReservoirChange()) {
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "  AUTO RESERVOIR CHANGE TRIGGERED");
+        ESP_LOGI(TAG, "  (Weekly schedule - Day %d)", auto_reservoir_change_day_);
+        ESP_LOGI(TAG, "========================================");
+
+        // Record this week's trigger
+        int64_t current_week = getCurrentWeekNumber();
+        if (current_week > 0) {
+            last_auto_reservoir_change_week_ = current_week;
+
+            // Save to NVS with unique key per week
+            if (psm_) {
+                char week_key[32];
+                snprintf(week_key, sizeof(week_key), "AUTORES_%lld", (long long)current_week);
+                psm_->logEvent(week_key, 0);  // 0 = STARTED
+
+                ESP_LOGI(TAG, "[AUTO-RES] Stored trigger week: %lld", (long long)current_week);
+            }
+        }
+
+        // Start reservoir change sequence
+        startReservoirChange();
+        return;
+    }
+
     // Future: Check for other scheduled tasks, sensor thresholds, etc.
 }
 
@@ -1676,7 +1705,17 @@ void PlantOSController::handleFeeding() {
 
             // Get schedule for current day from calendar
             auto schedule = calendar_manager_->get_schedule(current_day);
-            float tank_volume_liters = hal_->getTankVolume();
+
+            // Select tank volume based on operation context:
+            // - Normal feed (auto-feed): use delta volume (LOW→HIGH)
+            // - Reservoir change: use total volume (EMPTY→HIGH)
+            float tank_volume_liters = is_reservoir_change_
+                ? hal_->getTotalTankVolume()
+                : hal_->getTankVolumeDelta();
+
+            ESP_LOGI(TAG, "Using %s tank volume: %.1fL",
+                     is_reservoir_change_ ? "TOTAL (reservoir change)" : "DELTA (normal feed)",
+                     tank_volume_liters);
 
             // Calculate actual mL doses from mL/L concentrations
             dose_a_ml = schedule.nutrient_A_ml_per_liter * tank_volume_liters;
@@ -1822,10 +1861,15 @@ void PlantOSController::handleFeedFilling() {
     uint32_t max_fill_duration_sec = 600;    // For SafetyGate command
 
     if (hal_) {
-        float tank_volume_L = hal_->getTankVolume();
+        // Select tank volume based on operation context:
+        // - Normal feed: fills from LOW to HIGH → use delta volume
+        // - Reservoir change: fills from EMPTY to HIGH → use total volume
+        float tank_volume_L = is_reservoir_change_
+            ? hal_->getTotalTankVolume()
+            : hal_->getTankVolumeDelta();
         float tank_volume_mL = tank_volume_L * 1000.0f;
 
-        // Use valveflow() to calculate fill duration for full tank volume
+        // Use valveflow() to calculate fill duration for the appropriate tank volume
         float fill_duration_sec = hal_->valveflow(tank_volume_mL);
 
         // Add 20% safety margin
@@ -1834,8 +1878,9 @@ void PlantOSController::handleFeedFilling() {
         max_fill_duration_ms = static_cast<uint32_t>(fill_duration_sec * 1000.0f);
         max_fill_duration_sec = static_cast<uint32_t>(fill_duration_sec);
 
-        ESP_LOGI(TAG, "[FEED_FILLING] Calculated max fill time: %.1f sec (%.1fL tank with 20%% margin)",
-                 fill_duration_sec, tank_volume_L);
+        ESP_LOGI(TAG, "[FEED_FILLING] Calculated max fill time: %.1f sec (%.1fL %s volume with 20%% margin)",
+                 fill_duration_sec, tank_volume_L,
+                 is_reservoir_change_ ? "TOTAL" : "DELTA");
     } else {
         ESP_LOGW(TAG, "[FEED_FILLING] HAL not available - using fallback timeout of 10 min");
     }
@@ -2588,29 +2633,28 @@ void PlantOSController::startFillTank() {
 }
 
 void PlantOSController::startEmptyTank() {
+    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start tank drain - system busy");
+        return;
+    }
+
+    if (current_state_ == ControllerState::NIGHT) {
+        ESP_LOGW(TAG, "Cannot start tank drain - system in NIGHT mode");
+        return;
+    }
+
     ESP_LOGI(TAG, "========================================================");
-    ESP_LOGI(TAG, "  TANK DRAIN via Shelly or Manual");
+    ESP_LOGI(TAG, "  STARTING TANK DRAIN");
     ESP_LOGI(TAG, "========================================================");
-    ESP_LOGI(TAG, "Use button '10_08_Test Wastewater Pump' for automatic drain");
-    ESP_LOGI(TAG, "Or manually drain tank using external pump or drain valve");
+    ESP_LOGI(TAG, "Draining tank via wastewater pump until EMPTY sensor triggers");
     ESP_LOGI(TAG, "");
 
-    // Do not transition to WATER_EMPTYING state automatically
-    // User must use manual test button or drain manually
-
-    /* FUTURE: Full automatic WATER_EMPTYING state:
-    if (current_state_ == ControllerState::IDLE) {
-        ESP_LOGI(TAG, "Starting tank drain");
-
-        if (psm_) {
-            psm_->logEvent("WATER_EMPTY", 0);
-        }
-
-        transitionTo(ControllerState::WATER_EMPTYING);
-    } else {
-        ESP_LOGW(TAG, "Cannot start drain - system busy");
+    // Log event for crash recovery persistence
+    if (psm_) {
+        psm_->logEvent("WATER_EMPTY", 0);  // 0 = STARTED
     }
-    */
+
+    transitionTo(ControllerState::WATER_EMPTYING);
 }
 
 void PlantOSController::startFeed() {
@@ -2652,6 +2696,10 @@ void PlantOSController::startFeed() {
         // Set flag for auto pH correction after feeding
         auto_ph_correction_pending_ = true;
 
+        // Set operation context: normal feed uses delta volume (LOW→HIGH)
+        is_reservoir_change_ = false;
+        ESP_LOGI(TAG, "Operation context: NORMAL FEED (using tank volume delta)");
+
         // Log event for crash recovery persistence
         if (psm_) {
             psm_->logEvent("FEED_OPERATION", 0);  // 0 = STARTED
@@ -2684,6 +2732,10 @@ void PlantOSController::startReservoirChange() {
 
     // Set flag for auto pH correction after feeding
     auto_ph_correction_pending_ = true;
+
+    // Set operation context: reservoir change uses total volume (EMPTY→HIGH)
+    is_reservoir_change_ = true;
+    ESP_LOGI(TAG, "Operation context: RESERVOIR CHANGE (using total tank volume)");
 
     // Log event for crash recovery persistence
     if (psm_) {
@@ -3371,6 +3423,144 @@ void PlantOSController::setAutoFeedingEnabled(bool enabled) {
     }
 
     ESP_LOGI(TAG, "Auto-feeding %s", enabled ? "ENABLED" : "DISABLED");
+}
+
+// ============================================================================
+// Auto Reservoir Change (Weekly)
+// ============================================================================
+
+void PlantOSController::setAutoReservoirChangeEnabled(bool enabled) {
+    auto_reservoir_change_enabled_ = enabled;
+
+    if (psm_) {
+        psm_->saveState(NVS_KEY_AUTO_RES_ENABLE, enabled);
+    }
+
+    ESP_LOGI(TAG, "Auto reservoir change %s", enabled ? "ENABLED" : "DISABLED");
+}
+
+void PlantOSController::setAutoReservoirChangeDay(uint8_t day) {
+    if (day > 6) {
+        ESP_LOGW(TAG, "Invalid day of week %d, clamping to 6 (Saturday)", day);
+        day = 6;
+    }
+
+    auto_reservoir_change_day_ = day;
+
+    if (psm_) {
+        psm_->saveState(NVS_KEY_AUTO_RES_DAY, static_cast<int>(day));
+    }
+
+    const char* day_names[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    ESP_LOGI(TAG, "Auto reservoir change day set to: %d (%s)", day, day_names[day]);
+}
+
+bool PlantOSController::shouldTriggerAutoReservoirChange() {
+    // ========================================================================
+    // CHECK 1: Auto reservoir change must be enabled
+    // ========================================================================
+    if (!auto_reservoir_change_enabled_) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 2: Must be in IDLE state (not busy)
+    // ========================================================================
+    if (current_state_ != ControllerState::IDLE) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 3: Not in NIGHT mode hours
+    // ========================================================================
+    if (night_mode_enabled_ && isNightModeHours()) {
+        return false;
+    }
+
+    // ========================================================================
+    // CHECK 4: Today must be the configured day of week
+    // ========================================================================
+    uint8_t today_dow = getCurrentDayOfWeek();
+    if (today_dow == 255) {
+        return false;  // Time unavailable
+    }
+
+    if (today_dow != auto_reservoir_change_day_) {
+        return false;  // Not the right day
+    }
+
+    // ========================================================================
+    // CHECK 5: Not already done this week
+    // ========================================================================
+    int64_t current_week = getCurrentWeekNumber();
+    if (current_week == 0) {
+        ESP_LOGW(TAG, "[AUTO-RES] NTP time unavailable - cannot check week");
+        return false;
+    }
+
+    // Check in-memory cache first
+    if (last_auto_reservoir_change_week_ == current_week) {
+        return false;  // Already done this week
+    }
+
+    // ========================================================================
+    // CHECK 6: Verify no NVS event for this week (power cycle recovery)
+    // ========================================================================
+    if (psm_) {
+        char week_key[32];
+        snprintf(week_key, sizeof(week_key), "AUTORES_%lld", (long long)current_week);
+
+        esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+        if (strncmp(event.eventID, week_key, sizeof(event.eventID)) == 0) {
+            // Event exists - reservoir change already triggered this week
+            ESP_LOGI(TAG, "[AUTO-RES] Already done this week - cached from NVS");
+            last_auto_reservoir_change_week_ = current_week;  // Update cache
+            return false;
+        }
+    }
+
+    // All checks passed - trigger reservoir change
+    ESP_LOGI(TAG, "[AUTO-RES] All conditions met - triggering reservoir change");
+    return true;
+}
+
+int64_t PlantOSController::getCurrentWeekNumber() {
+    if (!hal_) {
+        return 0;
+    }
+
+    // Get current Unix timestamp
+    int64_t now = hal_->getCurrentTimestamp();
+
+    if (now == 0) {
+        ESP_LOGW(TAG, "[AUTO-RES] NTP time unavailable");
+        return 0;
+    }
+
+    // Calculate week number (weeks since Unix epoch)
+    // Unix epoch started on Thursday, so we adjust by 4 days to align week boundaries
+    int64_t days_since_epoch = now / 86400;
+    int64_t weeks_since_epoch = days_since_epoch / 7;
+
+    return weeks_since_epoch;
+}
+
+uint8_t PlantOSController::getCurrentDayOfWeek() {
+    if (!hal_) {
+        return 255;
+    }
+
+    // Get current Unix timestamp
+    int64_t now = hal_->getCurrentTimestamp();
+
+    if (now == 0) {
+        return 255;
+    }
+
+    // Unix epoch (Jan 1, 1970) was a Thursday (day 4)
+    // (days_since_epoch + 4) % 7 gives: 0=Sunday, 1=Monday, ..., 6=Saturday
+    int64_t days_since_epoch = now / 86400;
+    return (days_since_epoch + 4) % 7;
 }
 
 } // namespace plantos_controller

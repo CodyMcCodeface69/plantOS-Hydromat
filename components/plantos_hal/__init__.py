@@ -49,7 +49,8 @@ CONF_WASTEWATER_PUMP_SWITCH = 'wastewater_pump_switch'
 CONF_HTTP_REQUEST = 'http_request_id'
 
 # Tank volume and valve configuration
-CONF_TANK_VOLUME_LITERS = 'tank_volume_liters'
+CONF_TANK_VOLUME_DELTA_LITERS = 'tank_volume_delta_liters'  # Volume from LOW to HIGH (for normal daily feeding)
+CONF_TOTAL_TANK_VOLUME_LITERS = 'total_tank_volume_liters'  # Volume from EMPTY to HIGH (for reservoir change)
 CONF_MAG_VALVE_FLOW_RATE = 'mag_valve_flow_rate_ml_s'
 
 # Pump configuration keys (flow rate and PWM intensity for calibration)
@@ -93,7 +94,8 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_HTTP_REQUEST): cv.use_id(http_request.HttpRequestComponent),
 
     # Tank volume and valve configuration
-    cv.Optional(CONF_TANK_VOLUME_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
+    cv.Optional(CONF_TANK_VOLUME_DELTA_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
+    cv.Optional(CONF_TOTAL_TANK_VOLUME_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
     cv.Optional(CONF_MAG_VALVE_FLOW_RATE, default=50.0): cv.float_range(min=0.001, max=1000.0),
 
     # Pump calibration configuration (flow rates and PWM intensities)
@@ -204,7 +206,8 @@ async def to_code(config):
         cg.add(var.set_http_request(http_req))
 
     # Inject tank volume and valve configuration
-    cg.add(var.setTankVolume(config[CONF_TANK_VOLUME_LITERS]))
+    cg.add(var.setTankVolumeDelta(config[CONF_TANK_VOLUME_DELTA_LITERS]))
+    cg.add(var.setTotalTankVolume(config[CONF_TOTAL_TANK_VOLUME_LITERS]))
     cg.add(var.setMagValveFlowRate(config[CONF_MAG_VALVE_FLOW_RATE]))
 
     # Inject pump configurations (flow rates and PWM intensities)

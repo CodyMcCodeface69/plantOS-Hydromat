@@ -28,7 +28,7 @@ Firmware: PlantOS v0.9 (MVP)
 | GPIO21 | Nutrient Pump B | GPIO Output | Output | - | `pump_micro_switch_` | No |
 | GPIO22 | Nutrient Pump C | GPIO Output | Output | - | `pump_bloom_switch_` | No |
 | GPIO23 | Water Temp | DS18B20 (1-Wire) | Bidirectional | - | `temperature_sensor_` | ✅ 4.7kΩ to 3.3V |
-
+[Waveshare ESP32-C6-DEV-KIT-N8 Official Pinout](https://www.waveshare.com/wiki/ESP32-C6-DEV-KIT-N8#Pinout)
 ---
 
 ## Detailed Pin Descriptions

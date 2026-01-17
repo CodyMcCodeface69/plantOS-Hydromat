@@ -223,6 +223,35 @@ public:
      */
     bool isAutoFeedingEnabled() const { return auto_feeding_enabled_; }
 
+    // ========================================================================
+    // Auto Reservoir Change API (Weekly)
+    // ========================================================================
+
+    /**
+     * Enable or disable automatic weekly reservoir change
+     * When enabled, reservoir change triggers automatically once per week on configured day
+     * @param enabled true to enable auto reservoir change, false to disable
+     */
+    void setAutoReservoirChangeEnabled(bool enabled);
+
+    /**
+     * Check if automatic reservoir change is enabled
+     * @return true if auto reservoir change is enabled
+     */
+    bool isAutoReservoirChangeEnabled() const { return auto_reservoir_change_enabled_; }
+
+    /**
+     * Set day of week for automatic reservoir change
+     * @param day Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+     */
+    void setAutoReservoirChangeDay(uint8_t day);
+
+    /**
+     * Get day of week for automatic reservoir change
+     * @return Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+     */
+    uint8_t getAutoReservoirChangeDay() const { return auto_reservoir_change_day_; }
+
     /**
      * Set controller to SHUTDOWN state
      * Turns off all actuators and disables time-based events
@@ -371,6 +400,34 @@ private:
     static constexpr const char* NVS_KEY_AUTO_FEED_ENABLE = "AutoFeedEnable";
 
     // ========================================================================
+    // Operation Context (for nutrient dosing volume selection)
+    // ========================================================================
+
+    /// True when running reservoir change sequence, false for normal daily feeding
+    /// When true: use getTotalTankVolume() for nutrient dosing
+    /// When false: use getTankVolumeDelta() for nutrient dosing
+    bool is_reservoir_change_{false};
+
+    // ========================================================================
+    // Auto Reservoir Change (Weekly)
+    // ========================================================================
+
+    /// Enable/disable automatic weekly reservoir change
+    bool auto_reservoir_change_enabled_{false};
+
+    /// Day of week for auto reservoir change (0=Sunday, 1=Monday, ..., 6=Saturday)
+    uint8_t auto_reservoir_change_day_{0};
+
+    /// Week number of last auto reservoir change (weeks since Unix epoch)
+    int64_t last_auto_reservoir_change_week_{0};
+
+    /// NVS key for auto reservoir change enable/disable state
+    static constexpr const char* NVS_KEY_AUTO_RES_ENABLE = "AutoResEnable";
+
+    /// NVS key for auto reservoir change day of week
+    static constexpr const char* NVS_KEY_AUTO_RES_DAY = "AutoResDay";
+
+    // ========================================================================
     // pH Correction State
     // ========================================================================
 
@@ -503,6 +560,26 @@ private:
      * @return Unix timestamp at start of current day, or 0 if NTP unavailable
      */
     int64_t getCurrentDateTimestamp();
+
+    /**
+     * Check if auto reservoir change should be triggered
+     * Checks all conditions: enabled, day of week, weekly limit
+     * @return true if all conditions met for auto reservoir change
+     */
+    bool shouldTriggerAutoReservoirChange();
+
+    /**
+     * Get current week number (weeks since Unix epoch)
+     * Used for weekly reservoir change limit tracking
+     * @return Week number, or 0 if NTP unavailable
+     */
+    int64_t getCurrentWeekNumber();
+
+    /**
+     * Get current day of week
+     * @return Day of week (0=Sunday, 1=Monday, ..., 6=Saturday), or 255 if unavailable
+     */
+    uint8_t getCurrentDayOfWeek();
 
     // ========================================================================
     // Actuator Control Helpers (Controller → SafetyGate → HAL)

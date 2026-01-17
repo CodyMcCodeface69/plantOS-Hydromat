@@ -115,16 +115,39 @@ public:
     virtual void setPumpConfig(const std::string& pumpId, float flowRateMLPerSec, float pwmIntensity) = 0;
 
     /**
-     * Set tank volume
-     * @param volumeLiters Tank volume in liters (LOW to HIGH sensor range)
+     * Set tank volume delta (volume from LOW to HIGH sensor)
+     * Used for normal daily feeding operations
+     * @param volumeLiters Tank volume delta in liters
      */
-    virtual void setTankVolume(float volumeLiters) = 0;
+    virtual void setTankVolumeDelta(float volumeLiters) = 0;
 
     /**
-     * Get tank volume
-     * @return Tank volume in liters
+     * Get tank volume delta (volume from LOW to HIGH sensor)
+     * Used for normal daily feeding operations
+     * @return Tank volume delta in liters
      */
-    virtual float getTankVolume() const = 0;
+    virtual float getTankVolumeDelta() const = 0;
+
+    /**
+     * Set total tank volume (volume from EMPTY to HIGH sensor)
+     * Used for complete reservoir change operations
+     * @param volumeLiters Total tank volume in liters
+     */
+    virtual void setTotalTankVolume(float volumeLiters) = 0;
+
+    /**
+     * Get total tank volume (volume from EMPTY to HIGH sensor)
+     * Used for complete reservoir change operations
+     * @return Total tank volume in liters
+     */
+    virtual float getTotalTankVolume() const = 0;
+
+    /**
+     * Get tank volume (backward compatibility alias for getTankVolumeDelta)
+     * @return Tank volume delta in liters
+     * @deprecated Use getTankVolumeDelta() instead
+     */
+    virtual float getTankVolume() const { return getTankVolumeDelta(); }
 
     /**
      * Set magnetic valve flow rate
@@ -427,8 +450,10 @@ public:
     float pumpflow(const std::string& pumpId, float targetML) override;
     PumpConfig getPumpConfig(const std::string& pumpId) const override;
     void setPumpConfig(const std::string& pumpId, float flowRateMLPerSec, float pwmIntensity) override;
-    void setTankVolume(float volumeLiters) override;
-    float getTankVolume() const override;
+    void setTankVolumeDelta(float volumeLiters) override;
+    float getTankVolumeDelta() const override;
+    void setTotalTankVolume(float volumeLiters) override;
+    float getTotalTankVolume() const override;
     void setMagValveFlowRate(float flowRateMLPerSec) override;
     float getMagValveFlowRate() const override;
     float valveflow(float targetML) override;
@@ -517,7 +542,8 @@ private:
     std::map<std::string, PumpConfig> pump_configs_;
 
     // Tank and valve configuration
-    float tank_volume_liters_{10.0f};            // Default: 10 liters
+    float tank_volume_delta_liters_{10.0f};      // Volume from LOW to HIGH (for normal daily feeding)
+    float total_tank_volume_liters_{10.0f};      // Volume from EMPTY to HIGH (for reservoir change)
     float mag_valve_flow_rate_ml_s_{50.0f};     // Default: 50 mL/s (3 L/min)
 
     // Configuration parameters

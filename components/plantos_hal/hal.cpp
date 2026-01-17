@@ -285,13 +285,22 @@ void ESPHomeHAL::setPumpConfig(const std::string& pumpId, float flowRateMLPerSec
              pumpId.c_str(), flowRateMLPerSec, pwmIntensity * 100.0f);
 }
 
-void ESPHomeHAL::setTankVolume(float volumeLiters) {
-    tank_volume_liters_ = volumeLiters;
-    ESP_LOGI(TAG, "Tank volume set: %.1f liters", volumeLiters);
+void ESPHomeHAL::setTankVolumeDelta(float volumeLiters) {
+    tank_volume_delta_liters_ = volumeLiters;
+    ESP_LOGI(TAG, "Tank volume delta set: %.1f liters (LOW→HIGH)", volumeLiters);
 }
 
-float ESPHomeHAL::getTankVolume() const {
-    return tank_volume_liters_;
+float ESPHomeHAL::getTankVolumeDelta() const {
+    return tank_volume_delta_liters_;
+}
+
+void ESPHomeHAL::setTotalTankVolume(float volumeLiters) {
+    total_tank_volume_liters_ = volumeLiters;
+    ESP_LOGI(TAG, "Total tank volume set: %.1f liters (EMPTY→HIGH)", volumeLiters);
+}
+
+float ESPHomeHAL::getTotalTankVolume() const {
+    return total_tank_volume_liters_;
 }
 
 void ESPHomeHAL::setMagValveFlowRate(float flowRateMLPerSec) {

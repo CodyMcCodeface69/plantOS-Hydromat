@@ -742,11 +742,14 @@ text_sensor:
   - platform: template
     name: "00_06_Tank Volume"
     id: tank_volume_text
-    # Lambda returns configured tank volume from HAL
+    # Lambda returns configured tank volumes from HAL
+    # Delta: Volume from LOW to HIGH (for normal daily feeding)
+    # Total: Volume from EMPTY to HIGH (for reservoir change)
     lambda: |-
-      char buf[64];
-      float volume_liters = id(hal)->getTankVolume();
-      snprintf(buf, sizeof(buf), "%.1f L (LOW to HIGH)", volume_liters);
+      char buf[80];
+      float delta = id(hal)->getTankVolumeDelta();
+      float total = id(hal)->getTotalTankVolume();
+      snprintf(buf, sizeof(buf), "Delta: %.1fL (LOW→HIGH) | Total: %.1fL (EMPTY→HIGH)", delta, total);
       return {buf};
     # Update every 60 seconds (static configuration value)
     update_interval: 60s
@@ -801,6 +804,77 @@ button:
         - lambda: |-
             ESP_LOGI("button", "Reset Controller button pressed");
             id(unified_controller)->resetToInit();
+
+  # === 04_05-04_09 - Operation Sequences ===
+  - platform: template
+    name: "04_05_Add Nutrients (FEEDING)"
+    on_press:
+      # Start nutrient dosing only (assumes tank is already filled)
+      # State: FEEDING
+      # Use when tank is already at correct level and just needs nutrients
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "ADD NUTRIENTS REQUESTED");
+            ESP_LOGI("button", "State: FEEDING");
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startFeeding();
+
+  - platform: template
+    name: "04_06_Fill Tank (WATER_FILLING → pH)"
+    on_press:
+      # Fill tank then check/correct pH
+      # States: WATER_FILLING → PH_PROCESSING
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "FILL TANK REQUESTED");
+            ESP_LOGI("button", "States: WATER_FILLING → PH_PROCESSING");
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startFillTank();
+
+  - platform: template
+    name: "04_07_Empty Tank (WATER_EMPTYING)"
+    on_press:
+      # Drain tank until EMPTY sensor triggers
+      # State: WATER_EMPTYING
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "EMPTY TANK REQUESTED");
+            ESP_LOGI("button", "State: WATER_EMPTYING");
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startEmptyTank();
+
+  - platform: template
+    name: "04_08_Feed (FEED_FILLING → FEEDING → pH)"
+    on_press:
+      # Complete feeding operation: fill tank, add nutrients, correct pH
+      # States: FEED_FILLING → FEEDING → PH_PROCESSING
+      # Uses Tank Volume Delta for nutrient dosing
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "FEED OPERATION REQUESTED");
+            ESP_LOGI("button", "States: FEED_FILLING → FEEDING → PH_PROCESSING");
+            ESP_LOGI("button", "Using: Tank Volume Delta (normal feed)");
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startFeed();
+
+  - platform: template
+    name: "04_09_Reservoir Change (WATER_EMPTYING → FEED_FILLING → FEEDING → pH)"
+    on_press:
+      # Complete reservoir change: empty, fill, add nutrients, correct pH
+      # States: WATER_EMPTYING → FEED_FILLING → FEEDING → PH_PROCESSING
+      # Uses Total Tank Volume for nutrient dosing
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "RESERVOIR CHANGE REQUESTED");
+            ESP_LOGI("button", "States: WATER_EMPTYING → FEED_FILLING → FEEDING → PH_PROCESSING");
+            ESP_LOGI("button", "Using: Total Tank Volume (reservoir change)");
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startReservoirChange();
 
   - platform: template
     name: "03_02_Reconnect WiFi"
@@ -1013,60 +1087,6 @@ button:
         - logger.log: "Querying EZO pH calibration status (Cal,?)"
         - lambda: |-
             id(ezo_ph_uart_component)->query_calibration_status();
-
-  # === 08 - Primary Routines (Feeding) ===
-  - platform: template
-    name: "08_01_Start Feeding"
-    on_press:
-      # Start nutrient feeding sequence
-      # Uses dosing durations from current day's schedule
-      then:
-        - lambda: |-
-            id(unified_controller)->startFeeding();
-
-  # === 09 - Water Management ===
-  - platform: template
-    name: "09_01_Fill Tank (→ pH check)"
-    on_press:
-      # Start tank filling sequence with auto pH correction
-      # Opens water valve → Fill tank → pH correction
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Fill tank requested (will auto-check pH after)");
-            id(unified_controller)->startFillTank();
-
-  - platform: template
-    name: "09_02_Empty Tank"
-    on_press:
-      # Start tank emptying sequence using wastewater pump (Shelly Socket 2)
-      then:
-        - lambda: |-
-            id(unified_controller)->startEmptyTank();
-
-  - platform: template
-    name: "09_03_Feed (Fill+Nutrients+pH)"
-    on_press:
-      # Start complete feeding operation
-      # Fill tank → Add nutrients → pH correction
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "FEED OPERATION REQUESTED");
-            ESP_LOGI("button", "Sequence: Fill → Nutrients → pH correction");
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startFeed();
-
-  - platform: template
-    name: "09_04_Reservoir Change (Complete)"
-    on_press:
-      # Start complete reservoir change sequence
-      # Manual empty → Fill → Nutrients → pH correction
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "RESERVOIR CHANGE REQUESTED");
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startReservoirChange();
 
   # === 10 - Actuator Testing (3-Second Auto-Off) ===
   - platform: template
@@ -1430,8 +1450,13 @@ plantos_hal:
   http_request_id: http_client                      # HTTP client for direct Shelly control
 
   # Tank Volume Configuration (for mL/L dosing calculations)
-  # Measured volume between LOW and HIGH water level sensors
-  tank_volume_liters: 1.7           # Tank volume in liters (LOW to HIGH sensor range, default: 10.0L)
+  # Tank Volume Delta: Measured volume between LOW and HIGH water level sensors
+  # Used for normal daily feeding operations (auto-feed fills from LOW to HIGH)
+  tank_volume_delta_liters: 1.7     # Volume from LOW to HIGH sensors (default: 10.0L)
+
+  # Total Tank Volume: Measured volume from EMPTY to HIGH water level sensors
+  # Used for complete reservoir change operations (drains to EMPTY, refills to HIGH)
+  total_tank_volume_liters: 2.0     # Volume from EMPTY to HIGH sensors (default: 10.0L)
 
   # Magnetic Valve Flow Rate (for automated water addition)
   # IMPORTANT: Calibrate using 10s test button (even though valve is ON/OFF only)
@@ -1670,7 +1695,7 @@ actuator_safety_gate:
 ezo_ph_uart:
   id: ezo_ph_uart_component
   uart_id: uart_bus
-  update_interval: 60s  # Read pH every 5 seconds (faster readings for better calibration stability detection)
+  update_interval: 5s  # Read pH every 5 seconds (faster readings for better calibration stability detection)
   verbose: false  # Disable verbose UART logging by default (enabled dynamically during calibration)
   # pH sensor configuration
   ph:
@@ -2071,6 +2096,47 @@ switch:
       // Return cached value from controller (loaded from NVS at setup)
       // DO NOT call loadState() here - it allocates memory on each call!
       return id(unified_controller).isAutoFeedingEnabled();
+
+  # === 02 - Automatic Weekly Reservoir Change Control ===
+  - platform: template
+    id: auto_reservoir_change_enabled_switch
+    name: "02_03_Auto Reservoir Change Enabled"
+    icon: "mdi:calendar-sync"
+    restore_mode: RESTORE_DEFAULT_OFF  # Disabled by default (manual control preferred)
+    optimistic: false  # State determined by lambda return value
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "====================================");
+          ESP_LOGI("switch", "AUTO RESERVOIR CHANGE ENABLED");
+          ESP_LOGI("switch", "====================================");
+          ESP_LOGI("switch", "System will automatically trigger reservoir change when:");
+          ESP_LOGI("switch", "  1. Current day is the configured day of week");
+          ESP_LOGI("switch", "  2. Controller in IDLE state");
+          ESP_LOGI("switch", "  3. NOT in NIGHT/SHUTDOWN/PAUSE/ERROR mode");
+          ESP_LOGI("switch", "  4. Reservoir change not already triggered this week");
+          ESP_LOGI("switch", "====================================");
+
+          // Save state to NVS
+          id(psm).saveState("AutoResEnable", true);
+
+          // Update controller state
+          id(unified_controller).setAutoReservoirChangeEnabled(true);
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGW("switch", "====================================");
+          ESP_LOGW("switch", "AUTO RESERVOIR CHANGE DISABLED");
+          ESP_LOGW("switch", "====================================");
+          ESP_LOGW("switch", "Manual reservoir change only - no automatic triggers");
+          ESP_LOGW("switch", "====================================");
+
+          // Save state to NVS
+          id(psm).saveState("AutoResEnable", false);
+
+          // Update controller state
+          id(unified_controller).setAutoReservoirChangeEnabled(false);
+    lambda: |-
+      // Return cached value from controller (loaded from NVS at setup)
+      return id(unified_controller).isAutoReservoirChangeEnabled();
 
   # === 10 - Actuator Control (Manual Toggle Switches via Safety Gate) ===
   # These switches toggle actuators through the safety gate for monitored control
@@ -2627,6 +2693,25 @@ number:
       - lambda: |-
           ESP_LOGI("number", "Night Mode End Hour set to %.0f:00", x);
           id(unified_controller)->setNightModeConfig(id(night_mode_switch).state, id(night_start_hour).state, x);
+
+  # === Auto Reservoir Change Day of Week ===
+  - platform: template
+    id: auto_reservoir_change_day
+    name: "02_04_Auto Reservoir Change Day"
+    icon: "mdi:calendar-week"
+    optimistic: true
+    min_value: 0
+    max_value: 6
+    step: 1
+    initial_value: 0
+    restore_value: true
+    mode: box
+    set_action:
+      - lambda: |-
+          const char* day_names[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+          uint8_t day = (uint8_t)x;
+          ESP_LOGI("number", "Auto Reservoir Change Day set to: %d (%s)", day, day_names[day]);
+          id(unified_controller).setAutoReservoirChangeDay(day);
 
   # === 13 - PWM Control Sliders ===
   - platform: template

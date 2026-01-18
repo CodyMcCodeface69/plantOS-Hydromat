@@ -189,21 +189,17 @@ function stopSequence(switchId) {
 
 // Lightweight ping endpoint - fast health check with minimal processing
 let handlePing = function (qsParams, response) {
-  response.code = 200;
-  response.body = JSON.stringify({
+  sendResponse(response, 200, {
     status: "ok",
     uptime: Shelly.getComponentStatus("sys").uptime,
     ts: Date.now()
   });
-  response.send();
 };
 
 let handleSequence = function (qsParams, response) {
   let switchId = getSwitchId(qsParams);
   if (switchId === null) {
-    response.code = 400;
-    response.body = JSON.stringify({ error: "Invalid switch id. Must be 0-3" });
-    response.send();
+    sendResponse(response, 400, { error: "Invalid switch id. Must be 0-3" });
     return;
   }
 
@@ -219,9 +215,7 @@ let handleSequence = function (qsParams, response) {
     for (let i = 0; i < times.length; i++) {
       let duration = parseTime(times[i]);
       if (duration === null || duration <= 0) {
-        response.code = 400;
-        response.body = "Invalid time value at position " + i + ": " + times[i];
-        response.send();
+        sendResponse(response, 400, { error: "Invalid time value at position " + i + ": " + times[i] });
         return;
       }
       steps.push({ duration_ms: duration, state: isOn });
@@ -235,9 +229,7 @@ let handleSequence = function (qsParams, response) {
     for (let i = 0; i < onTimes.length; i++) {
       let onDuration = parseTime(onTimes[i]);
       if (onDuration === null || onDuration <= 0) {
-        response.code = 400;
-        response.body = "Invalid ON time at position " + i;
-        response.send();
+        sendResponse(response, 400, { error: "Invalid ON time at position " + i });
         return;
       }
       steps.push({ duration_ms: onDuration, state: true });
@@ -246,25 +238,19 @@ let handleSequence = function (qsParams, response) {
       if (i < offTimes.length) {
         let offDuration = parseTime(offTimes[i]);
         if (offDuration === null || offDuration <= 0) {
-          response.code = 400;
-          response.body = "Invalid OFF time at position " + i;
-          response.send();
+          sendResponse(response, 400, { error: "Invalid OFF time at position " + i });
           return;
         }
         steps.push({ duration_ms: offDuration, state: false });
       }
     }
   } else {
-    response.code = 400;
-    response.body = "Missing pattern or on/off parameters. Use pattern=30,120,30 or on=30,30&off=120";
-    response.send();
+    sendResponse(response, 400, { error: "Missing pattern or on/off parameters. Use pattern=30,120,30 or on=30,30&off=120" });
     return;
   }
 
   if (steps.length === 0) {
-    response.code = 400;
-    response.body = "No valid steps in sequence";
-    response.send();
+    sendResponse(response, 400, { error: "No valid steps in sequence" });
     return;
   }
 
@@ -294,113 +280,87 @@ let handleSequence = function (qsParams, response) {
     executor();
   }
 
-  response.code = 200;
-  response.body = JSON.stringify({
+  sendResponse(response, 200, {
     status: "started",
     switch_id: switchId,
     steps: steps.length,
     total_duration_ms: totalDuration,
     final_state: finalState ? "on" : "off"
   });
-  response.send();
 };
 
 let handleStop = function (qsParams, response) {
   let switchId = getSwitchId(qsParams);
   if (switchId === null) {
-    response.code = 400;
-    response.body = JSON.stringify({ error: "Invalid switch id. Must be 0-3" });
-    response.send();
+    sendResponse(response, 400, { error: "Invalid switch id. Must be 0-3" });
     return;
   }
 
   let wasRunning = sequenceStates[switchId].running;
   stopSequence(switchId);
-  response.code = 200;
-  response.body = JSON.stringify({
+  sendResponse(response, 200, {
     status: "stopped",
     switch_id: switchId,
     was_running: wasRunning
   });
-  response.send();
 };
 
 let handleStatus = function (qsParams, response) {
   let switchId = getSwitchId(qsParams);
   if (switchId === null) {
-    response.code = 400;
-    response.body = JSON.stringify({ error: "Invalid switch id. Must be 0-3" });
-    response.send();
+    sendResponse(response, 400, { error: "Invalid switch id. Must be 0-3" });
     return;
   }
 
   let state = sequenceStates[switchId];
   let currentStep = state.steps[state.currentStep] || null;
 
-  // Get actual switch state with enhanced info
-  Shelly.call("Switch.GetStatus", { id: switchId }, function (res, err_code, err_msg) {
-    let status = {
-      switch_id: switchId,
-      switch_on: err_code === 0 ? res.output : null,
-      sequence: {
-        running: state.running,
-        current_step: state.currentStep,
-        total_steps: state.steps.length,
-        current_action: currentStep ? (currentStep.state ? "on" : "off") : null,
-        final_state: state.finalState ? "on" : "off"
-      },
-      device: {
-        uptime: Shelly.getComponentStatus("sys").uptime
-      }
-    };
-    response.code = 200;
-    response.body = JSON.stringify(status);
-    response.send();
+  // Send response immediately with sequence state (don't block on RPC)
+  sendResponse(response, 200, {
+    switch_id: switchId,
+    sequence: {
+      running: state.running,
+      current_step: state.currentStep,
+      total_steps: state.steps.length,
+      current_action: currentStep ? (currentStep.state ? "on" : "off") : null,
+      final_state: state.finalState ? "on" : "off"
+    },
+    device: {
+      uptime: Shelly.getComponentStatus("sys").uptime
+    }
   });
 };
 
 let handleOn = function (qsParams, response) {
   let switchId = getSwitchId(qsParams);
   if (switchId === null) {
-    response.code = 400;
-    response.body = JSON.stringify({ error: "Invalid switch id. Must be 0-3" });
-    response.send();
+    sendResponse(response, 400, { error: "Invalid switch id. Must be 0-3" });
     return;
   }
 
   stopSequence(switchId);  // Stop any running sequence
-  setSwitch(switchId, true, function (success, err) {
-    if (success) {
-      response.code = 200;
-      response.body = JSON.stringify({ status: "on", switch_id: switchId });
-    } else {
-      response.code = 500;
-      response.body = JSON.stringify({ error: err });
-    }
-    response.send();
-  });
+
+  // Send response immediately (don't wait for switch callback)
+  sendResponse(response, 200, { status: "on", switch_id: switchId });
+
+  // Trigger switch in background
+  setSwitch(switchId, true, null);
 };
 
 let handleOff = function (qsParams, response) {
   let switchId = getSwitchId(qsParams);
   if (switchId === null) {
-    response.code = 400;
-    response.body = JSON.stringify({ error: "Invalid switch id. Must be 0-3" });
-    response.send();
+    sendResponse(response, 400, { error: "Invalid switch id. Must be 0-3" });
     return;
   }
 
   stopSequence(switchId);  // Stop any running sequence
-  setSwitch(switchId, false, function (success, err) {
-    if (success) {
-      response.code = 200;
-      response.body = JSON.stringify({ status: "off", switch_id: switchId });
-    } else {
-      response.code = 500;
-      response.body = JSON.stringify({ error: err });
-    }
-    response.send();
-  });
+
+  // Send response immediately (don't wait for switch callback)
+  sendResponse(response, 200, { status: "off", switch_id: switchId });
+
+  // Trigger switch in background
+  setSwitch(switchId, false, null);
 };
 
 // Register action handlers
@@ -423,6 +383,15 @@ function parseQS(qs) {
   return params;
 }
 
+// Helper to send HTTP response with Connection: close header
+// This ensures ESP32 closes the socket immediately, preventing socket exhaustion
+function sendResponse(response, code, body) {
+  response.code = code;
+  response.body = typeof body === "string" ? body : JSON.stringify(body);
+  response.headers = [["Connection", "close"]];
+  response.send();
+}
+
 // HTTP request handler
 function httpServerHandler(request, response) {
   let params = parseQS(request.query);
@@ -435,8 +404,7 @@ function httpServerHandler(request, response) {
     typeof CONFIG.actions[actionParam] === "undefined" ||
     CONFIG.actions[actionParam] === null
   ) {
-    response.code = 400;
-    response.body = JSON.stringify({
+    sendResponse(response, 400, {
       error: "Unknown action",
       available_actions: ["ping", "sequence", "stop", "status", "on", "off"],
       usage: {
@@ -449,7 +417,6 @@ function httpServerHandler(request, response) {
       },
       note: "id: 0-3 (default 0), finalstate: 0=off, 1=on (default 0)"
     });
-    response.send();
   } else {
     CONFIG.actions[actionParam](params, response);
   }

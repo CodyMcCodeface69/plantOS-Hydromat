@@ -27,7 +27,8 @@
       "Bash(nix develop:*)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "WebFetch(domain:esphome.io)"
     ],
     "deny": [],
     "ask": []

@@ -64,7 +64,8 @@ logger:
     gpio_status: INFO      # Suppress GPIO status logs (toggle via 11_07)
     component: ERROR       # Suppress component timing warnings (toggle via 11_08)
     esp-idf: WARN          # Suppress ESP-IDF GPIO logs (toggle via 11_09)
-    time: INFO             # Suppress time synchronization logs (toggle via 11_11) 
+    time: INFO             # Suppress time synchronization logs (toggle via 11_11)
+    http_request: VERBOSE  # Socket lifecycle logging for debugging HTTP issues
 
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security

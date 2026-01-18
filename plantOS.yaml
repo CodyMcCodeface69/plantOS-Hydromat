@@ -2637,13 +2637,38 @@ interval:
                 id(hal).markHttpRequestStarted();
             - http_request.get:
                 url: "http://192.168.0.130/script/1/api?action=ping"
+                capture_response: true
                 on_response:
                   - lambda: |-
-                      // Response received - mark Shelly as online
-                      // Note: updateShellyHealth also calls markHttpRequestCompleted()
+                      // Response received - parse JSON to extract uptime
+                      // Shelly ping response format: {"status": "ok", "uptime": <seconds>, "ts": <timestamp_ms>}
+                      // Note: 'body' variable is available when capture_response: true
                       if (response->status_code == 200) {
-                        id(hal).updateShellyHealth(true, 0);
-                        ESP_LOGD("shelly_health", "Shelly ping successful - marked ONLINE");
+                        uint32_t uptime = 0;
+
+                        // Simple JSON parsing - find "uptime": and extract the number
+                        size_t uptime_pos = body.find("\"uptime\":");
+                        if (uptime_pos != std::string::npos) {
+                          size_t num_start = uptime_pos + 9;  // Length of "\"uptime\":"
+                          // Skip any whitespace
+                          while (num_start < body.length() && (body[num_start] == ' ' || body[num_start] == '\t')) {
+                            num_start++;
+                          }
+                          // Extract the number
+                          size_t num_end = num_start;
+                          while (num_end < body.length() && body[num_end] >= '0' && body[num_end] <= '9') {
+                            num_end++;
+                          }
+                          if (num_end > num_start) {
+                            std::string uptime_str = body.substr(num_start, num_end - num_start);
+                            uptime = std::stoul(uptime_str);
+                          }
+                        }
+
+                        id(hal).updateShellyHealth(true, uptime);
+                        uint32_t hours = uptime / 3600;
+                        uint32_t mins = (uptime % 3600) / 60;
+                        ESP_LOGD("shelly_health", "Shelly ping successful - ONLINE (uptime: %uh %um)", hours, mins);
                       } else {
                         // HTTP error response - mark as offline
                         id(hal).updateShellyHealth(false, 0);

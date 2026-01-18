@@ -2592,63 +2592,15 @@ interval:
   # Shelly Health Check Interval - Ping Shelly every 30 seconds
   # This script sends an HTTP ping to the Shelly Plus 4PM and updates the HAL health status
   # Uses HAL's HTTP serialization to prevent socket exhaustion
+  # Shelly health check - ping the device every 30 seconds
   - interval: 30s
     then:
-      - if:
-          condition:
-            lambda: 'return id(hal).canSendHttpRequest();'
-          then:
-            - lambda: |-
-                // Mark request as started before sending
-                id(hal).markHttpRequestStarted();
-            - http_request.get:
-                url: "http://192.168.0.130/script/1/api?action=ping"
-                capture_response: true
-                on_response:
-                  - lambda: |-
-                      // Response received - parse JSON to extract uptime
-                      // Shelly ping response format: {"status": "ok", "uptime": <seconds>, "ts": <timestamp_ms>}
-                      // Note: 'body' variable is available when capture_response: true
-                      if (response->status_code == 200) {
-                        uint32_t uptime = 0;
-
-                        // Simple JSON parsing - find "uptime": and extract the number
-                        size_t uptime_pos = body.find("\"uptime\":");
-                        if (uptime_pos != std::string::npos) {
-                          size_t num_start = uptime_pos + 9;  // Length of "\"uptime\":"
-                          // Skip any whitespace
-                          while (num_start < body.length() && (body[num_start] == ' ' || body[num_start] == '\t')) {
-                            num_start++;
-                          }
-                          // Extract the number
-                          size_t num_end = num_start;
-                          while (num_end < body.length() && body[num_end] >= '0' && body[num_end] <= '9') {
-                            num_end++;
-                          }
-                          if (num_end > num_start) {
-                            std::string uptime_str = body.substr(num_start, num_end - num_start);
-                            uptime = std::stoul(uptime_str);
-                          }
-                        }
-
-                        id(hal).updateShellyHealth(true, uptime);
-                        uint32_t hours = uptime / 3600;
-                        uint32_t mins = (uptime % 3600) / 60;
-                        ESP_LOGD("shelly_health", "Shelly ping successful - ONLINE (uptime: %uh %um)", hours, mins);
-                      } else {
-                        // HTTP error response - mark as offline
-                        id(hal).updateShellyHealth(false, 0);
-                        ESP_LOGW("shelly_health", "Shelly ping failed (HTTP %d) - marked OFFLINE", response->status_code);
-                      }
-                on_error:
-                  - lambda: |-
-                      // Network error (timeout, connection refused, etc.) - mark as offline
-                      // Note: updateShellyHealth also calls markHttpRequestCompleted()
-                      id(hal).updateShellyHealth(false, 0);
-                      ESP_LOGW("shelly_health", "Shelly ping error - marked OFFLINE");
-          else:
-            - lambda: |-
-                ESP_LOGD("shelly_health", "Skipping health check - HTTP request in progress");
+      - lambda: |-
+          // HAL's pingShellyDevice handles everything:
+          // - Checks if HTTP request can be sent
+          // - Sends synchronous ping with proper response handling
+          // - Updates health status internally
+          id(hal).pingShellyDevice(nullptr);
 
 ################################################################################
 # Scripts - Reusable Automation Sequences

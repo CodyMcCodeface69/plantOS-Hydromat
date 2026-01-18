@@ -173,7 +173,7 @@ void ESPHomeHAL::loop() {
     uint32_t now = esphome::millis();
 
     // Check for HTTP request timeout and clear the in-progress flag
-    // This prevents socket exhaustion by ensuring stale requests don't block new ones
+    // This is a safety net - with synchronous requests this should rarely trigger
     if (http_request_in_progress_) {
         if (now - http_request_start_time_ >= HTTP_REQUEST_TIMEOUT) {
             ESP_LOGW(TAG, "HTTP request timed out after %ums - clearing in-progress flag",
@@ -183,7 +183,7 @@ void ESPHomeHAL::loop() {
     }
 
     // Process scheduled Shelly HTTP retry attempts
-    // This handles transient connection failures by sending commands multiple times
+    // This handles transient connection failures by retrying commands
     if (shelly_retry_attempts_ > 0) {
         if (now >= shelly_retry_next_time_) {
             // Check if we can send (no other request in progress)
@@ -200,35 +200,27 @@ void ESPHomeHAL::loop() {
                 // Mark request as started
                 markHttpRequestStarted();
 
-                // Send retry - use retry URL (may be different from url_cache_ if another command was sent)
-                // Include Connection: close header to prevent socket exhaustion
+                // Send retry with proper response handling
                 url_cache_ = shelly_retry_url_;
-                http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
+                auto container = http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
+
+                if (container) {
+                    if (container->status_code >= 200 && container->status_code < 300) {
+                        ESP_LOGD(TAG, "%s: Retry success (status %d)",
+                                 shelly_retry_device_name_.c_str(), container->status_code);
+                        shelly_retry_attempts_ = 0;  // Success - no more retries needed
+                    } else {
+                        ESP_LOGW(TAG, "%s: Retry failed (status %d)",
+                                 shelly_retry_device_name_.c_str(), container->status_code);
+                    }
+                    container->end();
+                }
+
+                markHttpRequestCompleted();
 
                 if (shelly_retry_attempts_ > 0) {
                     shelly_retry_next_time_ = now + 500;  // Schedule next attempt in 500ms
                 }
-            }
-        }
-    }
-
-    // Check for Shelly ping timeout
-    // If we sent a ping and haven't received a response within SHELLY_PING_TIMEOUT, mark as offline
-    if (shelly_ping_pending_) {
-        if (now - shelly_ping_sent_ms_ >= SHELLY_PING_TIMEOUT) {
-            ESP_LOGW(TAG, "Shelly ping timeout - marking as OFFLINE");
-            shelly_ping_pending_ = false;
-
-            // Mark HTTP request as completed (timed out)
-            markHttpRequestCompleted();
-
-            // Mark as offline
-            shelly_reachable_ = false;
-
-            // Call stored callback with offline status
-            if (shelly_ping_callback_) {
-                shelly_ping_callback_(false, 0);
-                shelly_ping_callback_ = nullptr;
             }
         }
     }
@@ -426,9 +418,7 @@ bool ESPHomeHAL::getValveState(const std::string& valveId) const {
 }
 
 bool ESPHomeHAL::sendShellyCommand(const std::string& url, const char* deviceName, int maxRetries) {
-    // Robust HTTP request with retry logic
-    // NOTE: This function uses blocking delays which is acceptable for infrequent actuator commands.
-    // Strategy: Try sending the command up to maxRetries times with 2s delay between attempts.
+    // Robust HTTP request with proper response handling
     // This is safe because Shelly Switch.Set commands are idempotent (setting ON multiple times is harmless).
 
     if (!http_request_) {
@@ -445,28 +435,42 @@ bool ESPHomeHAL::sendShellyCommand(const std::string& url, const char* deviceNam
     // Mark request as started
     markHttpRequestStarted();
 
-    // Send the command asynchronously (fire-and-forget)
-    // The ESPHome http_request component handles retries internally
     ESP_LOGI(TAG, "%s: Sending HTTP command", deviceName);
     ESP_LOGD(TAG, "%s: URL: %s", deviceName, url.c_str());
 
-    // CRITICAL FIX: Cache URL to prevent use-after-free
-    // The http_request component uses the URL asynchronously, so we must keep it alive
-    // by storing it in a member variable that persists beyond this function call
+    // Cache URL to prevent use-after-free
     url_cache_ = url;
 
-    // Send HTTP request (asynchronous - returns immediately)
-    // Pass cached URL to prevent memory access fault when the local 'url' is destroyed
-    // Include Connection: close header to prevent socket exhaustion
-    http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
+    // Send HTTP request and properly handle the response
+    // CRITICAL: We must consume the response to properly close the connection
+    auto container = http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
 
-    ESP_LOGI(TAG, "%s: HTTP command sent (async)", deviceName);
-    return true;
+    bool success = false;
+    if (container) {
+        if (container->status_code >= 200 && container->status_code < 300) {
+            ESP_LOGI(TAG, "%s: HTTP success (status %d, %ums)",
+                     deviceName, container->status_code, container->duration_ms);
+            success = true;
+        } else if (container->status_code > 0) {
+            ESP_LOGW(TAG, "%s: HTTP error status %d", deviceName, container->status_code);
+        } else {
+            ESP_LOGW(TAG, "%s: HTTP request failed (no response)", deviceName);
+        }
+
+        // CRITICAL: Call end() to properly close the connection and free resources
+        container->end();
+    } else {
+        ESP_LOGW(TAG, "%s: HTTP request returned null container", deviceName);
+    }
+
+    // Mark request as completed immediately (synchronous request)
+    markHttpRequestCompleted();
+
+    return success;
 }
 
 void ESPHomeHAL::sendShellyMultiAttempt(const std::string& url, const char* deviceName, uint8_t attempts) {
-    // Send HTTP command multiple times with delay between attempts
-    // Works around transient connection failures without complex error detection
+    // Send HTTP command with proper response handling
     // Safe because Shelly commands are idempotent (sending ON twice is harmless)
     //
     // This works for ALL Shelly command types:
@@ -493,21 +497,34 @@ void ESPHomeHAL::sendShellyMultiAttempt(const std::string& url, const char* devi
     // Mark request as started
     markHttpRequestStarted();
 
-    ESP_LOGI(TAG, "%s: Sending HTTP command (%d attempts): %s", deviceName, attempts, url.c_str());
+    ESP_LOGI(TAG, "%s: Sending HTTP command: %s", deviceName, url.c_str());
 
-    // First attempt immediately - cache URL to prevent use-after-free
-    // Include Connection: close header to prevent socket exhaustion
+    // Cache URL to prevent use-after-free
     url_cache_ = url;
-    http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
 
-    // Schedule additional attempts if needed (retries disabled by default, attempts=1)
-    if (attempts > 1) {
-        // Store URL and device name for retry (must persist beyond this function)
-        shelly_retry_url_ = url;
-        shelly_retry_device_name_ = deviceName;
-        shelly_retry_attempts_ = attempts - 1;
-        shelly_retry_next_time_ = esphome::millis() + 500;  // 500ms delay between attempts
+    // Send HTTP request and properly handle the response
+    // CRITICAL: We must consume the response to properly close the connection
+    auto container = http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
+
+    if (container) {
+        // Check response status
+        if (container->status_code >= 200 && container->status_code < 300) {
+            ESP_LOGD(TAG, "%s: HTTP success (status %d, %ums)",
+                     deviceName, container->status_code, container->duration_ms);
+        } else if (container->status_code > 0) {
+            ESP_LOGW(TAG, "%s: HTTP error status %d", deviceName, container->status_code);
+        } else {
+            ESP_LOGW(TAG, "%s: HTTP request failed (no response)", deviceName);
+        }
+
+        // CRITICAL: Call end() to properly close the connection and free resources
+        container->end();
+    } else {
+        ESP_LOGW(TAG, "%s: HTTP request returned null container", deviceName);
     }
+
+    // Mark request as completed immediately (synchronous request)
+    markHttpRequestCompleted();
 }
 
 bool ESPHomeHAL::checkShellySwitchStatus(const std::string& pumpId) {
@@ -918,27 +935,61 @@ void ESPHomeHAL::pingShellyDevice(std::function<void(bool, uint32_t)> callback) 
         return;
     }
 
-    // If a ping is already pending, don't send another one
-    if (shelly_ping_pending_) {
-        ESP_LOGD(TAG, "Shelly ping already pending - skipping");
+    // Check if we can send (no other request in progress)
+    if (!canSendHttpRequest()) {
+        ESP_LOGD(TAG, "Shelly ping skipped - HTTP request in progress");
         return;
     }
 
-    // Store callback for when response arrives (or timeout)
-    shelly_ping_callback_ = callback;
+    // Mark request as started
+    markHttpRequestStarted();
 
     // Send ping request to Shelly script API
     std::string url = std::string("http://") + SHELLY_IP + "/script/1/api?action=ping";
     ESP_LOGD(TAG, "Pinging Shelly at %s", url.c_str());
 
     // Cache URL to prevent use-after-free
-    // Include Connection: close header to prevent socket exhaustion
     url_cache_ = url;
-    http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
 
-    // Mark ping as pending and record send time for timeout detection
-    shelly_ping_pending_ = true;
-    shelly_ping_sent_ms_ = esphome::millis();
+    // Send HTTP request and properly handle the response
+    auto container = http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
+
+    bool reachable = false;
+    uint32_t uptime = 0;
+
+    if (container) {
+        if (container->status_code == 200) {
+            // Try to parse uptime from response body
+            // Response format: {"status": "ok", "uptime": <seconds>, "ts": <timestamp_ms>}
+            // We'll just check status code for now - YAML callback parses the JSON
+            reachable = true;
+            ESP_LOGD(TAG, "Shelly ping success (status %d, %ums)",
+                     container->status_code, container->duration_ms);
+        } else if (container->status_code > 0) {
+            ESP_LOGW(TAG, "Shelly ping failed (status %d)", container->status_code);
+        } else {
+            ESP_LOGW(TAG, "Shelly ping failed (no response)");
+        }
+
+        // CRITICAL: Call end() to properly close the connection and free resources
+        container->end();
+    } else {
+        ESP_LOGW(TAG, "Shelly ping returned null container");
+    }
+
+    // Mark request as completed
+    markHttpRequestCompleted();
+
+    // Update health status
+    shelly_reachable_ = reachable;
+    if (reachable) {
+        shelly_last_ping_ms_ = esphome::millis();
+    }
+
+    // Call callback if provided
+    if (callback) {
+        callback(reachable, uptime);
+    }
 }
 
 bool ESPHomeHAL::isShellyReachable() const {
@@ -953,12 +1004,7 @@ uint32_t ESPHomeHAL::getShellyUptime() const {
 }
 
 void ESPHomeHAL::updateShellyHealth(bool reachable, uint32_t uptime) {
-    // Clear pending flag - we got a response (or explicit update)
-    shelly_ping_pending_ = false;
-
-    // Mark HTTP request as completed (response received)
-    markHttpRequestCompleted();
-
+    // Update health status (can be called from YAML callbacks or internally)
     shelly_reachable_ = reachable;
     if (reachable) {
         shelly_uptime_seconds_ = uptime;
@@ -966,12 +1012,6 @@ void ESPHomeHAL::updateShellyHealth(bool reachable, uint32_t uptime) {
     }
     ESP_LOGI(TAG, "Shelly health updated: %s (uptime: %us)",
              reachable ? "ONLINE" : "OFFLINE", uptime);
-
-    // Call stored callback if any
-    if (shelly_ping_callback_) {
-        shelly_ping_callback_(reachable, uptime);
-        shelly_ping_callback_ = nullptr;  // Clear after use
-    }
 }
 
 // ============================================================================

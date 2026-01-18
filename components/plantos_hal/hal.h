@@ -689,10 +689,6 @@ private:
     bool shelly_reachable_{false};
     uint32_t shelly_uptime_seconds_{0};
     uint32_t shelly_last_ping_ms_{0};
-    uint32_t shelly_ping_sent_ms_{0};        // When ping was sent (for timeout detection)
-    bool shelly_ping_pending_{false};         // Whether we're waiting for a ping response
-    std::function<void(bool, uint32_t)> shelly_ping_callback_;
-    static constexpr uint32_t SHELLY_PING_TIMEOUT = 5000;  // 5 second timeout
 
     // HTTP request serialization to prevent socket exhaustion
     // Only one HTTP request should be in-flight at a time

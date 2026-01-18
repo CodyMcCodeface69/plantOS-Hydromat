@@ -455,6 +455,22 @@ public:
      * @param uptime Device uptime in seconds (0 if unknown)
      */
     virtual void updateShellyHealth(bool reachable, uint32_t uptime = 0) = 0;
+
+    /**
+     * Check if an HTTP request can be sent (for YAML to check before sending)
+     * @return true if OK to send, false if should wait
+     */
+    virtual bool canSendHttpRequest() = 0;
+
+    /**
+     * Mark HTTP request as started (called from YAML before sending)
+     */
+    virtual void markHttpRequestStarted() = 0;
+
+    /**
+     * Mark HTTP request as completed (called from YAML after response)
+     */
+    virtual void markHttpRequestCompleted() = 0;
 };
 
 /**
@@ -565,6 +581,11 @@ public:
     uint32_t getShellyUptime() const override;
     void updateShellyHealth(bool reachable, uint32_t uptime = 0) override;
 
+    // HTTP request serialization methods (callable from YAML)
+    bool canSendHttpRequest() override;
+    void markHttpRequestStarted() override;
+    void markHttpRequestCompleted() override;
+
 private:
     // Hardware component references (injected via Python)
     esphome::light::LightState* led_{nullptr};
@@ -640,6 +661,12 @@ private:
     bool shelly_ping_pending_{false};         // Whether we're waiting for a ping response
     std::function<void(bool, uint32_t)> shelly_ping_callback_;
     static constexpr uint32_t SHELLY_PING_TIMEOUT = 5000;  // 5 second timeout
+
+    // HTTP request serialization to prevent socket exhaustion
+    // Only one HTTP request should be in-flight at a time
+    bool http_request_in_progress_{false};
+    uint32_t http_request_start_time_{0};
+    static constexpr uint32_t HTTP_REQUEST_TIMEOUT = 10000;  // 10 second max for any HTTP request
 };
 
 } // namespace plantos_hal

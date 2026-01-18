@@ -166,20 +166,41 @@ void ESPHomeHAL::setup() {
 void ESPHomeHAL::loop() {
     uint32_t now = esphome::millis();
 
+    // Check for HTTP request timeout and clear the in-progress flag
+    // This prevents socket exhaustion by ensuring stale requests don't block new ones
+    if (http_request_in_progress_) {
+        if (now - http_request_start_time_ >= HTTP_REQUEST_TIMEOUT) {
+            ESP_LOGW(TAG, "HTTP request timed out after %ums - clearing in-progress flag",
+                     now - http_request_start_time_);
+            http_request_in_progress_ = false;
+        }
+    }
+
     // Process scheduled Shelly HTTP retry attempts
     // This handles transient connection failures by sending commands multiple times
     if (shelly_retry_attempts_ > 0) {
         if (now >= shelly_retry_next_time_) {
-            shelly_retry_attempts_--;
-            ESP_LOGD(TAG, "%s: Retry attempt (%d remaining)",
-                     shelly_retry_device_name_.c_str(), shelly_retry_attempts_);
+            // Check if we can send (no other request in progress)
+            if (!canSendHttpRequest()) {
+                // Reschedule for later
+                shelly_retry_next_time_ = now + 500;
+                ESP_LOGD(TAG, "%s: Retry delayed - HTTP request in progress",
+                         shelly_retry_device_name_.c_str());
+            } else {
+                shelly_retry_attempts_--;
+                ESP_LOGD(TAG, "%s: Retry attempt (%d remaining)",
+                         shelly_retry_device_name_.c_str(), shelly_retry_attempts_);
 
-            // Send retry - use retry URL (may be different from url_cache_ if another command was sent)
-            url_cache_ = shelly_retry_url_;
-            http_request_->get(url_cache_);
+                // Mark request as started
+                markHttpRequestStarted();
 
-            if (shelly_retry_attempts_ > 0) {
-                shelly_retry_next_time_ = now + 500;  // Schedule next attempt in 500ms
+                // Send retry - use retry URL (may be different from url_cache_ if another command was sent)
+                url_cache_ = shelly_retry_url_;
+                http_request_->get(url_cache_);
+
+                if (shelly_retry_attempts_ > 0) {
+                    shelly_retry_next_time_ = now + 500;  // Schedule next attempt in 500ms
+                }
             }
         }
     }
@@ -191,7 +212,10 @@ void ESPHomeHAL::loop() {
             ESP_LOGW(TAG, "Shelly ping timeout - marking as OFFLINE");
             shelly_ping_pending_ = false;
 
-            // Mark as offline via updateShellyHealth
+            // Mark HTTP request as completed (timed out)
+            markHttpRequestCompleted();
+
+            // Mark as offline
             shelly_reachable_ = false;
 
             // Call stored callback with offline status
@@ -405,6 +429,15 @@ bool ESPHomeHAL::sendShellyCommand(const std::string& url, const char* deviceNam
         return false;
     }
 
+    // Check if we can send (no other request in progress)
+    if (!canSendHttpRequest()) {
+        ESP_LOGW(TAG, "%s: HTTP request blocked - another request in progress", deviceName);
+        return false;
+    }
+
+    // Mark request as started
+    markHttpRequestStarted();
+
     // Send the command asynchronously (fire-and-forget)
     // The ESPHome http_request component handles retries internally
     ESP_LOGI(TAG, "%s: Sending HTTP command", deviceName);
@@ -438,13 +471,27 @@ void ESPHomeHAL::sendShellyMultiAttempt(const std::string& url, const char* devi
         return;
     }
 
+    // Check if we can send (no other request in progress)
+    if (!canSendHttpRequest()) {
+        ESP_LOGW(TAG, "%s: HTTP request blocked - another request in progress", deviceName);
+        // Store for later retry via loop() scheduler
+        shelly_retry_url_ = url;
+        shelly_retry_device_name_ = deviceName;
+        shelly_retry_attempts_ = attempts;
+        shelly_retry_next_time_ = esphome::millis() + 1000;  // Retry in 1 second
+        return;
+    }
+
+    // Mark request as started
+    markHttpRequestStarted();
+
     ESP_LOGI(TAG, "%s: Sending HTTP command (%d attempts): %s", deviceName, attempts, url.c_str());
 
     // First attempt immediately - cache URL to prevent use-after-free
     url_cache_ = url;
     http_request_->get(url_cache_);
 
-    // Schedule additional attempts if needed
+    // Schedule additional attempts if needed (retries disabled by default, attempts=1)
     if (attempts > 1) {
         // Store URL and device name for retry (must persist beyond this function)
         shelly_retry_url_ = url;
@@ -801,6 +848,9 @@ void ESPHomeHAL::updateShellyHealth(bool reachable, uint32_t uptime) {
     // Clear pending flag - we got a response (or explicit update)
     shelly_ping_pending_ = false;
 
+    // Mark HTTP request as completed (response received)
+    markHttpRequestCompleted();
+
     shelly_reachable_ = reachable;
     if (reachable) {
         shelly_uptime_seconds_ = uptime;
@@ -814,6 +864,46 @@ void ESPHomeHAL::updateShellyHealth(bool reachable, uint32_t uptime) {
         shelly_ping_callback_(reachable, uptime);
         shelly_ping_callback_ = nullptr;  // Clear after use
     }
+}
+
+// ============================================================================
+// HTTP REQUEST SERIALIZATION - Prevent socket exhaustion
+// ============================================================================
+
+bool ESPHomeHAL::canSendHttpRequest() {
+    uint32_t now = esphome::millis();
+
+    // If no request in progress, OK to send
+    if (!http_request_in_progress_) {
+        return true;
+    }
+
+    // If request has timed out, clear the flag and allow new request
+    if (now - http_request_start_time_ >= HTTP_REQUEST_TIMEOUT) {
+        ESP_LOGW(TAG, "Previous HTTP request timed out after %ums - clearing flag",
+                 now - http_request_start_time_);
+        http_request_in_progress_ = false;
+        return true;
+    }
+
+    // Request still in progress
+    ESP_LOGD(TAG, "HTTP request in progress for %ums - waiting",
+             now - http_request_start_time_);
+    return false;
+}
+
+void ESPHomeHAL::markHttpRequestStarted() {
+    http_request_in_progress_ = true;
+    http_request_start_time_ = esphome::millis();
+    ESP_LOGD(TAG, "HTTP request started");
+}
+
+void ESPHomeHAL::markHttpRequestCompleted() {
+    if (http_request_in_progress_) {
+        uint32_t duration = esphome::millis() - http_request_start_time_;
+        ESP_LOGD(TAG, "HTTP request completed in %ums", duration);
+    }
+    http_request_in_progress_ = false;
 }
 
 } // namespace plantos_hal

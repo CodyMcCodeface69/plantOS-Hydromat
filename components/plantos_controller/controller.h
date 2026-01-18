@@ -369,6 +369,13 @@ private:
     uint32_t last_ph_check_time_{0};      // Fallback: Last time we checked pH (millis()) if no time source
 
     // ========================================================================
+    // Shelly Health Check State
+    // ========================================================================
+
+    uint32_t last_shelly_check_time_{0};              // Last time we checked Shelly health (millis())
+    static constexpr uint32_t SHELLY_CHECK_INTERVAL = 30000;  // 30 seconds between checks
+
+    // ========================================================================
     // Sensor Change Flags (ISR-safe)
     // ========================================================================
     // These flags are set by sensor callbacks which may run in ISR context.
@@ -788,6 +795,13 @@ private:
     void recordOperationStep(const std::string& step_name);
     void retryOperation();
     void checkHardwareStatus();
+
+    /**
+     * Check Shelly device health via HTTP ping
+     * Updates CentralStatusLogger with device status
+     * Called periodically from IDLE state (every 30 seconds)
+     */
+    void checkShellyHealth();
 
     // Actuator IDs (must match SafetyGate configuration)
     static constexpr const char* ACID_PUMP = "AcidPump";

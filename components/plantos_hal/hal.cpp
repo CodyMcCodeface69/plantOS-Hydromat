@@ -164,10 +164,11 @@ void ESPHomeHAL::setup() {
 }
 
 void ESPHomeHAL::loop() {
+    uint32_t now = esphome::millis();
+
     // Process scheduled Shelly HTTP retry attempts
     // This handles transient connection failures by sending commands multiple times
     if (shelly_retry_attempts_ > 0) {
-        uint32_t now = esphome::millis();
         if (now >= shelly_retry_next_time_) {
             shelly_retry_attempts_--;
             ESP_LOGD(TAG, "%s: Retry attempt (%d remaining)",
@@ -179,6 +180,24 @@ void ESPHomeHAL::loop() {
 
             if (shelly_retry_attempts_ > 0) {
                 shelly_retry_next_time_ = now + 500;  // Schedule next attempt in 500ms
+            }
+        }
+    }
+
+    // Check for Shelly ping timeout
+    // If we sent a ping and haven't received a response within SHELLY_PING_TIMEOUT, mark as offline
+    if (shelly_ping_pending_) {
+        if (now - shelly_ping_sent_ms_ >= SHELLY_PING_TIMEOUT) {
+            ESP_LOGW(TAG, "Shelly ping timeout - marking as OFFLINE");
+            shelly_ping_pending_ = false;
+
+            // Mark as offline via updateShellyHealth
+            shelly_reachable_ = false;
+
+            // Call stored callback with offline status
+            if (shelly_ping_callback_) {
+                shelly_ping_callback_(false, 0);
+                shelly_ping_callback_ = nullptr;
             }
         }
     }
@@ -732,6 +751,69 @@ uint32_t ESPHomeHAL::getSecondsSinceMidnight() const {
 
 bool ESPHomeHAL::hasTime() const {
     return time_source_ != nullptr && time_source_->now().is_valid();
+}
+
+// ============================================================================
+// SHELLY HEALTH CHECK - Device monitoring via HTTP ping
+// ============================================================================
+
+void ESPHomeHAL::pingShellyDevice(std::function<void(bool, uint32_t)> callback) {
+    if (!http_request_) {
+        ESP_LOGW(TAG, "HTTP request component not configured - cannot ping Shelly");
+        if (callback) callback(false, 0);
+        return;
+    }
+
+    // If a ping is already pending, don't send another one
+    if (shelly_ping_pending_) {
+        ESP_LOGD(TAG, "Shelly ping already pending - skipping");
+        return;
+    }
+
+    // Store callback for when response arrives (or timeout)
+    shelly_ping_callback_ = callback;
+
+    // Send ping request to Shelly script API
+    std::string url = std::string("http://") + SHELLY_IP + "/script/1/api?action=ping";
+    ESP_LOGD(TAG, "Pinging Shelly at %s", url.c_str());
+
+    // Cache URL to prevent use-after-free
+    url_cache_ = url;
+    http_request_->get(url_cache_);
+
+    // Mark ping as pending and record send time for timeout detection
+    shelly_ping_pending_ = true;
+    shelly_ping_sent_ms_ = esphome::millis();
+}
+
+bool ESPHomeHAL::isShellyReachable() const {
+    // Consider offline if no successful ping in last 60 seconds
+    if (!shelly_reachable_) return false;
+    uint32_t age = esphome::millis() - shelly_last_ping_ms_;
+    return age < 60000;  // 60 second timeout
+}
+
+uint32_t ESPHomeHAL::getShellyUptime() const {
+    return shelly_uptime_seconds_;
+}
+
+void ESPHomeHAL::updateShellyHealth(bool reachable, uint32_t uptime) {
+    // Clear pending flag - we got a response (or explicit update)
+    shelly_ping_pending_ = false;
+
+    shelly_reachable_ = reachable;
+    if (reachable) {
+        shelly_uptime_seconds_ = uptime;
+        shelly_last_ping_ms_ = esphome::millis();
+    }
+    ESP_LOGI(TAG, "Shelly health updated: %s (uptime: %us)",
+             reachable ? "ONLINE" : "OFFLINE", uptime);
+
+    // Call stored callback if any
+    if (shelly_ping_callback_) {
+        shelly_ping_callback_(reachable, uptime);
+        shelly_ping_callback_ = nullptr;  // Clear after use
+    }
 }
 
 } // namespace plantos_hal

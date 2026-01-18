@@ -423,6 +423,38 @@ public:
      * @return true if time is available, false otherwise
      */
     virtual bool hasTime() const = 0;
+
+    // ============================================================================
+    // SHELLY HEALTH CHECK - Called by Controller for device monitoring
+    // ============================================================================
+
+    /**
+     * Check Shelly device health via HTTP ping
+     * @param callback Function called with (reachable, uptime_seconds) when ping completes
+     *
+     * NOTE: This is async - callback is called when HTTP response is received.
+     * Use updateShellyHealth() to manually update status if ping times out.
+     */
+    virtual void pingShellyDevice(std::function<void(bool, uint32_t)> callback) = 0;
+
+    /**
+     * Check if Shelly device is considered reachable
+     * @return true if last ping was successful within timeout period
+     */
+    virtual bool isShellyReachable() const = 0;
+
+    /**
+     * Get Shelly device uptime from last successful ping
+     * @return Uptime in seconds, or 0 if unknown
+     */
+    virtual uint32_t getShellyUptime() const = 0;
+
+    /**
+     * Manually update Shelly health status (e.g., after timeout or from YAML callback)
+     * @param reachable Whether device is considered reachable
+     * @param uptime Device uptime in seconds (0 if unknown)
+     */
+    virtual void updateShellyHealth(bool reachable, uint32_t uptime = 0) = 0;
 };
 
 /**
@@ -527,6 +559,12 @@ public:
     uint32_t getSecondsSinceMidnight() const override;
     bool hasTime() const override;
 
+    // Shelly health check methods
+    void pingShellyDevice(std::function<void(bool, uint32_t)> callback) override;
+    bool isShellyReachable() const override;
+    uint32_t getShellyUptime() const override;
+    void updateShellyHealth(bool reachable, uint32_t uptime = 0) override;
+
 private:
     // Hardware component references (injected via Python)
     esphome::light::LightState* led_{nullptr};
@@ -593,6 +631,15 @@ private:
 
     // Multi-attempt send helper for Shelly commands
     void sendShellyMultiAttempt(const std::string& url, const char* deviceName, uint8_t attempts = 3);
+
+    // Shelly health tracking
+    bool shelly_reachable_{false};
+    uint32_t shelly_uptime_seconds_{0};
+    uint32_t shelly_last_ping_ms_{0};
+    uint32_t shelly_ping_sent_ms_{0};        // When ping was sent (for timeout detection)
+    bool shelly_ping_pending_{false};         // Whether we're waiting for a ping response
+    std::function<void(bool, uint32_t)> shelly_ping_callback_;
+    static constexpr uint32_t SHELLY_PING_TIMEOUT = 5000;  // 5 second timeout
 };
 
 } // namespace plantos_hal

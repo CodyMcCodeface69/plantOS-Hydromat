@@ -114,6 +114,24 @@ struct OneWireDeviceInfo {
 };
 
 /**
+ * Shelly Device Info structure for HTTP device status tracking
+ */
+struct ShellyDeviceInfo {
+    std::string name;        // Device name (e.g., "Shelly Plus 4PM")
+    std::string ip;          // IP address (e.g., "192.168.0.130")
+    bool reachable;          // Whether device responded to ping
+    bool critical;           // Whether device is critical for operation
+    std::string status;      // Status text (e.g., "Online (uptime: 2h 15m)", "Offline")
+    uint32_t uptime_seconds; // Device uptime from ping response
+    uint32_t last_seen_ms;   // millis() timestamp of last successful ping
+
+    ShellyDeviceInfo(const std::string& n, const std::string& ip_addr,
+                     bool r, bool c, const std::string& s = "")
+        : name(n), ip(ip_addr), reachable(r), critical(c),
+          status(s), uptime_seconds(0), last_seen_ms(0) {}
+};
+
+/**
  * Pump Configuration Info structure for calibration status tracking
  */
 struct PumpConfigInfo {
@@ -307,6 +325,12 @@ public:
     void updateOneWireHardwareStatus(const std::vector<OneWireDeviceInfo>& devices);
 
     /**
+     * Update Shelly HTTP device status
+     * @param devices Vector of ShellyDeviceInfo structures with device status
+     */
+    void updateShellyHardwareStatus(const std::vector<ShellyDeviceInfo>& devices);
+
+    /**
      * Update pump configuration status
      * @param configs Vector of PumpConfigInfo structures with pump calibration data
      */
@@ -430,6 +454,10 @@ private:
     // 1-Wire Hardware status
     std::vector<OneWireDeviceInfo> oneWireDevices;
     bool oneWireStatusUpdated;
+
+    // Shelly HTTP Device status
+    std::vector<ShellyDeviceInfo> shellyDevices_;
+    bool shellyStatusUpdated_;
 
     // Pump Configuration status
     std::vector<PumpConfigInfo> pumpConfigs;

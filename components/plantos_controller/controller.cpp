@@ -615,6 +615,11 @@ void PlantOSController::handleIdle() {
     }
 
     // ========================================================================
+    // SHELLY HEALTH CHECK - Ping Shelly device periodically (every 30 seconds)
+    // ========================================================================
+    checkShellyHealth();
+
+    // ========================================================================
     // AUTOMATIC FEEDING CHECK - Once per day when water level reaches LOW
     // ========================================================================
     if (shouldTriggerAutoFeeding()) {
@@ -3290,6 +3295,55 @@ void PlantOSController::checkHardwareStatus() {
 
     // Water level sensors are checked during WATER_FILLING and WATER_EMPTYING operations
     // We don't need to check them here since they're only used during those specific states
+}
+
+// ============================================================================
+// Shelly Health Check
+// ============================================================================
+
+void PlantOSController::checkShellyHealth() {
+    if (!hal_) {
+        return;
+    }
+
+    uint32_t now = hal_->getSystemTime();
+
+    // Only update status logger every 30 seconds
+    if (now - last_shelly_check_time_ < SHELLY_CHECK_INTERVAL) {
+        return;
+    }
+    last_shelly_check_time_ = now;
+
+    // Read cached Shelly health status from HAL
+    // The actual ping is performed by a YAML interval script that calls hal.updateShellyHealth()
+    bool reachable = hal_->isShellyReachable();
+    uint32_t uptime = hal_->getShellyUptime();
+
+    ESP_LOGD(TAG, "Shelly health status: %s (uptime: %us)",
+             reachable ? "ONLINE" : "OFFLINE", uptime);
+
+    // Update CentralStatusLogger with result
+    std::vector<ShellyDeviceInfo> devices;
+    devices.push_back(ShellyDeviceInfo(
+        "Shelly Plus 4PM",
+        "192.168.0.130",
+        reachable,
+        true,  // Critical device
+        reachable ? "Online" : "Offline"
+    ));
+    if (reachable) {
+        devices[0].uptime_seconds = uptime;
+        devices[0].last_seen_ms = now;
+    }
+    status_logger_.updateShellyHardwareStatus(devices);
+
+    // Update alert status based on reachability
+    if (!reachable) {
+        status_logger_.updateAlertStatus("SHELLY_OFFLINE",
+            "Shelly Plus 4PM not responding to HTTP ping");
+    } else {
+        status_logger_.clearAlert("SHELLY_OFFLINE");
+    }
 }
 
 // ============================================================================

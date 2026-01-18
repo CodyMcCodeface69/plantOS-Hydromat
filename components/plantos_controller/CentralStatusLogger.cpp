@@ -25,6 +25,7 @@ CentralStatusLogger::CentralStatusLogger()
       i2cScanPerformed(false),
       uartStatusUpdated(false),
       oneWireStatusUpdated(false),
+      shellyStatusUpdated_(false),
       pumpConfigsUpdated(false),
       calendarCurrentDay(1),
       calendarPhMin(5.8f),
@@ -294,6 +295,11 @@ void CentralStatusLogger::updateOneWireHardwareStatus(const std::vector<OneWireD
     oneWireStatusUpdated = true;
 }
 
+void CentralStatusLogger::updateShellyHardwareStatus(const std::vector<ShellyDeviceInfo>& devices) {
+    shellyDevices_ = devices;
+    shellyStatusUpdated_ = true;
+}
+
 void CentralStatusLogger::updatePumpConfigurations(const std::vector<PumpConfigInfo>& configs) {
     pumpConfigs = configs;
     pumpConfigsUpdated = true;
@@ -527,6 +533,32 @@ void CentralStatusLogger::logStatus() {
         }
     } else {
         ESP_LOGI(TAG, "  1-Wire: Status not yet updated");
+    }
+
+    // Shelly HTTP Devices
+    if (shellyStatusUpdated_) {
+        ESP_LOGI(TAG, "  Shelly Devices:");
+        if (shellyDevices_.empty()) {
+            ESP_LOGW(TAG, "    No Shelly devices configured");
+        } else {
+            for (const auto& device : shellyDevices_) {
+                if (device.reachable) {
+                    // Format uptime as human-readable
+                    uint32_t uptime = device.uptime_seconds;
+                    uint32_t hours = uptime / 3600;
+                    uint32_t mins = (uptime % 3600) / 60;
+                    // ANSI Green: \033[32m, Reset: \033[0m
+                    ESP_LOGI(TAG, "    \033[32m✓ %s (%s) - Online (uptime: %uh %um)\033[0m",
+                             device.name.c_str(), device.ip.c_str(), hours, mins);
+                } else {
+                    // ANSI Red for offline devices
+                    ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - OFFLINE\033[0m",
+                             device.name.c_str(), device.ip.c_str());
+                }
+            }
+        }
+    } else {
+        ESP_LOGI(TAG, "  Shelly: Status not yet checked");
     }
 
     // Water Level Sensors (Binary Sensors)

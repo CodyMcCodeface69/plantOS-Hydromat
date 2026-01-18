@@ -112,9 +112,10 @@ wifi:
     - delay: 2s
 
     # Activate air pump once on WiFi connect (single command, no periodic health checks)
+    # DISABLED: Boot-time HTTP causes socket exhaustion - manually ensure Shelly air pump is ON
     - lambda: |-
-        ESP_LOGI("wifi", "Activating air pump via Shelly HTTP...");
-        id(unified_controller)->activateAirPump();
+        ESP_LOGI("wifi", "WiFi connected - air pump activation disabled (manual control)");
+        // id(unified_controller)->activateAirPump();
 
     # # Perform online connectivity check
     # - logger.log: "Performing online connectivity check (ping www.google.com)..."

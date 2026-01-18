@@ -416,6 +416,53 @@ bool ActuatorSafetyGate::isCyclingEnabled(const char* actuatorID) const {
     return false; // Unknown actuator - no cycling
 }
 
+void ActuatorSafetyGate::updateActualState(const char* actuatorID, bool actualState) {
+    if (actuatorID == nullptr || strlen(actuatorID) == 0) {
+        return;
+    }
+
+    std::string id(actuatorID);
+    auto it = actuators_.find(id);
+
+    if (it != actuators_.end()) {
+        ActuatorState& state = it->second;
+
+        // Only log if state actually differs
+        if (state.lastRequestedState != actualState) {
+            ESP_LOGI(TAG, "State sync: %s actual=%s, tracked=%s → updating tracked state",
+                     actuatorID,
+                     actualState ? "ON" : "OFF",
+                     state.lastRequestedState ? "ON" : "OFF");
+
+            // Update tracked state to match actual
+            state.lastRequestedState = actualState;
+
+            // Update turn-on time tracking
+            if (actualState) {
+                // Device is actually ON - if we thought it was OFF, record turn-on time
+                if (state.turnOnTime == 0) {
+                    state.turnOnTime = esphome::millis();
+                }
+            } else {
+                // Device is actually OFF
+                state.turnOnTime = 0;
+            }
+
+            // Reset violation flag since state is now synced
+            state.violationLogged = false;
+        }
+    } else {
+        // Create new entry with the actual state
+        ActuatorState& newState = getOrCreateState(id);
+        newState.lastRequestedState = actualState;
+        if (actualState) {
+            newState.turnOnTime = esphome::millis();
+        }
+        ESP_LOGD(TAG, "State sync: %s registered with actual state %s",
+                 actuatorID, actualState ? "ON" : "OFF");
+    }
+}
+
 uint32_t ActuatorSafetyGate::getRuntime(const char* actuatorID) const {
     if (actuatorID == nullptr) return 0;
 
@@ -748,6 +795,7 @@ void ActuatorSafetyGate::executeHardwareCommand(const std::string& actuatorID, b
 
     // Determine actuator type and call appropriate HAL method
     // Convention: IDs ending in "Pump" are pumps, ending in "Valve" are valves
+    // Special case: "Light" actuators are treated as pumps for HAL routing
     if (actuatorID.find("Pump") != std::string::npos) {
         // This is a pump - call HAL setPump()
         ESP_LOGD(TAG, "Executing via HAL: setPump(%s, %s)",
@@ -759,6 +807,12 @@ void ActuatorSafetyGate::executeHardwareCommand(const std::string& actuatorID, b
         ESP_LOGD(TAG, "Executing via HAL: setValve(%s, %s)",
                  actuatorID.c_str(), state ? "OPEN" : "CLOSED");
         hal_->setValve(actuatorID, state);
+    }
+    else if (actuatorID.find("Light") != std::string::npos) {
+        // This is a light (e.g., GrowLight) - routed via HAL setPump to Shelly
+        ESP_LOGD(TAG, "Executing via HAL: setPump(%s, %s) [Light]",
+                 actuatorID.c_str(), state ? "ON" : "OFF");
+        hal_->setPump(actuatorID, state);
     }
     else {
         // Unknown actuator type - default to pump

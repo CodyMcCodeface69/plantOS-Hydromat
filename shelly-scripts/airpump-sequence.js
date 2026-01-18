@@ -315,19 +315,69 @@ let handleStatus = function (qsParams, response) {
   let state = sequenceStates[switchId];
   let currentStep = state.steps[state.currentStep] || null;
 
-  // Send response immediately with sequence state (don't block on RPC)
-  sendResponse(response, 200, {
-    switch_id: switchId,
-    sequence: {
-      running: state.running,
-      current_step: state.currentStep,
-      total_steps: state.steps.length,
-      current_action: currentStep ? (currentStep.state ? "on" : "off") : null,
-      final_state: state.finalState ? "on" : "off"
-    },
-    device: {
-      uptime: Shelly.getComponentStatus("sys").uptime
+  // Get actual switch state from hardware
+  Shelly.call("Switch.GetStatus", { id: switchId }, function(res, err_code, err_msg) {
+    let switchState = null;
+    if (err_code === 0 && res) {
+      switchState = res.output;
     }
+
+    sendResponse(response, 200, {
+      switch_id: switchId,
+      output: switchState,
+      sequence: {
+        running: state.running,
+        current_step: state.currentStep,
+        total_steps: state.steps.length,
+        current_action: currentStep ? (currentStep.state ? "on" : "off") : null,
+        final_state: state.finalState ? "on" : "off"
+      },
+      device: {
+        uptime: Shelly.getComponentStatus("sys").uptime
+      }
+    });
+  });
+};
+
+// Get all switch states at once - efficient polling endpoint
+let handleStates = function (qsParams, response) {
+  // Query all 4 switches in parallel using counters
+  let results = { 0: null, 1: null, 2: null, 3: null };
+  let pending = 4;
+
+  function checkDone() {
+    pending = pending - 1;
+    if (pending === 0) {
+      sendResponse(response, 200, {
+        switches: results,
+        sequences: {
+          0: sequenceStates[0].running,
+          1: sequenceStates[1].running,
+          2: sequenceStates[2].running,
+          3: sequenceStates[3].running
+        },
+        uptime: Shelly.getComponentStatus("sys").uptime,
+        ts: Date.now()
+      });
+    }
+  }
+
+  // Query each switch
+  Shelly.call("Switch.GetStatus", { id: 0 }, function(res, err_code) {
+    if (err_code === 0 && res) results[0] = res.output;
+    checkDone();
+  });
+  Shelly.call("Switch.GetStatus", { id: 1 }, function(res, err_code) {
+    if (err_code === 0 && res) results[1] = res.output;
+    checkDone();
+  });
+  Shelly.call("Switch.GetStatus", { id: 2 }, function(res, err_code) {
+    if (err_code === 0 && res) results[2] = res.output;
+    checkDone();
+  });
+  Shelly.call("Switch.GetStatus", { id: 3 }, function(res, err_code) {
+    if (err_code === 0 && res) results[3] = res.output;
+    checkDone();
   });
 };
 
@@ -368,6 +418,7 @@ CONFIG.registerActionHandler("ping", handlePing);
 CONFIG.registerActionHandler("sequence", handleSequence);
 CONFIG.registerActionHandler("stop", handleStop);
 CONFIG.registerActionHandler("status", handleStatus);
+CONFIG.registerActionHandler("states", handleStates);
 CONFIG.registerActionHandler("on", handleOn);
 CONFIG.registerActionHandler("off", handleOff);
 
@@ -406,12 +457,13 @@ function httpServerHandler(request, response) {
   ) {
     sendResponse(response, 400, {
       error: "Unknown action",
-      available_actions: ["ping", "sequence", "stop", "status", "on", "off"],
+      available_actions: ["ping", "sequence", "stop", "status", "states", "on", "off"],
       usage: {
         ping: "?action=ping",
         sequence: "?action=sequence&id=0&pattern=30,120,30&finalstate=0",
         stop: "?action=stop&id=0",
         status: "?action=status&id=0",
+        states: "?action=states",
         on: "?action=on&id=0",
         off: "?action=off&id=0"
       },

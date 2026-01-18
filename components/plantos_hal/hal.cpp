@@ -1054,4 +1054,44 @@ void ESPHomeHAL::markHttpRequestCompleted() {
     http_request_in_progress_ = false;
 }
 
+// ============================================================================
+// SHELLY STATE SYNCHRONIZATION - For debouncing and UI state
+// ============================================================================
+
+void ESPHomeHAL::updateShellySwitchState(uint8_t switchId, bool state) {
+    if (switchId > 3) {
+        ESP_LOGW(TAG, "updateShellySwitchState: Invalid switch ID %d", switchId);
+        return;
+    }
+
+    bool previousState = shelly_switch_states_[switchId];
+    shelly_switch_states_[switchId] = state;
+    shelly_state_update_time_ = esphome::millis();
+
+    // Also update pump_states_ map for consistency with getPumpState()
+    if (switchId == 0) {
+        pump_states_["AirPump"] = state;
+    } else if (switchId == 2) {
+        pump_states_["WastewaterPump"] = state;
+    } else if (switchId == 3) {
+        pump_states_["GrowLight"] = state;
+    }
+
+    if (previousState != state) {
+        ESP_LOGI(TAG, "Shelly switch %d state updated: %s → %s (from polling)",
+                 switchId, previousState ? "ON" : "OFF", state ? "ON" : "OFF");
+    }
+}
+
+bool ESPHomeHAL::getShellySwitchState(uint8_t switchId) const {
+    if (switchId > 3) {
+        return false;
+    }
+    return shelly_switch_states_[switchId];
+}
+
+uint32_t ESPHomeHAL::getLastShellyStateUpdate() const {
+    return shelly_state_update_time_;
+}
+
 } // namespace plantos_hal

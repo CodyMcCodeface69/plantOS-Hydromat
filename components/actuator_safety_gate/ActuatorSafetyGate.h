@@ -263,6 +263,22 @@ public:
     bool getState(const char* actuatorID) const;
 
     /**
+     * Update the actual state of an actuator from external polling
+     *
+     * This is called when the actual device state is polled (e.g., from Shelly HTTP)
+     * and is used to keep debouncing in sync with the real device state.
+     * If the actual state differs from the tracked state, the tracked state is updated.
+     *
+     * @param actuatorID Unique identifier for the actuator
+     * @param actualState The actual state of the device (true=ON, false=OFF)
+     *
+     * EXAMPLE:
+     * // Called from YAML when Shelly state is polled
+     * updateActualState("AirPump", shellyState);  // Sync ASG with actual Shelly state
+     */
+    void updateActualState(const char* actuatorID, bool actualState);
+
+    /**
      * Check if cycling is enabled for an actuator
      *
      * @param actuatorID Unique identifier for the actuator

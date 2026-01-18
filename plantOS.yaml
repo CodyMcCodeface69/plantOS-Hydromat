@@ -1910,53 +1910,78 @@ switch:
           }
 
   # === Shelly-Controlled Actuators (Shelly Plus 4PM @ 192.168.0.130) ===
-  # AirPump on Socket 0, WastewaterPump on Socket 2
-  # Socket 1 and 3 reserved for future expansion
+  # AirPump on Socket 0, WastewaterPump on Socket 2, GrowLight on Socket 3
+  # Socket 1 reserved for future expansion
+  # Uses ASG for debouncing based on actual Shelly state (polled every 5s)
 
   - platform: template
     id: air_pump_shelly_switch
     name: "10_06_Air Pump (Shelly Socket 0)"
-    optimistic: true
     restore_mode: ALWAYS_OFF
+    lambda: |-
+      // Return actual state from HAL (synced via polling)
+      return id(hal).getShellySwitchState(0);
     turn_on_action:
-      # Use HAL for sequence-aware control (stops any running sequence first)
+      # Use ASG for debouncing with actual Shelly state
       - lambda: |-
-          id(hal).setShellySwitch(0, true);
-          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual ON via HAL (sequence-aware)");
+          if (id(actuator_safety).executeCommand("AirPump", true, 0)) {
+            ESP_LOGI("switch", "Air Pump (Shelly Socket 0): ASG approved ON");
+          } else {
+            ESP_LOGD("switch", "Air Pump (Shelly Socket 0): ASG rejected (already ON or debounced)");
+          }
     turn_off_action:
       - lambda: |-
-          id(hal).setShellySwitch(0, false);
-          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual OFF via HAL (sequence-aware)");
+          if (id(actuator_safety).executeCommand("AirPump", false, 0)) {
+            ESP_LOGI("switch", "Air Pump (Shelly Socket 0): ASG approved OFF");
+          } else {
+            ESP_LOGD("switch", "Air Pump (Shelly Socket 0): ASG rejected (already OFF or debounced)");
+          }
 
   - platform: template
     id: wastewater_pump_shelly_switch
     name: "10_07_Wastewater Pump (Shelly Socket 2)"
-    optimistic: true
     restore_mode: ALWAYS_OFF
+    lambda: |-
+      // Return actual state from HAL (synced via polling)
+      return id(hal).getShellySwitchState(2);
     turn_on_action:
-      # Use HAL for sequence-aware control (stops any running sequence first)
+      # Use ASG for debouncing with actual Shelly state
       - lambda: |-
-          id(hal).setShellySwitch(2, true);
-          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual ON via HAL (sequence-aware)");
+          if (id(actuator_safety).executeCommand("WastewaterPump", true, 0)) {
+            ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): ASG approved ON");
+          } else {
+            ESP_LOGD("switch", "Wastewater Pump (Shelly Socket 2): ASG rejected (already ON or debounced)");
+          }
     turn_off_action:
       - lambda: |-
-          id(hal).setShellySwitch(2, false);
-          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual OFF via HAL (sequence-aware)");
+          if (id(actuator_safety).executeCommand("WastewaterPump", false, 0)) {
+            ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): ASG approved OFF");
+          } else {
+            ESP_LOGD("switch", "Wastewater Pump (Shelly Socket 2): ASG rejected (already OFF or debounced)");
+          }
 
   - platform: template
     id: grow_light_shelly_switch
     name: "10_08_Grow Light (Shelly Socket 3)"
-    optimistic: true
     restore_mode: ALWAYS_OFF
+    lambda: |-
+      // Return actual state from HAL (synced via polling)
+      return id(hal).getShellySwitchState(3);
     turn_on_action:
-      # Use HAL for sequence-aware control (stops any running sequence first)
+      # Use ASG for debouncing with actual Shelly state
       - lambda: |-
-          id(hal).setShellySwitch(3, true);
-          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual ON via HAL (sequence-aware)");
+          if (id(actuator_safety).executeCommand("GrowLight", true, 0)) {
+            ESP_LOGI("switch", "Grow Light (Shelly Socket 3): ASG approved ON");
+          } else {
+            ESP_LOGD("switch", "Grow Light (Shelly Socket 3): ASG rejected (already ON or debounced)");
+          }
     turn_off_action:
       - lambda: |-
-          id(hal).setShellySwitch(3, false);
-          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual OFF via HAL (sequence-aware)");
+          if (id(actuator_safety).executeCommand("GrowLight", false, 0)) {
+            ESP_LOGI("switch", "Grow Light (Shelly Socket 3): ASG approved OFF");
+          } else {
+            ESP_LOGD("switch", "Grow Light (Shelly Socket 3): ASG rejected (already OFF or debounced)");
+          }
 
   # === pH Sensor Control ===
   - platform: template
@@ -2601,6 +2626,71 @@ interval:
           // - Sends synchronous ping with proper response handling
           // - Updates health status internally
           id(hal).pingShellyDevice(nullptr);
+
+  # Shelly State Polling Interval - Poll switch states every 5 seconds
+  # This ensures Web UI toggles show actual Shelly state (max 5s delay)
+  # and ASG debouncing uses actual device state, not just requested state
+  - interval: 5s
+    then:
+      - http_request.get:
+          url: "http://192.168.0.130/script/1/api?action=states"
+          capture_response: true
+          headers:
+            Connection: close
+          on_response:
+            then:
+              - lambda: |-
+                  if (response->status_code == 200) {
+                    // Parse JSON response: {"switches": {"0": true, "1": false, ...}, ...}
+                    // 'body' is automatically available as std::string when capture_response: true
+
+                    // Helper to find boolean value for a switch
+                    auto findSwitchState = [&body](const char* key) -> int {
+                      std::string search = std::string("\"") + key + "\":";
+                      size_t pos = body.find(search);
+                      if (pos == std::string::npos) return -1;  // Not found
+                      pos += search.length();
+                      // Skip whitespace
+                      while (pos < body.length() && (body[pos] == ' ' || body[pos] == '\t')) pos++;
+                      if (pos >= body.length()) return -1;
+                      if (body[pos] == 't') return 1;   // true
+                      if (body[pos] == 'f') return 0;   // false
+                      return -1;  // Unknown
+                    };
+
+                    // Update switch states in HAL and ASG
+                    int state0 = findSwitchState("0");
+                    int state2 = findSwitchState("2");
+                    int state3 = findSwitchState("3");
+
+                    if (state0 >= 0) {
+                      bool s0 = (state0 == 1);
+                      id(hal).updateShellySwitchState(0, s0);
+                      id(actuator_safety).updateActualState("AirPump", s0);
+                    }
+                    if (state2 >= 0) {
+                      bool s2 = (state2 == 1);
+                      id(hal).updateShellySwitchState(2, s2);
+                      id(actuator_safety).updateActualState("WastewaterPump", s2);
+                    }
+                    if (state3 >= 0) {
+                      bool s3 = (state3 == 1);
+                      id(hal).updateShellySwitchState(3, s3);
+                      id(actuator_safety).updateActualState("GrowLight", s3);
+                    }
+
+                    // Also update Shelly health since we got a successful response
+                    id(hal).updateShellyHealth(true, 0);
+
+                    ESP_LOGD("shelly_poll", "States: AirPump=%d, Wastewater=%d, GrowLight=%d",
+                             state0, state2, state3);
+                  } else {
+                    ESP_LOGW("shelly_poll", "State poll failed (status %d)", response->status_code);
+                  }
+          on_error:
+            then:
+              - lambda: |-
+                  ESP_LOGW("shelly_poll", "State poll HTTP error");
 
 ################################################################################
 # Scripts - Reusable Automation Sequences

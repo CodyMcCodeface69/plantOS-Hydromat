@@ -500,6 +500,36 @@ public:
      * Mark HTTP request as completed (called from YAML after response)
      */
     virtual void markHttpRequestCompleted() = 0;
+
+    // ============================================================================
+    // SHELLY STATE SYNCHRONIZATION - For debouncing and UI state
+    // ============================================================================
+
+    /**
+     * Update Shelly switch state from external polling
+     * Called from YAML when Shelly states are polled via HTTP
+     * This updates the local state tracking to match actual device state
+     *
+     * @param switchId Shelly switch ID (0-3)
+     * @param state Actual switch state from Shelly (true=ON, false=OFF)
+     */
+    virtual void updateShellySwitchState(uint8_t switchId, bool state) = 0;
+
+    /**
+     * Get tracked Shelly switch state
+     *
+     * @param switchId Shelly switch ID (0-3)
+     * @return Tracked switch state (true=ON, false=OFF)
+     */
+    virtual bool getShellySwitchState(uint8_t switchId) const = 0;
+
+    /**
+     * Get timestamp of last Shelly state update
+     * Used to determine if state is stale
+     *
+     * @return Timestamp in millis() of last successful state update
+     */
+    virtual uint32_t getLastShellyStateUpdate() const = 0;
 };
 
 /**
@@ -618,6 +648,11 @@ public:
     void markHttpRequestStarted() override;
     void markHttpRequestCompleted() override;
 
+    // Shelly state synchronization methods (callable from YAML)
+    void updateShellySwitchState(uint8_t switchId, bool state) override;
+    bool getShellySwitchState(uint8_t switchId) const override;
+    uint32_t getLastShellyStateUpdate() const override;
+
 private:
     // Hardware component references (injected via Python)
     esphome::light::LightState* led_{nullptr};
@@ -705,6 +740,11 @@ private:
         uint32_t estimated_duration_ms{0};  // 0 = unknown/infinite
     };
     SequenceState shelly_sequences_[4];  // One per switch (0-3)
+
+    // Shelly switch state tracking (from polling)
+    // These are updated from YAML polling and used for debouncing
+    bool shelly_switch_states_[4]{false, false, false, false};
+    uint32_t shelly_state_update_time_{0};  // Last successful state update
 };
 
 } // namespace plantos_hal

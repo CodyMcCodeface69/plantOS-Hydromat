@@ -478,5 +478,5 @@ function httpServerHandler(request, response) {
 HTTPServer.registerEndpoint(CONFIG.url_segment, httpServerHandler);
 
 console.log("Air Pump Sequence Controller ready");
-console.log("Endpoint: /script/<ID>/api");
+console.log("Endpoint: /script/1/api");
 console.log("Switches: 0-3 (use id parameter)");

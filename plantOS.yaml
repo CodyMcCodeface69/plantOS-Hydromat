@@ -1919,26 +1919,14 @@ switch:
     optimistic: true
     restore_mode: ALWAYS_OFF
     turn_on_action:
-      # Mark HTTP request started for serialization tracking
-      - lambda: 'id(hal).markHttpRequestStarted();'
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=0&on=true"
-          on_response:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
-          on_error:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
+      # Use HAL for sequence-aware control (stops any running sequence first)
       - lambda: |-
-          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual ON - HTTP sent (no safety validation)");
+          id(hal).setShellySwitch(0, true);
+          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual ON via HAL (sequence-aware)");
     turn_off_action:
-      - lambda: 'id(hal).markHttpRequestStarted();'
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=0&on=false"
-          on_response:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
-          on_error:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
       - lambda: |-
-          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual OFF - HTTP sent");
+          id(hal).setShellySwitch(0, false);
+          ESP_LOGI("switch", "Air Pump (Shelly Socket 0): Manual OFF via HAL (sequence-aware)");
 
   - platform: template
     id: wastewater_pump_shelly_switch
@@ -1946,25 +1934,14 @@ switch:
     optimistic: true
     restore_mode: ALWAYS_OFF
     turn_on_action:
-      - lambda: 'id(hal).markHttpRequestStarted();'
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=2&on=true"
-          on_response:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
-          on_error:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
+      # Use HAL for sequence-aware control (stops any running sequence first)
       - lambda: |-
-          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual ON - HTTP sent (no safety validation)");
+          id(hal).setShellySwitch(2, true);
+          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual ON via HAL (sequence-aware)");
     turn_off_action:
-      - lambda: 'id(hal).markHttpRequestStarted();'
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=2&on=false"
-          on_response:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
-          on_error:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
       - lambda: |-
-          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual OFF - HTTP sent");
+          id(hal).setShellySwitch(2, false);
+          ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): Manual OFF via HAL (sequence-aware)");
 
   - platform: template
     id: grow_light_shelly_switch
@@ -1972,25 +1949,14 @@ switch:
     optimistic: true
     restore_mode: ALWAYS_OFF
     turn_on_action:
-      - lambda: 'id(hal).markHttpRequestStarted();'
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=3&on=true"
-          on_response:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
-          on_error:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
+      # Use HAL for sequence-aware control (stops any running sequence first)
       - lambda: |-
-          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual ON - HTTP sent");
+          id(hal).setShellySwitch(3, true);
+          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual ON via HAL (sequence-aware)");
     turn_off_action:
-      - lambda: 'id(hal).markHttpRequestStarted();'
-      - http_request.get:
-          url: "http://192.168.0.130/rpc/Switch.Set?id=3&on=false"
-          on_response:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
-          on_error:
-            - lambda: 'id(hal).markHttpRequestCompleted();'
       - lambda: |-
-          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual OFF - HTTP sent");
+          id(hal).setShellySwitch(3, false);
+          ESP_LOGI("switch", "Grow Light (Shelly Socket 3): Manual OFF via HAL (sequence-aware)");
 
   # === pH Sensor Control ===
   - platform: template

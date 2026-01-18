@@ -231,6 +231,35 @@ public:
      */
     virtual bool stopAirPumpSequence(bool finalState) = 0;
 
+    /**
+     * Check if a Shelly switch has a running sequence
+     * Used to determine if we need to stop the sequence before sending commands
+     *
+     * @param switchId Shelly switch ID (0-3)
+     * @return true if a sequence is running on this switch
+     */
+    virtual bool isSequenceRunning(uint8_t switchId) const = 0;
+
+    /**
+     * Ensure no sequence is running on a Shelly switch
+     * If a sequence is running, sends stop command before returning
+     * Call this before sending any HTTP command to a Shelly switch that might have sequences
+     *
+     * @param switchId Shelly switch ID (0-3)
+     * @param finalState State to set after stopping (true=ON, false=OFF)
+     */
+    virtual void ensureNoSequenceRunning(uint8_t switchId, bool finalState) = 0;
+
+    /**
+     * Control a Shelly switch via HTTP through the sequence-aware API
+     * This ensures any running sequences are properly stopped
+     * Used by WebUI buttons for consistent behavior
+     *
+     * @param switchId Shelly switch ID (0-3)
+     * @param state Desired switch state (true=ON, false=OFF)
+     */
+    virtual void setShellySwitch(uint8_t switchId, bool state) = 0;
+
     // ============================================================================
     // SENSORS - Called by Controller
     // ============================================================================
@@ -542,6 +571,9 @@ public:
     bool checkShellySwitchStatus(const std::string& pumpId) override;
     bool setAirPumpPattern(const std::vector<uint32_t>& pattern, bool finalState) override;
     bool stopAirPumpSequence(bool finalState) override;
+    bool isSequenceRunning(uint8_t switchId) const override;
+    void ensureNoSequenceRunning(uint8_t switchId, bool finalState) override;
+    void setShellySwitch(uint8_t switchId, bool state) override;
 
     float readPH() override;
     bool hasPhValue() const override;
@@ -667,6 +699,16 @@ private:
     bool http_request_in_progress_{false};
     uint32_t http_request_start_time_{0};
     static constexpr uint32_t HTTP_REQUEST_TIMEOUT = 10000;  // 10 second max for any HTTP request
+
+    // Shelly sequence tracking
+    // Track which switches have active sequences running
+    // This allows us to stop sequences before sending commands
+    struct SequenceState {
+        bool running{false};
+        uint32_t start_time{0};
+        uint32_t estimated_duration_ms{0};  // 0 = unknown/infinite
+    };
+    SequenceState shelly_sequences_[4];  // One per switch (0-3)
 };
 
 } // namespace plantos_hal

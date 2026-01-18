@@ -13,6 +13,12 @@ namespace plantos_hal {
 
 static const char* TAG = "plantos_hal";
 
+// Connection: close header to ensure ESP32 closes socket immediately after response
+// Prevents socket exhaustion from lingering connections
+static const std::list<esphome::http_request::Header> CONNECTION_CLOSE_HEADERS = {
+    {"Connection", "close"}
+};
+
 // ============================================================================
 // DEPENDENCY INJECTION (called from Python __init__.py)
 // ============================================================================
@@ -195,8 +201,9 @@ void ESPHomeHAL::loop() {
                 markHttpRequestStarted();
 
                 // Send retry - use retry URL (may be different from url_cache_ if another command was sent)
+                // Include Connection: close header to prevent socket exhaustion
                 url_cache_ = shelly_retry_url_;
-                http_request_->get(url_cache_);
+                http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
 
                 if (shelly_retry_attempts_ > 0) {
                     shelly_retry_next_time_ = now + 500;  // Schedule next attempt in 500ms
@@ -450,7 +457,8 @@ bool ESPHomeHAL::sendShellyCommand(const std::string& url, const char* deviceNam
 
     // Send HTTP request (asynchronous - returns immediately)
     // Pass cached URL to prevent memory access fault when the local 'url' is destroyed
-    http_request_->get(url_cache_);
+    // Include Connection: close header to prevent socket exhaustion
+    http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
 
     ESP_LOGI(TAG, "%s: HTTP command sent (async)", deviceName);
     return true;
@@ -488,8 +496,9 @@ void ESPHomeHAL::sendShellyMultiAttempt(const std::string& url, const char* devi
     ESP_LOGI(TAG, "%s: Sending HTTP command (%d attempts): %s", deviceName, attempts, url.c_str());
 
     // First attempt immediately - cache URL to prevent use-after-free
+    // Include Connection: close header to prevent socket exhaustion
     url_cache_ = url;
-    http_request_->get(url_cache_);
+    http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
 
     // Schedule additional attempts if needed (retries disabled by default, attempts=1)
     if (attempts > 1) {
@@ -520,9 +529,11 @@ bool ESPHomeHAL::setAirPumpPattern(const std::vector<uint32_t>& pattern, bool fi
 
     // Build pattern string: "30,120,30"
     std::string patternStr;
+    uint32_t totalDurationMs = 0;
     for (size_t i = 0; i < pattern.size(); i++) {
         if (i > 0) patternStr += ",";
         patternStr += std::to_string(pattern[i]);
+        totalDurationMs += pattern[i] * 1000;  // Convert seconds to ms
     }
 
     // Build URL for Shelly script sequence API
@@ -531,11 +542,17 @@ bool ESPHomeHAL::setAirPumpPattern(const std::vector<uint32_t>& pattern, bool fi
                       "/script/1/api?action=sequence&id=0&pattern=" +
                       patternStr + "&finalstate=" + (finalState ? "1" : "0");
 
-    ESP_LOGI(TAG, "AirPump pattern: [%s], finalstate=%s", patternStr.c_str(), finalState ? "ON" : "OFF");
+    ESP_LOGI(TAG, "AirPump pattern: [%s], finalstate=%s, duration=%ums",
+             patternStr.c_str(), finalState ? "ON" : "OFF", totalDurationMs);
 
     // Use multi-attempt to handle transient HTTP connection failures
     // Pattern commands are idempotent - Shelly script stops any existing sequence before starting new one
     sendShellyMultiAttempt(url, "AirPump Pattern", 1);  // Single attempt (retries disabled for now)
+
+    // Track sequence state locally
+    shelly_sequences_[0].running = true;
+    shelly_sequences_[0].start_time = esphome::millis();
+    shelly_sequences_[0].estimated_duration_ms = totalDurationMs;
 
     // Update tracked state to finalState (what it will be after pattern completes)
     pump_states_["AirPump"] = finalState;
@@ -559,10 +576,100 @@ bool ESPHomeHAL::stopAirPumpSequence(bool finalState) {
     // Use multi-attempt to handle transient HTTP connection failures
     sendShellyMultiAttempt(url, "AirPump Stop", 1);  // Single attempt (retries disabled for now)
 
+    // Clear sequence tracking
+    shelly_sequences_[0].running = false;
+    shelly_sequences_[0].estimated_duration_ms = 0;
+
     // Update tracked state
     pump_states_["AirPump"] = finalState;
 
     return true;
+}
+
+// ============================================================================
+// SHELLY SEQUENCE AWARENESS - Check and stop running sequences
+// ============================================================================
+
+bool ESPHomeHAL::isSequenceRunning(uint8_t switchId) const {
+    if (switchId > 3) {
+        return false;
+    }
+
+    const auto& seq = shelly_sequences_[switchId];
+    if (!seq.running) {
+        return false;
+    }
+
+    // If we have an estimated duration, check if sequence should have completed
+    if (seq.estimated_duration_ms > 0) {
+        uint32_t elapsed = esphome::millis() - seq.start_time;
+        if (elapsed >= seq.estimated_duration_ms) {
+            // Sequence should have completed - don't mark as running
+            // Note: Can't clear the flag here since this is a const method
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void ESPHomeHAL::ensureNoSequenceRunning(uint8_t switchId, bool finalState) {
+    if (switchId > 3) {
+        ESP_LOGW(TAG, "ensureNoSequenceRunning: Invalid switch ID %d", switchId);
+        return;
+    }
+
+    // Check if there's a running sequence we need to stop
+    if (isSequenceRunning(switchId)) {
+        ESP_LOGI(TAG, "Stopping running sequence on switch %d before new command", switchId);
+
+        // Send stop command via script API (works for all switches 0-3)
+        std::string url = std::string("http://") + SHELLY_IP +
+                          "/script/1/api?action=" + (finalState ? "on" : "off") +
+                          "&id=" + std::to_string(switchId);
+
+        sendShellyMultiAttempt(url, "Sequence Stop", 1);
+
+        // Clear sequence tracking
+        shelly_sequences_[switchId].running = false;
+        shelly_sequences_[switchId].estimated_duration_ms = 0;
+    }
+}
+
+void ESPHomeHAL::setShellySwitch(uint8_t switchId, bool state) {
+    if (switchId > 3) {
+        ESP_LOGW(TAG, "setShellySwitch: Invalid switch ID %d", switchId);
+        return;
+    }
+
+    if (!http_request_) {
+        ESP_LOGW(TAG, "setShellySwitch: HTTP not configured");
+        return;
+    }
+
+    // Always use the script API for sequence-aware control
+    // This ensures any running sequences are stopped properly
+    // The Shelly script's on/off handlers call stopSequence() internally
+    std::string url = std::string("http://") + SHELLY_IP +
+                      "/script/1/api?action=" + (state ? "on" : "off") +
+                      "&id=" + std::to_string(switchId);
+
+    ESP_LOGI(TAG, "Shelly switch %d → %s (via script API)", switchId, state ? "ON" : "OFF");
+
+    sendShellyMultiAttempt(url, "Shelly Switch", 1);
+
+    // Clear sequence tracking for this switch
+    shelly_sequences_[switchId].running = false;
+    shelly_sequences_[switchId].estimated_duration_ms = 0;
+
+    // Update pump state tracking for known pumps
+    if (switchId == 0) {
+        pump_states_["AirPump"] = state;
+    } else if (switchId == 2) {
+        pump_states_["WastewaterPump"] = state;
+    } else if (switchId == 3) {
+        pump_states_["GrowLight"] = state;
+    }
 }
 
 // ============================================================================
@@ -825,8 +932,9 @@ void ESPHomeHAL::pingShellyDevice(std::function<void(bool, uint32_t)> callback) 
     ESP_LOGD(TAG, "Pinging Shelly at %s", url.c_str());
 
     // Cache URL to prevent use-after-free
+    // Include Connection: close header to prevent socket exhaustion
     url_cache_ = url;
-    http_request_->get(url_cache_);
+    http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
 
     // Mark ping as pending and record send time for timeout detection
     shelly_ping_pending_ = true;

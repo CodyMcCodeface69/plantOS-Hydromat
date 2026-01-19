@@ -962,12 +962,33 @@ void ESPHomeHAL::pingShellyDevice(std::function<void(bool, uint32_t)> callback) 
 
     if (container) {
         if (container->status_code == 200) {
-            // Try to parse uptime from response body
-            // Response format: {"status": "ok", "uptime": <seconds>, "ts": <timestamp_ms>}
-            // We'll just check status code for now - YAML callback parses the JSON
             reachable = true;
-            ESP_LOGD(TAG, "Shelly ping success (status %d, %ums)",
-                     container->status_code, container->duration_ms);
+
+            // Parse uptime from response body
+            // Response format: {"status": "ok", "uptime": <seconds>, "ts": <timestamp_ms>}
+            char body[256] = {0};
+            size_t body_len = std::min(container->content_length, sizeof(body) - 1);
+            if (body_len > 0) {
+                container->read(reinterpret_cast<uint8_t*>(body), body_len);
+                body[body_len] = '\0';
+
+                // Find "uptime": in the response
+                const char* uptime_key = strstr(body, "\"uptime\":");
+                if (uptime_key) {
+                    uptime_key += 9;  // Skip past "uptime":
+                    // Skip whitespace
+                    while (*uptime_key == ' ' || *uptime_key == '\t') uptime_key++;
+                    // Parse the number
+                    uptime = 0;
+                    while (*uptime_key >= '0' && *uptime_key <= '9') {
+                        uptime = uptime * 10 + (*uptime_key - '0');
+                        uptime_key++;
+                    }
+                }
+            }
+
+            ESP_LOGD(TAG, "Shelly ping success (status %d, uptime %us, %ums)",
+                     container->status_code, uptime, container->duration_ms);
         } else if (container->status_code > 0) {
             ESP_LOGW(TAG, "Shelly ping failed (status %d)", container->status_code);
         } else {
@@ -983,11 +1004,8 @@ void ESPHomeHAL::pingShellyDevice(std::function<void(bool, uint32_t)> callback) 
     // Mark request as completed
     markHttpRequestCompleted();
 
-    // Update health status
-    shelly_reachable_ = reachable;
-    if (reachable) {
-        shelly_last_ping_ms_ = esphome::millis();
-    }
+    // Update health status with parsed uptime
+    updateShellyHealth(reachable, uptime);
 
     // Call callback if provided
     if (callback) {

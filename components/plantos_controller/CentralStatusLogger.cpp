@@ -325,11 +325,8 @@ void CentralStatusLogger::logStatus() {
     }
 
     printSeparator('=');
-    ESP_LOGI(TAG, "  PLANTOS SYSTEM STATUS REPORT");
+    ESP_LOGI(TAG, "  PLANTOS STATUS - %s", getFormattedTime().c_str());
     printSeparator('=');
-
-    // System Time
-    ESP_LOGI(TAG, "System Time: %s", getFormattedTime().c_str());
 
     // 420 easter egg: Print ASCII art at 4:20 AM and PM
     if (mode420_) {
@@ -340,9 +337,7 @@ void CentralStatusLogger::logStatus() {
         if (timeinfo->tm_year >= (2020 - 1900) &&
             (timeinfo->tm_hour == 4 || timeinfo->tm_hour == 16) &&
             timeinfo->tm_min == 20) {
-            ESP_LOGI(TAG, "");
             print420Art();
-            ESP_LOGI(TAG, "");
         }
     }
 
@@ -351,289 +346,118 @@ void CentralStatusLogger::logStatus() {
         printAlertBanner();
     }
 
-    ESP_LOGI(TAG, "");
-
     // Network Status
-    ESP_LOGI(TAG, "--- NETWORK STATUS ---");
-    ESP_LOGI(TAG, "  IP Address: %s", currentIP.c_str());
+    ESP_LOGI(TAG, "--- NETWORK ---");
+    std::string webStatus = webServerOnline ? (webServerClientConnected ? "Online (Client)" : "Online") : "Offline";
+    ESP_LOGI(TAG, "  IP: %s | Web: %s", currentIP.c_str(), webStatus.c_str());
 
-    if (webServerOnline) {
-        if (webServerClientConnected) {
-            ESP_LOGI(TAG, "  Web Server: ONLINE (Client Connected)");
-        } else {
-            ESP_LOGI(TAG, "  Web Server: ONLINE (No Clients)");
-        }
-    } else {
-        ESP_LOGI(TAG, "  Web Server: OFFLINE");
-    }
-
-    ESP_LOGI(TAG, "");
-
-    // Hardware Status (I²C and UART Devices)
-    ESP_LOGI(TAG, "--- HARDWARE STATUS ---");
+    // Hardware Status - flat list of all devices
+    ESP_LOGI(TAG, "--- HARDWARE ---");
 
     // I²C Devices
-    if (i2cScanPerformed) {
-        ESP_LOGI(TAG, "  I²C Devices:");
-        if (i2cDevices.empty()) {
-            ESP_LOGW(TAG, "    No I²C devices found");
-        } else {
-            // Separate devices into found and missing critical
-            std::vector<I2CDeviceInfo> foundDevices;
-            std::vector<I2CDeviceInfo> missingCritical;
-
-            for (const auto& device : i2cDevices) {
-                if (device.found) {
-                    foundDevices.push_back(device);
-                } else if (device.critical) {
-                    missingCritical.push_back(device);
-                }
-            }
-
-            // Display found devices in green
-            if (!foundDevices.empty()) {
-                for (const auto& device : foundDevices) {
-                    // ANSI Green: \033[32m, Reset: \033[0m
-                    ESP_LOGI(TAG, "    \033[32m✓ 0x%02X: %s\033[0m", device.address, device.name.c_str());
-                }
-            }
-
-            // Display missing critical devices in red (or yellow if non-critical or UART alternative exists)
-            if (!missingCritical.empty()) {
-                for (const auto& device : missingCritical) {
-                    // Special case: EZO pH I2C missing but UART version is present
-                    bool isEzoPh = (device.address == 0x61 || device.name.find("EZO pH") != std::string::npos);
-                    bool uartEzoPhPresent = false;
-
-                    if (isEzoPh && uartStatusUpdated) {
-                        // Check if UART EZO pH sensor is ready
-                        for (const auto& uart : uartDevices) {
-                            if (uart.name.find("EZO pH") != std::string::npos && uart.ready) {
-                                uartEzoPhPresent = true;
-                                break;
-                            }
+    if (i2cScanPerformed && !i2cDevices.empty()) {
+        for (const auto& device : i2cDevices) {
+            if (device.found) {
+                ESP_LOGI(TAG, "  \033[32m✓ 0x%02X: %s\033[0m", device.address, device.name.c_str());
+            } else if (device.critical) {
+                // Special case: EZO pH I2C missing but UART version is present
+                bool isEzoPh = (device.address == 0x61 || device.name.find("EZO pH") != std::string::npos);
+                bool uartEzoPhPresent = false;
+                if (isEzoPh && uartStatusUpdated) {
+                    for (const auto& uart : uartDevices) {
+                        if (uart.name.find("EZO pH") != std::string::npos && uart.ready) {
+                            uartEzoPhPresent = true;
+                            break;
                         }
                     }
-
-                    // Special case: BME280 environmental sensor (non-critical)
-                    bool isBME280 = (device.address == 0x76 || device.name.find("BME280") != std::string::npos);
-
-                    if (isEzoPh && uartEzoPhPresent) {
-                        // ANSI Yellow: \033[33m, Reset: \033[0m
-                        ESP_LOGW(TAG, "    \033[33m⚠ 0x%02X: %s (I2C not used - UART version active)\033[0m",
-                                device.address, device.name.c_str());
-                    } else if (isBME280) {
-                        // ANSI Yellow: \033[33m, Reset: \033[0m
-                        ESP_LOGW(TAG, "    \033[33m⚠ 0x%02X: %s (Non-critical environmental sensor - system operates normally)\033[0m",
-                                device.address, device.name.c_str());
-                    } else {
-                        // ANSI Red: \033[31m, Reset: \033[0m
-                        ESP_LOGE(TAG, "    \033[31m✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
-                    }
+                }
+                if (isEzoPh && uartEzoPhPresent) {
+                    ESP_LOGW(TAG, "  \033[33m⚠ 0x%02X: %s (UART active)\033[0m", device.address, device.name.c_str());
+                } else {
+                    ESP_LOGE(TAG, "  \033[31m✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
                 }
             }
-
-            ESP_LOGI(TAG, "    Total: %d found", foundDevices.size());
         }
-    } else {
-        ESP_LOGI(TAG, "  I²C: Scan not yet performed");
     }
 
     // UART Devices
-    if (uartStatusUpdated) {
-        ESP_LOGI(TAG, "  UART Devices:");
-        if (uartDevices.empty()) {
-            ESP_LOGW(TAG, "    No UART devices configured");
-        } else {
-            // Separate devices into ready and not ready
-            std::vector<UARTDeviceInfo> readyDevices;
-            std::vector<UARTDeviceInfo> notReadyCritical;
-
-            for (const auto& device : uartDevices) {
-                if (device.ready) {
-                    readyDevices.push_back(device);
-                } else if (device.critical) {
-                    notReadyCritical.push_back(device);
-                }
+    if (uartStatusUpdated && !uartDevices.empty()) {
+        for (const auto& device : uartDevices) {
+            if (device.ready) {
+                ESP_LOGI(TAG, "  \033[32m✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
+            } else if (device.critical) {
+                ESP_LOGE(TAG, "  \033[31m✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
             }
-
-            // Display ready devices in green
-            if (!readyDevices.empty()) {
-                for (const auto& device : readyDevices) {
-                    // ANSI Green: \033[32m, Reset: \033[0m
-                    if (device.status.empty()) {
-                        ESP_LOGI(TAG, "    \033[32m✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
-                    } else {
-                        ESP_LOGI(TAG, "    \033[32m✓ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
-                    }
-                }
-            }
-
-            // Display not ready critical devices in red
-            if (!notReadyCritical.empty()) {
-                for (const auto& device : notReadyCritical) {
-                    // ANSI Red: \033[31m, Reset: \033[0m
-                    if (device.status.empty()) {
-                        ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
-                    } else {
-                        ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
-                    }
-                }
-            }
-
-            ESP_LOGI(TAG, "    Total: %d ready", readyDevices.size());
         }
-    } else {
-        ESP_LOGI(TAG, "  UART: Status not yet updated");
     }
 
     // 1-Wire Devices
-    if (oneWireStatusUpdated) {
-        ESP_LOGI(TAG, "  1-Wire Devices:");
-        if (oneWireDevices.empty()) {
-            ESP_LOGW(TAG, "    No 1-Wire devices configured");
-        } else {
-            // Separate devices into ready and not ready
-            std::vector<OneWireDeviceInfo> readyDevices;
-            std::vector<OneWireDeviceInfo> notReadyCritical;
-
-            for (const auto& device : oneWireDevices) {
-                if (device.ready) {
-                    readyDevices.push_back(device);
-                } else if (device.critical) {
-                    notReadyCritical.push_back(device);
+    if (oneWireStatusUpdated && !oneWireDevices.empty()) {
+        for (const auto& device : oneWireDevices) {
+            if (device.ready) {
+                if (device.status.empty()) {
+                    ESP_LOGI(TAG, "  \033[32m✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
+                } else {
+                    ESP_LOGI(TAG, "  \033[32m✓ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
                 }
+            } else if (device.critical) {
+                ESP_LOGE(TAG, "  \033[31m✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
             }
-
-            // Display ready devices in green
-            if (!readyDevices.empty()) {
-                for (const auto& device : readyDevices) {
-                    // ANSI Green: \033[32m, Reset: \033[0m
-                    if (device.status.empty()) {
-                        ESP_LOGI(TAG, "    \033[32m✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
-                    } else {
-                        ESP_LOGI(TAG, "    \033[32m✓ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
-                    }
-                }
-            }
-
-            // Display not ready critical devices in red
-            if (!notReadyCritical.empty()) {
-                for (const auto& device : notReadyCritical) {
-                    // ANSI Red: \033[31m, Reset: \033[0m
-                    if (device.status.empty()) {
-                        ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
-                    } else {
-                        ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
-                    }
-                }
-            }
-
-            ESP_LOGI(TAG, "    Total: %d ready", readyDevices.size());
         }
-    } else {
-        ESP_LOGI(TAG, "  1-Wire: Status not yet updated");
     }
 
     // Shelly HTTP Devices
-    if (shellyStatusUpdated_) {
-        ESP_LOGI(TAG, "  Shelly Devices:");
-        if (shellyDevices_.empty()) {
-            ESP_LOGW(TAG, "    No Shelly devices configured");
-        } else {
-            for (const auto& device : shellyDevices_) {
-                if (device.reachable) {
-                    // Format uptime as human-readable
-                    uint32_t uptime = device.uptime_seconds;
-                    uint32_t hours = uptime / 3600;
-                    uint32_t mins = (uptime % 3600) / 60;
-                    // ANSI Green: \033[32m, Reset: \033[0m
-                    ESP_LOGI(TAG, "    \033[32m✓ %s (%s) - Online (uptime: %uh %um)\033[0m",
-                             device.name.c_str(), device.ip.c_str(), hours, mins);
-                } else {
-                    // ANSI Red for offline devices
-                    ESP_LOGE(TAG, "    \033[31m✗ %s (%s) - OFFLINE\033[0m",
-                             device.name.c_str(), device.ip.c_str());
-                }
+    if (shellyStatusUpdated_ && !shellyDevices_.empty()) {
+        for (const auto& device : shellyDevices_) {
+            if (device.reachable) {
+                uint32_t hours = device.uptime_seconds / 3600;
+                uint32_t mins = (device.uptime_seconds % 3600) / 60;
+                ESP_LOGI(TAG, "  \033[32m✓ %s (%s) - up %uh%um\033[0m", device.name.c_str(), device.ip.c_str(), hours, mins);
+            } else {
+                ESP_LOGE(TAG, "  \033[31m✗ %s (%s) - OFFLINE\033[0m", device.name.c_str(), device.ip.c_str());
             }
         }
-    } else {
-        ESP_LOGI(TAG, "  Shelly: Status not yet checked");
     }
 
-    // Water Level Sensors (Binary Sensors)
+    // Water Level Sensors - compact status
     if (waterLevelSensorsAvailable) {
-        ESP_LOGI(TAG, "  Water Level Sensors:");
-
         bool highSensor = waterLevelHighSensor;
         bool lowSensor = waterLevelLowSensor;
-
-        // Interpret sensor states
-        if (!highSensor && !lowSensor) {
-            // Both sensors OFF: Water level is below LOW sensor
-            // ANSI Yellow: \033[33m, Reset: \033[0m
-            ESP_LOGW(TAG, "    \033[33m⚠ Water level LOW or sensors disconnected\033[0m");
-            ESP_LOGW(TAG, "    \033[33m  HIGH sensor: OFF, LOW sensor: OFF\033[0m");
+        if (highSensor && lowSensor) {
+            ESP_LOGI(TAG, "  \033[32m✓ Water Level: FULL (H=ON, L=ON)\033[0m");
         } else if (lowSensor && !highSensor) {
-            // LOW sensor ON, HIGH sensor OFF: Water level between sensors
-            // ANSI Green: \033[32m, Reset: \033[0m
-            ESP_LOGI(TAG, "    \033[32m✓ Lower sensor active, high pending\033[0m");
-            ESP_LOGI(TAG, "    \033[32m  HIGH sensor: OFF, LOW sensor: ON\033[0m");
-        } else if (highSensor && lowSensor) {
-            // Both sensors ON: Water level is at or above HIGH sensor
-            // ANSI Green: \033[32m, Reset: \033[0m
-            ESP_LOGI(TAG, "    \033[32m✓ Both sensors active - tank full\033[0m");
-            ESP_LOGI(TAG, "    \033[32m  HIGH sensor: ON, LOW sensor: ON\033[0m");
+            ESP_LOGI(TAG, "  \033[32m✓ Water Level: NORMAL (H=OFF, L=ON)\033[0m");
+        } else if (!highSensor && !lowSensor) {
+            ESP_LOGW(TAG, "  \033[33m⚠ Water Level: LOW (H=OFF, L=OFF)\033[0m");
         } else {
-            // HIGH sensor ON but LOW sensor OFF: Unusual state (possible sensor fault)
-            // ANSI Red: \033[31m, Reset: \033[0m
-            ESP_LOGE(TAG, "    \033[31m✗ UNUSUAL STATE - HIGH=ON but LOW=OFF\033[0m");
-            ESP_LOGE(TAG, "    \033[31m  Possible sensor fault or wiring issue\033[0m");
+            ESP_LOGE(TAG, "  \033[31m✗ Water Level: ERROR (H=ON, L=OFF)\033[0m");
         }
-    } else {
-        ESP_LOGI(TAG, "  Water Level Sensors: Not configured");
     }
 
-    ESP_LOGI(TAG, "");
-
     // Sensor Data
-    ESP_LOGI(TAG, "--- SENSOR DATA ---");
+    ESP_LOGI(TAG, "--- SENSORS ---");
     if (filteredPH > 0.0f) {
         ESP_LOGI(TAG, "  pH: %.2f", filteredPH);
     } else {
-        ESP_LOGW(TAG, "  pH: No reading available");
+        ESP_LOGW(TAG, "  pH: N/A");
     }
-
     if (waterTempAvailable) {
-        ESP_LOGI(TAG, "  Water Temperature: %.1f°C", waterTemperature);
+        ESP_LOGI(TAG, "  Water Temp: %.1f°C", waterTemperature);
     } else {
-        ESP_LOGW(TAG, "  Water Temperature: No reading available");
+        ESP_LOGW(TAG, "  Water Temp: N/A");
     }
-
-    if (waterLevelSensorsAvailable) {
-        ESP_LOGI(TAG, "  Water Level HIGH: %s", waterLevelHighSensor ? "ON" : "OFF");
-        ESP_LOGI(TAG, "  Water Level LOW: %s", waterLevelLowSensor ? "ON" : "OFF");
-    } else {
-        ESP_LOGW(TAG, "  Water Level Sensors: OFFLINE");
-    }
-
-    ESP_LOGI(TAG, "");
 
     // Calendar Status
-    ESP_LOGI(TAG, "--- CALENDAR STATUS ---");
+    ESP_LOGI(TAG, "--- CALENDAR ---");
     if (calendarStatusUpdated) {
-        ESP_LOGI(TAG, "  Current Day:      %d / 120", calendarCurrentDay);
-        ESP_LOGI(TAG, "  Target pH Range:  %.1f - %.1f", calendarPhMin, calendarPhMax);
-        ESP_LOGI(TAG, "  Nutrient Doses (mL/L):");
-        ESP_LOGI(TAG, "    Nutrient A:     %.2f mL/L", calendarNutrientA);
-        ESP_LOGI(TAG, "    Nutrient B:     %.2f mL/L", calendarNutrientB);
-        ESP_LOGI(TAG, "    Nutrient C:     %.2f mL/L", calendarNutrientC);
-        ESP_LOGI(TAG, "  Automation:       %s", calendarSafeMode ? "DISABLED (Safe Mode)" : "ENABLED");
+        ESP_LOGI(TAG, "  Day: %d/120 | pH: %.1f-%.1f | Auto: %s",
+                 calendarCurrentDay, calendarPhMin, calendarPhMax,
+                 calendarSafeMode ? "OFF" : "ON");
+        ESP_LOGI(TAG, "  Nutrients (mL/L): A=%.2f; B=%.2f; C=%.2f",
+                 calendarNutrientA, calendarNutrientB, calendarNutrientC);
     } else {
-        ESP_LOGW(TAG, "  Calendar not yet configured");
+        ESP_LOGW(TAG, "  Calendar not configured");
     }
-
-    ESP_LOGI(TAG, "");
 
     // Pump Configurations
     // NOTE: Commented out - not needed right now but might be reactivated or repurposed later
@@ -651,94 +475,31 @@ void CentralStatusLogger::logStatus() {
     // ESP_LOGI(TAG, "");
 
     // System State - Unified controller architecture
-    ESP_LOGI(TAG, "--- SYSTEM STATE ---");
-
-    ESP_LOGI(TAG, "  Controller State:   %s", controllerState.c_str());
-
-    ESP_LOGI(TAG, "  Maintenance Mode:   %s", maintenanceMode ? "ENABLED" : "DISABLED");
-
+    ESP_LOGI(TAG, "--- STATE ---");
+    ESP_LOGI(TAG, "  Controller: %s | Maintenance: %s",
+             controllerState.c_str(), maintenanceMode ? "ON" : "OFF");
     if (!psmEventID.empty() && psmEventAge >= 0) {
-        ESP_LOGI(TAG, "  PSM Event:          %s (Status: %d, Age: %lld sec)",
+        ESP_LOGI(TAG, "  PSM: %s (Status: %d, Age: %lld sec)",
                  psmEventID.c_str(), psmEventStatus, (long long)psmEventAge);
-    } else {
-        ESP_LOGI(TAG, "  PSM Event:          None");
     }
 
-    ESP_LOGI(TAG, "");
-
-    // Alert Summary - Active and Resolved Alerts
-    ESP_LOGI(TAG, "--- ALERT STATUS ---");
-
-    // Get active and resolved alerts
+    // Active Alerts (listed under system state)
     std::vector<Alert> active = getActiveAlerts();
-    std::vector<Alert> resolved = getResolvedAlerts();
-
-    // Display active alerts with full context
     if (!active.empty()) {
         ESP_LOGI(TAG, "  Active Alerts: %zu", active.size());
-        ESP_LOGI(TAG, "");
-
         for (size_t i = 0; i < active.size(); i++) {
             const Alert& alert = active[i];
-
-            // ANSI Red: \033[31m, Reset: \033[0m
-            ESP_LOGE(TAG, "    \033[31m[ACTIVE #%zu] %s\033[0m", i + 1, alert.type.c_str());
-            ESP_LOGE(TAG, "      Brief: %s", alert.reason.c_str());
-            ESP_LOGE(TAG, "      Active for: %.1f seconds", alert.getActiveDurationSeconds());
-
-            // Display 4-part error context if available
-            if (!alert.root_cause.empty()) {
-                ESP_LOGE(TAG, "      Root Cause: %s", alert.root_cause.c_str());
-            }
+            ESP_LOGE(TAG, "    \033[31m[%zu] %s: %s (%.0fs)\033[0m",
+                     i + 1, alert.type.c_str(), alert.reason.c_str(),
+                     alert.getActiveDurationSeconds());
             if (!alert.user_action.empty()) {
-                ESP_LOGE(TAG, "      User Action: %s", alert.user_action.c_str());
-            }
-            if (!alert.operation_context.empty()) {
-                ESP_LOGE(TAG, "      Context: %s", alert.operation_context.c_str());
-            }
-            if (!alert.recovery_plan.empty()) {
-                ESP_LOGE(TAG, "      Recovery: %s", alert.recovery_plan.c_str());
-            }
-
-            // Display retry information if applicable
-            if (alert.max_retries > 0) {
-                ESP_LOGE(TAG, "      Retry: %u / %u attempts", alert.retry_count, alert.max_retries);
-            }
-
-            if (i < active.size() - 1) {
-                ESP_LOGI(TAG, "");
+                ESP_LOGE(TAG, "        Action: %s", alert.user_action.c_str());
             }
         }
     } else {
-        ESP_LOGI(TAG, "  Active Alerts: 0 (ALL CLEAR)");
+        ESP_LOGI(TAG, "  Alerts: ALL CLEAR");
     }
-
-    // Display resolved alerts as history
-    if (!resolved.empty()) {
-        ESP_LOGI(TAG, "");
-        ESP_LOGI(TAG, "  Resolved Alerts (History): %zu", resolved.size());
-        ESP_LOGI(TAG, "");
-
-        for (size_t i = 0; i < resolved.size(); i++) {
-            const Alert& alert = resolved[i];
-
-            // ANSI Green: \033[32m, Reset: \033[0m
-            ESP_LOGI(TAG, "    \033[32m[RESOLVED #%zu] %s\033[0m", i + 1, alert.type.c_str());
-            ESP_LOGI(TAG, "      Brief: %s", alert.reason.c_str());
-            ESP_LOGI(TAG, "      Was active for: %.1f seconds", alert.getActiveDurationSeconds());
-
-            // Calculate time since resolution
-            uint32_t time_since_resolved = (esphome::millis() - alert.resolved_timestamp) / 1000;
-            ESP_LOGI(TAG, "      Resolved %u seconds ago", time_since_resolved);
-
-            if (i < resolved.size() - 1) {
-                ESP_LOGI(TAG, "");
-            }
-        }
-    }
-
     printSeparator('=');
-    ESP_LOGI(TAG, "");
 
     // Update last log timestamp
     lastLogTimestamp = esphome::millis();
@@ -893,9 +654,7 @@ void CentralStatusLogger::logWaterLevelStatus(bool high_sensor, bool low_sensor,
         ESP_LOGI(TAG, "  │         │");
         ESP_LOGI(TAG, "  │         │ ← EMPTY");
         ESP_LOGI(TAG, "  └─────────┘");
-        ESP_LOGE(TAG, "  ⚠️⚠️⚠️ DANGER ZONE ⚠️⚠️⚠️");
-        ESP_LOGE(TAG, "  Tank below EMPTY sensor - risk of pump damage!");
-        ESP_LOGE(TAG, "  Add water immediately or disable pumps!");
+        ESP_LOGE(TAG, "  ⚠️ Danger - Tank below Empty");
     }
     // STATE 5: ERROR (HIGH=ON, LOW=OFF) - INVALID STATE
     else {

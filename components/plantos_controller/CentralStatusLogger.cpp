@@ -319,6 +319,7 @@ void CentralStatusLogger::updateCalendarStatus(uint8_t currentDay, float phMin, 
 }
 
 void CentralStatusLogger::logStatus() {
+    // The total length of the status report should be kept under 50 lines (max size of visible web ui logs)
     // Check if status reports are enabled
     if (!enableReports_) {
         return;
@@ -358,7 +359,7 @@ void CentralStatusLogger::logStatus() {
     if (i2cScanPerformed && !i2cDevices.empty()) {
         for (const auto& device : i2cDevices) {
             if (device.found) {
-                ESP_LOGI(TAG, "  \033[32m✓ 0x%02X: %s\033[0m", device.address, device.name.c_str());
+                ESP_LOGI(TAG, "  \033[✓ 0x%02X: %s\033[0m", device.address, device.name.c_str());
             } else if (device.critical) {
                 // Special case: EZO pH I2C missing but UART version is present
                 bool isEzoPh = (device.address == 0x61 || device.name.find("EZO pH") != std::string::npos);
@@ -372,9 +373,9 @@ void CentralStatusLogger::logStatus() {
                     }
                 }
                 if (isEzoPh && uartEzoPhPresent) {
-                    ESP_LOGW(TAG, "  \033[33m⚠ 0x%02X: %s (UART active)\033[0m", device.address, device.name.c_str());
+                    ESP_LOGW(TAG, "  \033[⚠ 0x%02X: %s (UART active)\033[0m", device.address, device.name.c_str());
                 } else {
-                    ESP_LOGE(TAG, "  \033[31m✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
+                    ESP_LOGE(TAG, "  \033[✗ 0x%02X: %s (MISSING)\033[0m", device.address, device.name.c_str());
                 }
             }
         }
@@ -384,9 +385,9 @@ void CentralStatusLogger::logStatus() {
     if (uartStatusUpdated && !uartDevices.empty()) {
         for (const auto& device : uartDevices) {
             if (device.ready) {
-                ESP_LOGI(TAG, "  \033[32m✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
+                ESP_LOGI(TAG, "  \033[✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
             } else if (device.critical) {
-                ESP_LOGE(TAG, "  \033[31m✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
+                ESP_LOGE(TAG, "  \033[✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
             }
         }
     }
@@ -396,12 +397,12 @@ void CentralStatusLogger::logStatus() {
         for (const auto& device : oneWireDevices) {
             if (device.ready) {
                 if (device.status.empty()) {
-                    ESP_LOGI(TAG, "  \033[32m✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
+                    ESP_LOGI(TAG, "  \033[✓ %s (%s)\033[0m", device.name.c_str(), device.port.c_str());
                 } else {
-                    ESP_LOGI(TAG, "  \033[32m✓ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
+                    ESP_LOGI(TAG, "  \033[✓ %s (%s) - %s\033[0m", device.name.c_str(), device.port.c_str(), device.status.c_str());
                 }
             } else if (device.critical) {
-                ESP_LOGE(TAG, "  \033[31m✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
+                ESP_LOGE(TAG, "  \033[✗ %s (%s) - NOT READY\033[0m", device.name.c_str(), device.port.c_str());
             }
         }
     }
@@ -412,9 +413,9 @@ void CentralStatusLogger::logStatus() {
             if (device.reachable) {
                 uint32_t hours = device.uptime_seconds / 3600;
                 uint32_t mins = (device.uptime_seconds % 3600) / 60;
-                ESP_LOGI(TAG, "  \033[32m✓ %s (%s) - up %uh%um\033[0m", device.name.c_str(), device.ip.c_str(), hours, mins);
+                ESP_LOGI(TAG, "  \033[✓ %s (%s) - up %uh%um\033[0m", device.name.c_str(), device.ip.c_str(), hours, mins);
             } else {
-                ESP_LOGE(TAG, "  \033[31m✗ %s (%s) - OFFLINE\033[0m", device.name.c_str(), device.ip.c_str());
+                ESP_LOGE(TAG, "  \033[✗ %s (%s) - OFFLINE\033[0m", device.name.c_str(), device.ip.c_str());
             }
         }
     }
@@ -424,13 +425,13 @@ void CentralStatusLogger::logStatus() {
         bool highSensor = waterLevelHighSensor;
         bool lowSensor = waterLevelLowSensor;
         if (highSensor && lowSensor) {
-            ESP_LOGI(TAG, "  \033[32m✓ Water Level: FULL (H=ON, L=ON)\033[0m");
+            ESP_LOGI(TAG, "  \033[✓ Water Level: FULL (H=ON, L=ON)\033[0m");
         } else if (lowSensor && !highSensor) {
-            ESP_LOGI(TAG, "  \033[32m✓ Water Level: NORMAL (H=OFF, L=ON)\033[0m");
+            ESP_LOGI(TAG, "  \033[✓ Water Level: NORMAL (H=OFF, L=ON)\033[0m");
         } else if (!highSensor && !lowSensor) {
-            ESP_LOGW(TAG, "  \033[33m⚠ Water Level: LOW (H=OFF, L=OFF)\033[0m");
+            ESP_LOGW(TAG, "  \033[⚠ Water Level: LOW (H=OFF, L=OFF)\033[0m");
         } else {
-            ESP_LOGE(TAG, "  \033[31m✗ Water Level: ERROR (H=ON, L=OFF)\033[0m");
+            ESP_LOGE(TAG, "  \033[✗ Water Level: ERROR (H=ON, L=OFF)\033[0m");
         }
     }
 

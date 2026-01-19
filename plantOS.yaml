@@ -2026,6 +2026,25 @@ switch:
           ESP_LOGI("switch", "Night Mode DISABLED");
           id(unified_controller)->setNightModeConfig(false, id(night_start_hour).state, id(night_end_hour).state);
 
+  # === Grow Light Schedule Control ===
+  # When enabled, the controller will automatically control the grow light based on the calendar schedule.
+  # When disabled (default), use Shelly scripts for direct light cycle control - more fail-proof.
+
+  - platform: template
+    name: "01_07_Grow Light Schedule"
+    id: grow_light_schedule_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:lightbulb-auto"
+    turn_on_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Grow Light Schedule ENABLED - controller will manage light based on calendar");
+          id(unified_controller)->setGrowLightScheduleEnabled(true);
+    turn_off_action:
+      - lambda: |-
+          ESP_LOGI("switch", "Grow Light Schedule DISABLED - use Shelly scripts for direct control");
+          id(unified_controller)->setGrowLightScheduleEnabled(false);
+
   # === 11 - Verbose Logging Toggles ===
   # These switches control debug log output for specific components
   # Turning ON enables DEBUG level (verbose), turning OFF sets to INFO level (quiet)

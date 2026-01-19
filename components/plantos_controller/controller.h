@@ -161,6 +161,23 @@ public:
      */
     bool isNightModeHours() const;
 
+    /**
+     * Enable/disable grow light schedule control
+     * When disabled, the controller will not automatically control the grow light
+     * based on the calendar schedule. Use Shelly scripts for direct control instead.
+     * @param enabled true to enable schedule control, false to disable (default: false)
+     */
+    void setGrowLightScheduleEnabled(bool enabled) {
+        grow_light_schedule_enabled_ = enabled;
+        ESP_LOGI("controller", "Grow light schedule control %s", enabled ? "ENABLED" : "DISABLED");
+    }
+
+    /**
+     * Check if grow light schedule control is enabled
+     * @return true if schedule control is enabled
+     */
+    bool isGrowLightScheduleEnabled() const { return grow_light_schedule_enabled_; }
+
     // ========================================================================
     // Public API for External Control (ESPHome services, buttons, etc.)
     // ========================================================================
@@ -344,6 +361,9 @@ private:
     bool night_mode_enabled_{false};      // Night mode toggle
     uint8_t night_mode_start_hour_{22};   // Start hour (0-23), default 22:00
     uint8_t night_mode_end_hour_{8};      // End hour (0-23), default 08:00
+
+    // Grow light schedule control (default: disabled - use Shelly scripts instead)
+    bool grow_light_schedule_enabled_{false};
 
     // Status logger (owned by controller, not injected)
     CentralStatusLogger status_logger_;

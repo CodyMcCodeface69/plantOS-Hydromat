@@ -337,8 +337,10 @@ void PlantOSController::loop() {
     // Time-based Light Control
     // ========================================================================
     // Check if we should update grow light based on calendar schedule
-    // Only run when system is operational (not in SHUTDOWN, PAUSE, or ERROR)
-    if (calendar_manager_ && time_source_ &&
+    // Only run when:
+    // - Grow light schedule is enabled (default: disabled, use Shelly scripts instead)
+    // - System is operational (not in SHUTDOWN, PAUSE, or ERROR)
+    if (grow_light_schedule_enabled_ && calendar_manager_ && time_source_ &&
         current_state_ != ControllerState::SHUTDOWN &&
         current_state_ != ControllerState::PAUSE &&
         current_state_ != ControllerState::ERROR) {

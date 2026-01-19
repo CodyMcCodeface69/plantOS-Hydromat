@@ -291,7 +291,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
     else if (pumpId == "AirPump") {
         // Air pump via Shelly Socket 0 - Use sequence API for consistency
         // This also stops any running sequence when turning on/off manually
-        // Uses multi-attempt to handle transient HTTP connection failures
+        // NOTE: Debouncing is handled by ActuatorSafetyGate, not here
         if (http_request_) {
             std::string url = std::string("http://") + SHELLY_IP +
                               "/script/1/api?action=" + (state ? "on" : "off") + "&id=0";
@@ -582,6 +582,9 @@ bool ESPHomeHAL::stopAirPumpSequence(bool finalState) {
         ESP_LOGW(TAG, "stopAirPumpSequence: HTTP not configured");
         return false;
     }
+
+    // NOTE: Debouncing is handled by ActuatorSafetyGate, not here
+    // HAL is a dumb hardware layer that executes commands
 
     // Use sequence API to stop and set final state
     // action=on or action=off stops any running sequence and sets state

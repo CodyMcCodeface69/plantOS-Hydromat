@@ -227,10 +227,28 @@ void ActuatorSafetyGate::enableCycling(const char* actuatorID, bool enabled) {
                 ESP_LOGE(TAG, "AirPump pattern validation failed - cycling not started");
             }
         } else {
-            // Stop cycling - turn ON (Normal mode = 24/7 ON)
-            hal_->stopAirPumpSequence(true);
+            // Normal mode = 24/7 ON (cycling disabled)
             shelly_cycling_active_ = false;
-            ESP_LOGI(TAG, "AirPump Shelly cycling stopped - continuous ON");
+
+            // ================================================================
+            // DEBOUNCING: Only send HTTP if we have valid state and it differs
+            // ================================================================
+            // At boot (before first state poll), defer - we don't know actual state yet
+            // The state poll callback will handle turning ON if needed after first poll
+            if (state.lastStateSyncTime == 0) {
+                ESP_LOGI(TAG, "AirPump Normal mode requested - deferred until state poll");
+                return;
+            }
+
+            // After polling: check if current state already matches desired (ON)
+            if (state.lastRequestedState == true) {
+                ESP_LOGI(TAG, "AirPump already ON - skipping HTTP (debouncing)");
+                return;
+            }
+
+            // State differs - send command via HAL
+            ESP_LOGI(TAG, "AirPump Shelly cycling stopped - turning ON for continuous operation");
+            hal_->stopAirPumpSequence(true);
         }
         return;  // Don't use internal cycling logic for AirPump
     }
@@ -423,9 +441,13 @@ void ActuatorSafetyGate::updateActualState(const char* actuatorID, bool actualSt
 
     std::string id(actuatorID);
     auto it = actuators_.find(id);
+    uint32_t now = esphome::millis();
 
     if (it != actuators_.end()) {
         ActuatorState& state = it->second;
+
+        // Always update sync timestamp
+        state.lastStateSyncTime = now;
 
         // Only log if state actually differs
         if (state.lastRequestedState != actualState) {
@@ -441,7 +463,7 @@ void ActuatorSafetyGate::updateActualState(const char* actuatorID, bool actualSt
             if (actualState) {
                 // Device is actually ON - if we thought it was OFF, record turn-on time
                 if (state.turnOnTime == 0) {
-                    state.turnOnTime = esphome::millis();
+                    state.turnOnTime = now;
                 }
             } else {
                 // Device is actually OFF
@@ -455,8 +477,9 @@ void ActuatorSafetyGate::updateActualState(const char* actuatorID, bool actualSt
         // Create new entry with the actual state
         ActuatorState& newState = getOrCreateState(id);
         newState.lastRequestedState = actualState;
+        newState.lastStateSyncTime = now;
         if (actualState) {
-            newState.turnOnTime = esphome::millis();
+            newState.turnOnTime = now;
         }
         ESP_LOGD(TAG, "State sync: %s registered with actual state %s",
                  actuatorID, actualState ? "ON" : "OFF");

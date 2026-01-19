@@ -50,6 +50,9 @@ struct ActuatorState {
     uint32_t cyclingLastToggle;   // Timestamp of last cycling toggle (millis())
     bool cyclingCurrentState;     // Current cycling state (true=ON, false=OFF)
 
+    // State sync tracking (for Shelly HTTP-based actuators)
+    uint32_t lastStateSyncTime;   // Timestamp of last updateActualState() call (0 = never synced)
+
     ActuatorState()
         : lastRequestedState(false),
           lastCommandTime(0),
@@ -64,7 +67,8 @@ struct ActuatorState {
           cyclingOnPeriod(0),
           cyclingOffPeriod(0),
           cyclingLastToggle(0),
-          cyclingCurrentState(false) {}
+          cyclingCurrentState(false),
+          lastStateSyncTime(0) {}
 };
 
 /**

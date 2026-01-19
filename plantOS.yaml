@@ -67,7 +67,10 @@ logger:
     time: WARN             # Suppress time synchronization logs (toggle via 11_11)
     http_request: VERBOSE  # Socket lifecycle logging for debugging HTTP issues
     wifi: VERBOSE       # Verbose WiFi logs for connection issues (toggle via 11_10)
-    shelly_poll: INFO   # Suppress Shelly polling logs (toggle via 11_13)
+    shelly_poll: WARN   # Suppress Shelly polling logs (toggle via 11_13)
+    ledc.output: WARN  # Suppress LEDC output logs (toggle via 11_14)
+    template.number: INFO  # Suppress template number logs
+
 
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security
@@ -2063,10 +2066,9 @@ switch:
       - switch.turn_off: verbose_esp_idf
       - switch.turn_off: verbose_time
 # ==== Individual Verbose Logging Switches ====
-# These switches control debug log output for specific components
-# Turning ON enables DEBUG level (verbose), turning OFF sets to INFO level (quiet)
-# To do: Use logger.set_level action (see https://esphome.io/components/logger/#loggerset_level-action)
-# To do: Check correct levels for Debug vs Info
+# These switches control log output for specific components using logger.set_level action
+# Turning ON enables VERBOSE level (most detailed), turning OFF sets to WARN level (quiet)
+# See: https://esphome.io/components/logger/#loggerset_level-action
 
   - platform: template
     name: "11_01_Verbose: Sensor State Updates"
@@ -2078,14 +2080,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: sensor"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("sensor", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: sensor
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: sensor"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("sensor", ESP_LOG_INFO);
+      - logger.set_level:
+          level: WARN
+          tag: sensor
 
   - platform: template
     name: "11_02_Verbose: Text Sensor Updates"
@@ -2097,14 +2101,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: text_sensor"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("text_sensor", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: text_sensor
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: text_sensor"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("text_sensor", ESP_LOG_INFO);
+      - logger.set_level:
+          level: WARN
+          tag: text_sensor
 
   - platform: template
     name: "11_03_Verbose: EZO pH UART"
@@ -2116,14 +2122,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: ezo_ph_uart"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("ezo_ph_uart", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: ezo_ph_uart
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: ezo_ph_uart"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("ezo_ph_uart", ESP_LOG_INFO);
+      - logger.set_level:
+          level: WARN
+          tag: ezo_ph_uart
 
   - platform: template
     name: "11_04_Verbose: Sensor Filter"
@@ -2135,14 +2143,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: sensor_filter"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("sensor_filter", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: sensor_filter
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: sensor_filter"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("sensor_filter", ESP_LOG_INFO);
+      - logger.set_level:
+          level: WARN
+          tag: sensor_filter
 
   - platform: template
     name: "11_05_Verbose: Dallas Temp Sensor"
@@ -2154,14 +2164,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: dallas.temp.sensor"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("dallas.temp.sensor", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: dallas.temp.sensor
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: dallas.temp.sensor"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("dallas.temp.sensor", ESP_LOG_INFO);
+      - logger.set_level:
+          level: WARN
+          tag: dallas.temp.sensor
 
   - platform: template
     name: "11_06_Verbose: PlantOS Controller"
@@ -2173,14 +2185,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: plantos_controller"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("plantos_controller", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: plantos_controller
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: plantos_controller"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("plantos_controller", ESP_LOG_INFO);
+      - logger.set_level:
+          level: WARN
+          tag: plantos_controller
 
   - platform: template
     name: "11_07_Verbose: GPIO Status"
@@ -2192,14 +2206,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: gpio_status"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("gpio_status", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: gpio_status
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: gpio_status"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("gpio_status", ESP_LOG_INFO);
+      - logger.set_level:
+          level: WARN
+          tag: gpio_status
 
   - platform: template
     name: "11_08_Verbose: Component Warnings"
@@ -2211,14 +2227,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: component"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("component", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: component
     turn_off_action:
       - logger.log:
-          format: "Disabling verbose logging for: component (suppressing timing warnings)"
+          format: "Disabling verbose logging for: component"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("component", ESP_LOG_ERROR);
+      - logger.set_level:
+          level: ERROR # Reduced to ERROR only to minimize noise from blocking operations
+          tag: component
 
   - platform: template
     name: "11_09_Verbose: ESP-IDF Framework"
@@ -2230,14 +2248,16 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: esp-idf"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("esp-idf", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: esp-idf
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: esp-idf"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("esp-idf", ESP_LOG_WARN);
+      - logger.set_level:
+          level: WARN
+          tag: esp-idf
 
   - platform: template
     name: "11_10_Enable System Status Reports"
@@ -2276,14 +2296,58 @@ switch:
       - logger.log:
           format: "Enabling verbose logging for: time synchronization"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("time", ESP_LOG_DEBUG);
+      - logger.set_level:
+          level: VERBOSE
+          tag: time
     turn_off_action:
       - logger.log:
           format: "Disabling verbose logging for: time synchronization"
           level: INFO
-      - lambda: |-
-          esp_log_level_set("time", ESP_LOG_INFO);
+      - logger.set_level:
+          level: WARN
+          tag: time
+
+  - platform: template
+    name: "11_12_Verbose: http_request Component"
+    id: verbose_http_request
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: http_request"
+          level: INFO
+      - logger.set_level:
+          level: VERBOSE
+          tag: http_request
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: http_request"
+          level: INFO
+      - logger.set_level:
+          level: WARN
+          tag: http_request
+
+  - platform: template
+    name: "11_12_Verbose: esp32.preferences Component"
+    id: verbose_esp32_preferences
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: esp32.preferences"
+          level: INFO
+      - logger.set_level:
+          level: VERBOSE
+          tag: esp32.preferences
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: esp32.preferences"
+          level: INFO
+      - logger.set_level:
+          level: WARN
+          tag: esp32.preferences
 
   ################################################################################
   # === 12 - DIRECT GPIO CONTROL (HARDWARE TESTING ONLY) ===
@@ -2637,7 +2701,7 @@ interval:
   # Shelly State Polling Interval - Poll switch states every 5 seconds
   # This ensures Web UI toggles show actual Shelly state (max 5s delay)
   # and ASG debouncing uses actual device state, not just requested state
-  - interval: 5s
+  - interval: 31s
     then:
       - http_request.get:
           url: "http://192.168.0.130/script/1/api?action=states"
@@ -2691,6 +2755,16 @@ interval:
 
                     ESP_LOGD("shelly_poll", "States: AirPump=%d, Wastewater=%d, GrowLight=%d",
                              state0, state2, state3);
+
+                    // ================================================================
+                    // NORMAL MODE ACTIVATION: If cycling disabled but AirPump is OFF
+                    // This handles the deferred ON from boot (before first poll)
+                    // Goes through ASG for proper debouncing
+                    // ================================================================
+                    if (state0 == 0 && !id(actuator_safety).isCyclingEnabled("AirPump")) {
+                      ESP_LOGI("shelly_poll", "AirPump OFF but Normal mode desired - activating via ASG");
+                      id(actuator_safety).enableCycling("AirPump", false);  // ASG will send HTTP now that state is synced
+                    }
                   } else {
                     ESP_LOGW("shelly_poll", "State poll failed (status %d)", response->status_code);
                   }

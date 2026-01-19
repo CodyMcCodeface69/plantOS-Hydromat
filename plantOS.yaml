@@ -2757,16 +2757,22 @@ interval:
                       bool s0 = (state0 == 1);
                       id(hal).updateShellySwitchState(0, s0);
                       id(actuator_safety).updateActualState("AirPump", s0);
+                      // Update Web UI toggle to match actual Shelly state
+                      id(air_pump_shelly_switch).publish_state(s0);
                     }
                     if (state2 >= 0) {
                       bool s2 = (state2 == 1);
                       id(hal).updateShellySwitchState(2, s2);
                       id(actuator_safety).updateActualState("WastewaterPump", s2);
+                      // Update Web UI toggle to match actual Shelly state
+                      id(wastewater_pump_shelly_switch).publish_state(s2);
                     }
                     if (state3 >= 0) {
                       bool s3 = (state3 == 1);
                       id(hal).updateShellySwitchState(3, s3);
                       id(actuator_safety).updateActualState("GrowLight", s3);
+                      // Update Web UI toggle to match actual Shelly state
+                      id(grow_light_shelly_switch).publish_state(s3);
                     }
 
                     // Also update Shelly health since we got a successful response

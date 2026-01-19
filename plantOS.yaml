@@ -42,10 +42,9 @@ esp32:
 logger:
   # DEBUG level enables detailed component logging for development
   # This helps diagnose FSM state transitions and sensor callbacks
-  # DEBUGNOLED mode: DEBUG level + light component filtered to INFO
-  # This suppresses LED brightness/color change messages while keeping all other debug info
   # In production, consider INFO or WARN to reduce log noise
-  level: INFO
+  level: VERBOSE
+  initial_level: DEBUG
   # ESP32-C6 uses built-in USB Serial/JTAG controller for logging
   # This must be explicitly configured or boot will hang
   hardware_uart: USB_SERIAL_JTAG
@@ -54,18 +53,21 @@ logger:
   # Use web UI switches (section 11) to toggle verbose logging for these components
   logs:
     adc: NONE              # Suppress ADC component messages
-    light: INFO            # DEBUGNOLED: Suppress LED brightness/color debug messages
+    light: INFO            # Suppress LED brightness/color debug messages
     sensor: INFO           # Suppress sensor state updates (toggle via 11_01)
     text_sensor: INFO      # Suppress text sensor state updates (toggle via 11_02)
-    ezo_ph_uart: INFO      # Suppress EZO pH UART debug logs (toggle via 11_03)
-    sensor_filter: INFO    # Suppress sensor filter buffer logs (toggle via 11_04)
+    ezo_ph_uart: DEBUG      # Suppress EZO pH UART debug logs (toggle via 11_03)
+    sensor_filter: WARN    # Suppress sensor filter buffer logs (toggle via 11_04)
     dallas.temp.sensor: INFO  # Suppress Dallas temp sensor logs (toggle via 11_05)
     plantos_controller: INFO  # Suppress controller PSM check logs (toggle via 11_06)
+    plantos_hal: WARN       # Suppress HAL debug logs (toggle via 11_12)
     gpio_status: INFO      # Suppress GPIO status logs (toggle via 11_07)
     component: ERROR       # Suppress component timing warnings (toggle via 11_08)
-    esp-idf: WARN          # Suppress ESP-IDF GPIO logs (toggle via 11_09)
-    time: INFO             # Suppress time synchronization logs (toggle via 11_11)
-    http_request: INFO  # Socket lifecycle logging for debugging HTTP issues
+    esp-idf: INFO          # Suppress ESP-IDF GPIO logs (toggle via 11_09)
+    time: WARN             # Suppress time synchronization logs (toggle via 11_11)
+    http_request: VERBOSE  # Socket lifecycle logging for debugging HTTP issues
+    wifi: VERBOSE       # Verbose WiFi logs for connection issues (toggle via 11_10)
+    shelly_poll: INFO   # Suppress Shelly polling logs (toggle via 11_13)
 
 wifi:
   # Credentials stored in secrets.yaml (gitignored) for security
@@ -2060,6 +2062,11 @@ switch:
       - switch.turn_off: verbose_component
       - switch.turn_off: verbose_esp_idf
       - switch.turn_off: verbose_time
+# ==== Individual Verbose Logging Switches ====
+# These switches control debug log output for specific components
+# Turning ON enables DEBUG level (verbose), turning OFF sets to INFO level (quiet)
+# To do: Use logger.set_level action (see https://esphome.io/components/logger/#loggerset_level-action)
+# To do: Check correct levels for Debug vs Info
 
   - platform: template
     name: "11_01_Verbose: Sensor State Updates"

@@ -2210,8 +2210,8 @@ void PlantOSController::handleWaterEmptying() {
     // Purple pulse LED handled by LedBehaviorSystem
     uint32_t elapsed = getStateElapsed();
 
-    // Empty duration: 30 seconds (fallback if sensors unavailable)
-    static constexpr uint32_t EMPTY_DURATION_MS = 30000;
+    // Empty duration: 300 seconds (fallback if sensors unavailable)
+    static constexpr uint32_t EMPTY_DURATION_MS = 300000;
 
     // ENTRY: Log and activate wastewater pump (only once per state entry)
     static bool pump_command_sent = false;
@@ -2240,9 +2240,9 @@ void PlantOSController::handleWaterEmptying() {
             return;
         }
 
-        // Request wastewater pump on (30s max duration as safety backup)
+        // Request wastewater pump on (300s max duration as safety backup)
         if (safety_gate_) {
-            bool approved = safety_gate_->executeCommand(WASTEWATER_PUMP, true, 30);  // 30 seconds max
+            bool approved = safety_gate_->executeCommand(WASTEWATER_PUMP, true, 300);  // 300 seconds max
 
             if (!approved) {
                 ESP_LOGE(TAG, "[WATER_EMPTYING] SafetyGate rejected WastewaterPump command");
@@ -2337,9 +2337,9 @@ void PlantOSController::handleWaterEmptying() {
         }
     }
 
-    // TIMEOUT: Safety backup - 30s max drain time
+    // TIMEOUT: Safety backup - 300s max drain time
     if (elapsed >= EMPTY_DURATION_MS) {
-        ESP_LOGW(TAG, "[WATER_EMPTYING] 30s timeout reached - stopping pump");
+        ESP_LOGW(TAG, "[WATER_EMPTYING] 300s timeout reached - stopping pump");
 
         // Stop wastewater pump
         if (safety_gate_) {

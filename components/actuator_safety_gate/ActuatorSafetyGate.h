@@ -309,6 +309,30 @@ public:
     bool validateAirPumpPattern(const std::vector<uint32_t>& pattern) const;
 
     /**
+     * Send a pattern sequence to AirPump via Shelly
+     *
+     * @param pattern Vector of durations in seconds [on, off, on, off, ...]
+     * @param finalState State to set after pattern completes (true=ON, false=OFF)
+     * @return true if pattern was validated and sent, false otherwise
+     *
+     * This method validates the pattern and sends it via HAL.
+     * Controller should use this instead of calling HAL directly.
+     */
+    bool setAirPumpPattern(const std::vector<uint32_t>& pattern, bool finalState);
+
+    /**
+     * Stop any running AirPump sequence and set final state
+     *
+     * @param finalState State to set after stopping (true=ON, false=OFF)
+     * @return true if command was sent, false if debounced (already in desired state)
+     *
+     * Includes debouncing: if we have valid state from polling and the current
+     * state already matches finalState, the HTTP call is skipped.
+     * Controller should use this instead of calling HAL directly.
+     */
+    bool stopAirPumpSequence(bool finalState);
+
+    /**
      * Get the current runtime of an actuator (in seconds)
      *
      * @param actuatorID Unique identifier for the actuator

@@ -634,6 +634,71 @@ bool ActuatorSafetyGate::validateAirPumpPattern(const std::vector<uint32_t>& pat
     return true;
 }
 
+bool ActuatorSafetyGate::setAirPumpPattern(const std::vector<uint32_t>& pattern, bool finalState) {
+    if (!hal_) {
+        ESP_LOGW(TAG, "setAirPumpPattern: HAL not configured");
+        return false;
+    }
+
+    if (pattern.empty()) {
+        ESP_LOGW(TAG, "setAirPumpPattern: Empty pattern");
+        return false;
+    }
+
+    // Validate pattern against max duration limits
+    if (!validateAirPumpPattern(pattern)) {
+        ESP_LOGW(TAG, "setAirPumpPattern: Pattern validation failed");
+        return false;
+    }
+
+    // Send pattern via HAL
+    ESP_LOGI(TAG, "AirPump pattern: sending %zu durations, finalState=%s",
+             pattern.size(), finalState ? "ON" : "OFF");
+    return hal_->setAirPumpPattern(pattern, finalState);
+}
+
+bool ActuatorSafetyGate::stopAirPumpSequence(bool finalState) {
+    if (!hal_) {
+        ESP_LOGW(TAG, "stopAirPumpSequence: HAL not configured");
+        return false;
+    }
+
+    // Get or create AirPump state for debouncing
+    ActuatorState& state = getOrCreateState("AirPump");
+
+    // ========================================================================
+    // DEBOUNCING: Only send HTTP if we have valid state and it differs
+    // ========================================================================
+    // At boot (before first state poll), defer - we don't know actual state yet
+    if (state.lastStateSyncTime == 0) {
+        ESP_LOGI(TAG, "stopAirPumpSequence: Deferred - no state poll yet");
+        return false;
+    }
+
+    // After polling: check if current state already matches desired
+    if (state.lastRequestedState == finalState) {
+        ESP_LOGI(TAG, "AirPump already %s - skipping HTTP (debouncing)", finalState ? "ON" : "OFF");
+        return false;
+    }
+
+    // State differs - send command via HAL
+    ESP_LOGI(TAG, "AirPump sequence stop → %s", finalState ? "ON" : "OFF");
+    bool result = hal_->stopAirPumpSequence(finalState);
+
+    // Update tracked state if successful
+    if (result) {
+        state.lastRequestedState = finalState;
+        state.lastCommandTime = esphome::millis();
+        if (finalState) {
+            state.turnOnTime = esphome::millis();
+        } else {
+            state.turnOnTime = 0;
+        }
+    }
+
+    return result;
+}
+
 // ============================================================================
 // SOFT-START / SOFT-STOP METHODS
 // ============================================================================

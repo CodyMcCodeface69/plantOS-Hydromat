@@ -370,19 +370,20 @@ void PlantOSController::loop() {
             static bool first_run = true;
 
             // Update light state if changed (or on first run)
+            // Uses requestPump to go through ASG for proper tracking
             if (first_run || previous_light_state != should_be_on) {
                 if (should_be_on) {
                     ESP_LOGI(TAG, "Grow light schedule: Turning ON (Day %d, Schedule: %02d:%02d ON / %02d:%02d OFF)",
                              schedule.day_number,
                              schedule.light_on_time / 60, schedule.light_on_time % 60,
                              schedule.light_off_time / 60, schedule.light_off_time % 60);
-                    hal_->setPump("GrowLight", true);
+                    requestPump("GrowLight", true, 0);  // 0 = no duration limit
                 } else {
                     ESP_LOGI(TAG, "Grow light schedule: Turning OFF (Day %d, Schedule: %02d:%02d ON / %02d:%02d OFF)",
                              schedule.day_number,
                              schedule.light_on_time / 60, schedule.light_on_time % 60,
                              schedule.light_off_time / 60, schedule.light_off_time % 60);
-                    hal_->setPump("GrowLight", false);
+                    requestPump("GrowLight", false);
                 }
                 previous_light_state = should_be_on;
                 first_run = false;
@@ -1138,29 +1139,27 @@ void PlantOSController::handlePhInjecting() {
 
         // Send AirPump pattern via Shelly sequence API (single HTTP call for entire pH correction)
         // Pattern: single ON duration covering injection+mixing, finalstate=ON (for IDLE mode)
-        if (hal_) {
+        if (safety_gate_) {
             std::vector<uint32_t> pattern = {total_air_pump_sec};
 
-            // Validate pattern through SafetyGate if available
-            if (safety_gate_ && !safety_gate_->validateAirPumpPattern(pattern)) {
+            // Send pattern through SafetyGate (validates and sends via HAL)
+            if (!safety_gate_->setAirPumpPattern(pattern, true)) {
                 ESP_LOGW(TAG, "AirPump pattern rejected by SafetyGate - using simple ON command");
                 // Fall back to simple ON (no duration limit)
                 requestPump(AIR_PUMP, true, 0);
             } else {
-                // Send pattern to Shelly: ON for total duration, then stay ON (finalstate=1 for IDLE)
-                hal_->setAirPumpPattern(pattern, true);
                 ESP_LOGI(TAG, "AirPump Shelly pattern sent: %u sec ON, then stay ON", total_air_pump_sec);
             }
         } else {
-            ESP_LOGD(TAG, "HAL not configured - air pump control skipped");
+            ESP_LOGD(TAG, "SafetyGate not configured - air pump control skipped");
         }
 
         // Request acid pump via SafetyGate with adaptive duration (will auto-adapt if needed)
         if (!requestPumpAdaptive(ACID_PUMP, true, injection_sec, false)) {
             ESP_LOGE(TAG, "Acid pump rejected by SafetyGate even after adaptation - aborting");
             // Stop air pump sequence since we're aborting
-            if (hal_) {
-                hal_->stopAirPumpSequence(true);  // Stop but keep ON for normal operation
+            if (safety_gate_) {
+                safety_gate_->stopAirPumpSequence(true);  // Stop but keep ON for normal operation
             }
 
             // Set comprehensive alert before ERROR transition
@@ -3055,11 +3054,15 @@ void PlantOSController::turnOffAllPumps() {
     requestPump(WASTEWATER_PUMP, false);
 
     // Stop any running AirPump Shelly sequence and turn OFF
-    if (hal_) {
-        hal_->stopAirPumpSequence(false);  // Stop sequence and turn OFF
-        ESP_LOGI(TAG, "AirPump Shelly sequence stopped - pump OFF");
+    if (safety_gate_) {
+        if (safety_gate_->stopAirPumpSequence(false)) {
+            ESP_LOGI(TAG, "AirPump Shelly sequence stopped - pump OFF");
+        } else {
+            // Debounced (already OFF) or deferred - use simple command as fallback
+            requestPump(AIR_PUMP, false);
+        }
     } else {
-        // Fallback to simple command if HAL not available
+        // Fallback to simple command if SafetyGate not available
         requestPump(AIR_PUMP, false);
     }
 

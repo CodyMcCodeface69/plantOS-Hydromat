@@ -409,6 +409,13 @@ public:
      */
     bool isVerboseMode() const { return verboseMode_; }
 
+    /**
+     * Get short-form alert state for web UI display
+     * @return "Clear" if no active alerts, otherwise short alert description
+     *         Examples: "Clear", "Ph Correction Fail", "Spill Detected"
+     */
+    std::string getAlertStateShort() const;
+
 private:
     // Core system variables
     std::string currentIP;

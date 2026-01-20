@@ -552,6 +552,15 @@ text_sensor:
     update_interval: 5s
 
   - platform: template
+    name: "00_01a_Alert State"
+    id: alert_state_text
+    # Lambda returns current alert state in short form (Clear, pH Critical, etc.)
+    lambda: |-
+      return id(unified_controller)->getStatusLogger()->getAlertStateShort();
+    # Update every 5s to show real-time alert changes
+    update_interval: 5s
+
+  - platform: template
     name: "00_02a_Uptime"
     id: uptime_text
     lambda: |-

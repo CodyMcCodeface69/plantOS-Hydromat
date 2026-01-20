@@ -703,3 +703,81 @@ bool CentralStatusLogger::shouldPrintStatusReport() {
 
     return false;
 }
+
+std::string CentralStatusLogger::getAlertStateShort() const {
+    // Get only active alerts (not resolved)
+    std::vector<Alert> active;
+    for (const auto& alert : activeAlerts) {
+        if (alert.status == AlertStatus::ACTIVE) {
+            active.push_back(alert);
+        }
+    }
+
+    if (active.empty()) {
+        return "Clear";
+    }
+
+    // Helper to convert alert type to human-readable short form
+    auto typeToShort = [](const std::string& type) -> std::string {
+        // pH related
+        if (type == "PH_CRITICAL") return "pH Critical";
+        if (type == "PH_SENSOR_CRITICAL") return "pH Sensor Fail";
+        if (type == "PH_SENSOR_HARDWARE_FAILURE") return "pH Hardware Fail";
+        if (type == "NO_PH_READINGS") return "No pH Readings";
+        if (type == "PH_RANGE") return "pH Out of Range";
+
+        // Calibration
+        if (type.find("CALIBRATION_FAILED") == 0) return "Calibration Fail";
+
+        // Pump rejections
+        if (type == "PUMP_REJECTION_ACID") return "Pump Reject: Acid";
+        if (type == "PUMP_REJECTION_WATER_VALVE") return "Pump Reject: Water";
+        if (type == "PUMP_REJECTION_WASTEWATER") return "Pump Reject: Waste";
+        if (type.find("PUMP_REJECTION_") == 0) return "Pump Rejected";
+        if (type == "PUMP_FAILURE") return "Pump Failure";
+
+        // Safety gate
+        if (type.find("SAFETY_GATE_REJECT") == 0) return "Safety Reject";
+        if (type.find("DURATION_ADAPTED") == 0) return "Duration Adapted";
+
+        // Water sensors
+        if (type == "HARDWARE_WATER_SENSOR_HIGH") return "Water Sensor: High";
+        if (type == "HARDWARE_WATER_SENSOR_LOW") return "Water Sensor: Low";
+        if (type == "WATER_LOW") return "Water Low";
+
+        // Hardware
+        if (type == "HARDWARE_HAL_MISSING") return "HAL Missing";
+        if (type == "SHELLY_OFFLINE") return "Shelly Offline";
+
+        // Temperature
+        if (type == "TEMPERATURE" || type == "TEMP_HIGH") return "Temp High";
+
+        // Spill
+        if (type == "SPILL") return "Spill Detected";
+
+        // PSM related
+        if (type == "PSM_TEST_OK") return "PSM Test OK";
+        if (type == "PSM_TEST_WARNING") return "PSM Warning";
+        if (type == "PSM_RECOVERY") return "PSM Recovery";
+        if (type == "PSM_TEST_UNPLUG") return "PSM Test Active";
+
+        // Default: return type as-is but replace underscores with spaces
+        std::string result = type;
+        for (char& c : result) {
+            if (c == '_') c = ' ';
+        }
+        return result;
+    };
+
+    // Single alert: return its short form
+    if (active.size() == 1) {
+        return typeToShort(active[0].type);
+    }
+
+    // Multiple alerts: show count and first type
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%s (+%zu more)",
+             typeToShort(active[0].type).c_str(),
+             active.size() - 1);
+    return std::string(buf);
+}

@@ -340,19 +340,19 @@ public:
     virtual bool hasWaterLevel() const = 0;
 
     /**
-     * Read water level HIGH sensor (XKC-Y23-V on GPIO10)
+     * Read water level HIGH sensor (XKC-Y23-V on GPIO19 - WTR_HI)
      * @return true if water is at or above HIGH level, false otherwise
      */
     virtual bool readWaterLevelHigh() = 0;
 
     /**
-     * Read water level LOW sensor (XKC-Y23-V on GPIO11)
+     * Read water level LOW sensor (XKC-Y23-V on GPIO20 - WTR_LO)
      * @return true if water is at or above LOW level, false otherwise
      */
     virtual bool readWaterLevelLow() = 0;
 
     /**
-     * Read water level EMPTY sensor (XKC-Y23-V on GPIO16)
+     * Read water level EMPTY sensor (XKC-Y23-V on GPIO21 - WTR_Empty)
      * @return true if water is at or above EMPTY level (minimum safe level), false otherwise
      */
     virtual bool readWaterLevelEmpty() = 0;
@@ -550,7 +550,6 @@ public:
     void set_led(esphome::light::LightState* led);
     void set_ph_sensor(esphome::sensor::Sensor* ph_sensor);
     void set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component);
-    void set_light_sensor(esphome::sensor::Sensor* light_sensor);
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
     void set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor);
@@ -660,7 +659,6 @@ private:
 
     esphome::sensor::Sensor* ph_sensor_{nullptr};
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_{nullptr};
-    esphome::sensor::Sensor* light_sensor_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_high_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_low_sensor_{nullptr};

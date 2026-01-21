@@ -24,7 +24,6 @@ ESPHomeHAL = plantos_hal_ns.class_('ESPHomeHAL', HAL, cg.Component)
 CONF_SYSTEM_LED = 'system_led'
 CONF_PH_SENSOR = 'ph_sensor'
 CONF_PH_SENSOR_COMPONENT = 'ph_sensor_component'
-CONF_LIGHT_SENSOR = 'light_sensor'
 CONF_TEMPERATURE_SENSOR = 'temperature_sensor'
 CONF_WATER_LEVEL_HIGH_SENSOR = 'water_level_high_sensor'
 CONF_WATER_LEVEL_LOW_SENSOR = 'water_level_low_sensor'
@@ -69,7 +68,6 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_SYSTEM_LED): cv.use_id(light.LightState),
     cv.Required(CONF_PH_SENSOR): cv.use_id(sensor.Sensor),
     cv.Required(CONF_PH_SENSOR_COMPONENT): cv.use_id(cg.PollingComponent),  # EZO pH UART component
-    cv.Optional(CONF_LIGHT_SENSOR): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_WATER_LEVEL_HIGH_SENSOR): cv.use_id(binary_sensor.BinarySensor),
     cv.Optional(CONF_WATER_LEVEL_LOW_SENSOR): cv.use_id(binary_sensor.BinarySensor),
@@ -131,11 +129,6 @@ async def to_code(config):
     # Inject pH sensor component dependency (for calibration and direct readings)
     ph_component = await cg.get_variable(config[CONF_PH_SENSOR_COMPONENT])
     cg.add(var.set_ph_sensor_component(ph_component))
-
-    # Inject light sensor dependency (optional)
-    if CONF_LIGHT_SENSOR in config:
-        light_sensor = await cg.get_variable(config[CONF_LIGHT_SENSOR])
-        cg.add(var.set_light_sensor(light_sensor))
 
     # Inject temperature sensor dependency (optional)
     if CONF_TEMPERATURE_SENSOR in config:

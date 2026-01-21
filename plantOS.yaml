@@ -218,20 +218,20 @@ external_components:
                  i2c_scanner, time_dummy, wdt_manager, plantos_hal,
                  plantos_controller]
 
-# I²C Bus - SDA: GPIO6, SCL: GPIO7
+# I²C Bus - SDA: GPIO23, SCL: GPIO22 (BME280 - air temp sensor)
 # Requires 4.7kΩ external pull-ups to 3.3V
 i2c:
   id: i2c_bus
-  sda: GPIO6  # Serial Data Line (change if using different pins)
-  scl: GPIO7  # Serial Clock Line (change if using different pins)
+  sda: GPIO23  # Serial Data Line
+  scl: GPIO22  # Serial Clock Line
   scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
   frequency: 100kHz  # Standard mode - change to 400kHz for fast mode if needed
 
-# UART for EZO pH sensor - TX: GPIO4, RX: GPIO5, 9600 baud
+# UART for EZO pH sensor - TX: GPIO17, RX: GPIO16, 9600 baud
 uart:
   id: uart_bus
-  tx_pin: GPIO4  # ESP32-C6 TX -> EZO RX
-  rx_pin: GPIO5  # ESP32-C6 RX -> EZO TX
+  tx_pin: GPIO17  # ESP32-C6 TX -> EZO RX
+  rx_pin: GPIO16  # ESP32-C6 RX -> EZO TX
   baud_rate: 9600  # Standard baud rate for EZO carrier boards
   data_bits: 8
   parity: NONE
@@ -300,11 +300,11 @@ light:
 # PWM Outputs: Actuator Control via Logic Level MOSFETs
 #
 # Five actuators controlled by 3.3V logic level MOSFETs with PWM support:
-# - GPIO18: Magnetic Valve (fresh water inlet)
-# - GPIO19: pH Pump (acid dosing for pH down)
-# - GPIO20: Grow Pump (grow phase nutrients)       → HAL: NutrientPumpA → Calendar: nutrient_A_ml_per_liter
-# - GPIO21: Micro Pump (micronutrients)            → HAL: NutrientPumpB → Calendar: nutrient_B_ml_per_liter
-# - GPIO22: Bloom Pump (bloom phase nutrients)     → HAL: NutrientPumpC → Calendar: nutrient_C_ml_per_liter
+# - GPIO1: Magnetic Valve (fresh water inlet) - MagValve on PCB
+# - GPIO4: pH Pump (acid dosing for pH down) - PP_1 on PCB
+# - GPIO5: Grow Pump (grow phase nutrients)  - PP_2 on PCB → HAL: NutrientPumpA → Calendar: nutrient_A_ml_per_liter
+# - GPIO6: Micro Pump (micronutrients)       - PP_3 on PCB → HAL: NutrientPumpB → Calendar: nutrient_B_ml_per_liter
+# - GPIO7: Bloom Pump (bloom phase nutrients)- PP_4 on PCB → HAL: NutrientPumpC → Calendar: nutrient_C_ml_per_liter
 #
 # Using LEDC (LED PWM Controller) for both on/off and PWM control
 # Frequency: 1000 Hz (1 kHz) - suitable for most pumps and valves
@@ -313,31 +313,31 @@ light:
 output:
   - platform: ledc
     id: mag_valve_output
-    pin: GPIO18
+    pin: GPIO1
     frequency: 1000 Hz
     zero_means_zero: true  # 0% duty cycle = truly off
 
   - platform: ledc
     id: pump_ph_output
-    pin: GPIO19
+    pin: GPIO4
     frequency: 1000 Hz
     zero_means_zero: true
 
   - platform: ledc
     id: pump_grow_output
-    pin: GPIO20
+    pin: GPIO5
     frequency: 1000 Hz
     zero_means_zero: true
 
   - platform: ledc
     id: pump_micro_output
-    pin: GPIO21
+    pin: GPIO6
     frequency: 1000 Hz
     zero_means_zero: true
 
   - platform: ledc
     id: pump_bloom_output
-    pin: GPIO22
+    pin: GPIO7
     frequency: 1000 Hz
     zero_means_zero: true
 
@@ -356,13 +356,13 @@ output:
 # Only requires a single data line plus ground (can parasitic power from data).
 # Requires 4.7kΩ pull-up resistor between data line and 3.3V.
 #
-# NOTE: Relocated to GPIO23 (GPIO16 is UART TX, caused 1-Wire timing conflicts).
+# GPIO18 - WTR_TEMP on PCB
 # Wastewater pump now controlled via Shelly Plus 4PM Socket 2 (HTTP control).
 # AirPump actuator now controlled via Shelly Plus 4PM Socket 0 (HTTP control).
 ################################################################################
 one_wire:
   - platform: gpio
-    pin: GPIO23
+    pin: GPIO18
     id: one_wire_bus
 
 # Sensor Configuration
@@ -371,13 +371,13 @@ sensor:
   #
   # DS18B20 is a 1-Wire digital temperature sensor providing accurate readings
   # from -55°C to +125°C with ±0.5°C accuracy between -10°C and +85°C.
-  # Connected to GPIO23 via one_wire bus.
+  # Connected to GPIO18 (WTR_TEMP on PCB) via one_wire bus.
   #
-  # HARDWARE: Requires 4.7kΩ pull-up resistor between data line (GPIO23) and 3.3V
+  # HARDWARE: Requires 4.7kΩ pull-up resistor between data line (GPIO18) and 3.3V
   # WIRING:
   #   - Red wire (VCC) -> 3.3V
   #   - Black wire (GND) -> GND
-  #   - Yellow wire (DATA) -> GPIO23 (with 4.7kΩ pull-up to 3.3V)
+  #   - Yellow wire (DATA) -> GPIO18 (with 4.7kΩ pull-up to 3.3V)
   - platform: dallas_temp
     one_wire_id: one_wire_bus
     id: water_temperature
@@ -393,14 +393,15 @@ sensor:
   # - Humidity: 0-100% RH (±3% accuracy)
   # - Pressure: 300-1100 hPa (±1 hPa accuracy)
   #
-  # Connected via I²C bus (GPIO6=SDA, GPIO7=SCL) at address 0x76 or 0x77
+  # Connected via I²C bus (GPIO23=SDA, GPIO22=SCL) at address 0x76 or 0x77
+  # AIR_TEMP on PCB
   #
   # HARDWARE: Requires 4.7kΩ pull-up resistors on SDA/SCL to 3.3V (already present on I²C bus)
   # WIRING:
   #   - VCC -> 3.3V
   #   - GND -> GND
-  #   - SDA -> GPIO6 (I²C SDA with 4.7kΩ pull-up)
-  #   - SCL -> GPIO7 (I²C SCL with 4.7kΩ pull-up)
+  #   - SDA -> GPIO23 (I²C SDA with 4.7kΩ pull-up)
+  #   - SCL -> GPIO22 (I²C SCL with 4.7kΩ pull-up)
   #
   # NOTE: This sensor is non-critical - system operates normally if not present
   # FIXED: Changed platform from 'bme280' to 'bme280_i2c' (ESPHome 2024.2.0+ requirement)
@@ -455,9 +456,9 @@ sensor:
 #
 # Three capacitive non-contact water level sensors for tank monitoring and
 # automatic feeding:
-# - HIGH sensor (GPIO10): Tank full indicator
-# - LOW sensor (GPIO11): Auto-feed trigger level (moved up from original position)
-# - EMPTY sensor (GPIO16): Minimum safe level (prevents pump dry-running)
+# - HIGH sensor (GPIO19): Tank full indicator - WTR_HI on PCB
+# - LOW sensor (GPIO20): Auto-feed trigger level - WTR_LO on PCB
+# - EMPTY sensor (GPIO21): Minimum safe level (prevents pump dry-running) - WTR_Empty on PCB
 #
 # 5 Tank States (3-Sensor System):
 # - HIGH=ON, LOW=ON:         FULL (above HIGH)
@@ -467,13 +468,13 @@ sensor:
 # - HIGH=ON, LOW=OFF:        ERROR (invalid - check wiring)
 ################################################################################
 binary_sensor:
-  # XKC-Y23-V Water Level HIGH Sensor (GPIO10)
+  # XKC-Y23-V Water Level HIGH Sensor (GPIO19 - WTR_HI)
   # Triggers when water reaches high level (tank near full)
   - platform: gpio
     id: water_level_high_sensor
     name: "00_07_Water Level HIGH"
     pin:
-      number: GPIO10
+      number: GPIO19
       mode:
         input: true
         pulldown: true  # Pull down when sensor not active
@@ -488,14 +489,14 @@ binary_sensor:
       then:
         - logger.log: "Water level HIGH cleared - tank below high level"
 
-  # XKC-Y23-V Water Level LOW Sensor (GPIO11)
+  # XKC-Y23-V Water Level LOW Sensor (GPIO20 - WTR_LO)
   # Triggers when water reaches auto-feed trigger level (moved up from original position)
   # When OFF (with EMPTY=ON), triggers automatic feeding once per day
   - platform: gpio
     id: water_level_low_sensor
     name: "00_08_Water Level LOW"
     pin:
-      number: GPIO11
+      number: GPIO20
       mode:
         input: true
         pulldown: true  # Pull down when sensor not active
@@ -510,14 +511,14 @@ binary_sensor:
       then:
         - logger.log: "Water level LOW cleared - entering auto-feed trigger zone"
 
-  # XKC-Y23-V Water Level EMPTY Sensor (GPIO16)
+  # XKC-Y23-V Water Level EMPTY Sensor (GPIO21 - WTR_Empty)
   # Triggers when water is at absolute minimum safe level
   # Prevents pump dry-running during drain operations
   - platform: gpio
     id: water_level_empty_sensor
     name: "00_09_Water Level EMPTY"
     pin:
-      number: GPIO16
+      number: GPIO21
       mode:
         input: true
         pulldown: true  # Pull down when sensor not active
@@ -1010,7 +1011,7 @@ button:
       then:
         - lambda: |-
             // Read current PWM slider value (0-100%)
-            float pwm_percent = id(pwm_gpio19_slider).state;
+            float pwm_percent = id(pwm_gpio4_slider).state;
             float pwm_intensity = pwm_percent / 100.0f;
 
             // Log calibration instructions
@@ -1038,7 +1039,7 @@ button:
       then:
         - lambda: |-
             // Read current PWM slider value (0-100%)
-            float pwm_percent = id(pwm_gpio20_slider).state;
+            float pwm_percent = id(pwm_gpio5_slider).state;
             float pwm_intensity = pwm_percent / 100.0f;
 
             // Log calibration instructions
@@ -1066,7 +1067,7 @@ button:
       then:
         - lambda: |-
             // Read current PWM slider value (0-100%)
-            float pwm_percent = id(pwm_gpio21_slider).state;
+            float pwm_percent = id(pwm_gpio6_slider).state;
             float pwm_intensity = pwm_percent / 100.0f;
 
             // Log calibration instructions
@@ -1094,7 +1095,7 @@ button:
       then:
         - lambda: |-
             // Read current PWM slider value (0-100%)
-            float pwm_percent = id(pwm_gpio22_slider).state;
+            float pwm_percent = id(pwm_gpio7_slider).state;
             float pwm_intensity = pwm_percent / 100.0f;
 
             // Log calibration instructions
@@ -1323,20 +1324,20 @@ plantos_hal:
   system_led: system_led
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
-  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO23
-  water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO10
-  water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO11 (auto-feed trigger level)
-  water_level_empty_sensor: water_level_empty_sensor  # XKC-Y23-V capacitive sensor on GPIO16 (minimum safe level)
+  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO18 (WTR_TEMP)
+  water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO19 (WTR_HI)
+  water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO20 (WTR_LO - auto-feed trigger level)
+  water_level_empty_sensor: water_level_empty_sensor  # XKC-Y23-V capacitive sensor on GPIO21 (WTR_Empty - minimum safe level)
   time_source: sntp_time  # Time source for clock-based pH scheduling (time_dummy for testing, can be NTP/RTC)
 
   # Actuator GPIO Outputs (Phase 2: Hardware Control - 5 GPIO actuators)
   # NOTE: Using outputs instead of switches to avoid circular dependency
   # Pump Mapping: Grow=NutrientPumpA, Micro=NutrientPumpB, Bloom=NutrientPumpC
-  mag_valve_output: mag_valve_output        # GPIO18 - Magnetic valve (fresh water inlet)
-  pump_ph_output: pump_ph_output            # GPIO19 - pH pump (acid dosing)
-  pump_grow_output: pump_grow_output        # GPIO20 - Grow pump (NutrientPumpA → nutrient_A_ml_per_liter)
-  pump_micro_output: pump_micro_output      # GPIO21 - Micro pump (NutrientPumpB → nutrient_B_ml_per_liter)
-  pump_bloom_output: pump_bloom_output      # GPIO22 - Bloom pump (NutrientPumpC → nutrient_C_ml_per_liter)
+  mag_valve_output: mag_valve_output        # GPIO1 - Magnetic valve (fresh water inlet) - MagValve on PCB
+  pump_ph_output: pump_ph_output            # GPIO4 - pH pump (acid dosing) - PP_1 on PCB
+  pump_grow_output: pump_grow_output        # GPIO5 - Grow pump (NutrientPumpA → nutrient_A_ml_per_liter) - PP_2 on PCB
+  pump_micro_output: pump_micro_output      # GPIO6 - Micro pump (NutrientPumpB → nutrient_B_ml_per_liter) - PP_3 on PCB
+  pump_bloom_output: pump_bloom_output      # GPIO7 - Bloom pump (NutrientPumpC → nutrient_C_ml_per_liter) - PP_4 on PCB
 
   # Shelly HTTP Switches (MVP: AirPump and WastewaterPump via Shelly Plus 4PM @ 192.168.0.130)
   air_pump_switch: air_pump_shelly_switch           # Shelly Socket 0 - Air pump for pH mixing
@@ -2390,69 +2391,69 @@ switch:
   ################################################################################
 
   - platform: template
-    id: direct_gpio18_switch
-    name: "14_01_Set GPIO18 - Water Valve to HIGH"
+    id: direct_gpio1_switch
+    name: "14_01_Set GPIO1 - Water Valve to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
     turn_on_action:
       - output.turn_on: mag_valve_output
-      - logger.log: "DIRECT GPIO18 (Water Valve) -> HIGH (bypassing all safety!)"
+      - logger.log: "DIRECT GPIO1 (Water Valve) -> HIGH (bypassing all safety!)"
     turn_off_action:
       - output.turn_off: mag_valve_output
-      - logger.log: "DIRECT GPIO18 (Water Valve) -> LOW"
+      - logger.log: "DIRECT GPIO1 (Water Valve) -> LOW"
 
   - platform: template
-    id: direct_gpio19_switch
-    name: "14_02_Set GPIO19 - Acid Pump to HIGH"
+    id: direct_gpio4_switch
+    name: "14_02_Set GPIO4 - Acid Pump to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
     turn_on_action:
       - output.turn_on: pump_ph_output
-      - logger.log: "DIRECT GPIO19 (Acid Pump) -> HIGH (bypassing all safety!)"
+      - logger.log: "DIRECT GPIO4 (Acid Pump) -> HIGH (bypassing all safety!)"
     turn_off_action:
       - output.turn_off: pump_ph_output
-      - logger.log: "DIRECT GPIO19 (Acid Pump) -> LOW"
+      - logger.log: "DIRECT GPIO4 (Acid Pump) -> LOW"
 
   - platform: template
-    id: direct_gpio20_switch
-    name: "14_03_Set GPIO20 - Nutrient Pump A to HIGH"
+    id: direct_gpio5_switch
+    name: "14_03_Set GPIO5 - Nutrient Pump A to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
     turn_on_action:
       - output.turn_on: pump_grow_output
-      - logger.log: "DIRECT GPIO20 (Nutrient Pump A) -> HIGH (bypassing all safety!)"
+      - logger.log: "DIRECT GPIO5 (Nutrient Pump A) -> HIGH (bypassing all safety!)"
     turn_off_action:
       - output.turn_off: pump_grow_output
-      - logger.log: "DIRECT GPIO20 (Nutrient Pump A) -> LOW"
+      - logger.log: "DIRECT GPIO5 (Nutrient Pump A) -> LOW"
 
   - platform: template
-    id: direct_gpio21_switch
-    name: "14_04_Set GPIO21 - Nutrient Pump B to HIGH"
+    id: direct_gpio6_switch
+    name: "14_04_Set GPIO6 - Nutrient Pump B to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
     turn_on_action:
       - output.turn_on: pump_micro_output
-      - logger.log: "DIRECT GPIO21 (Nutrient Pump B) -> HIGH (bypassing all safety!)"
+      - logger.log: "DIRECT GPIO6 (Nutrient Pump B) -> HIGH (bypassing all safety!)"
     turn_off_action:
       - output.turn_off: pump_micro_output
-      - logger.log: "DIRECT GPIO21 (Nutrient Pump B) -> LOW"
+      - logger.log: "DIRECT GPIO6 (Nutrient Pump B) -> LOW"
 
   - platform: template
-    id: direct_gpio22_switch
-    name: "14_05_Set GPIO22 - Nutrient Pump C to HIGH"
+    id: direct_gpio7_switch
+    name: "14_05_Set GPIO7 - Nutrient Pump C to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
     turn_on_action:
       - output.turn_on: pump_bloom_output
-      - logger.log: "DIRECT GPIO22 (Nutrient Pump C) -> HIGH (bypassing all safety!)"
+      - logger.log: "DIRECT GPIO7 (Nutrient Pump C) -> HIGH (bypassing all safety!)"
     turn_off_action:
       - output.turn_off: pump_bloom_output
-      - logger.log: "DIRECT GPIO22 (Nutrient Pump C) -> LOW"
+      - logger.log: "DIRECT GPIO7 (Nutrient Pump C) -> LOW"
 
 ################################################################################
 # Number Components: PWM Sliders for Direct GPIO Control
@@ -2520,8 +2521,8 @@ number:
 
   # === 15 - PWM Control Sliders ===
   - platform: template
-    id: pwm_gpio18_slider
-    name: "15_01_GPIO18 - Water Valve PWM"
+    id: pwm_gpio1_slider
+    name: "15_01_GPIO1 - Water Valve PWM"
     icon: "mdi:water-percent"
     optimistic: true
     min_value: 0
@@ -2536,12 +2537,12 @@ number:
           id: mag_valve_output
           level: !lambda 'return x / 100.0;'
       - logger.log:
-          format: "PWM GPIO18 (Water Valve) set to %.0f%% (duty cycle: %.2f)"
+          format: "PWM GPIO1 (Water Valve) set to %.0f%% (duty cycle: %.2f)"
           args: ['x', 'x / 100.0']
 
   - platform: template
-    id: pwm_gpio19_slider
-    name: "15_02_GPIO19 - Acid Pump PWM"
+    id: pwm_gpio4_slider
+    name: "15_02_GPIO4 - Acid Pump PWM"
     icon: "mdi:flask-percent"
     optimistic: true
     min_value: 0
@@ -2556,12 +2557,12 @@ number:
           id: pump_ph_output
           level: !lambda 'return x / 100.0;'
       - logger.log:
-          format: "PWM GPIO19 (Acid Pump) set to %.0f%% (duty cycle: %.2f)"
+          format: "PWM GPIO4 (Acid Pump) set to %.0f%% (duty cycle: %.2f)"
           args: ['x', 'x / 100.0']
 
   - platform: template
-    id: pwm_gpio20_slider
-    name: "15_03_GPIO20 - Nutrient Pump A PWM"
+    id: pwm_gpio5_slider
+    name: "15_03_GPIO5 - Nutrient Pump A PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0
@@ -2576,12 +2577,12 @@ number:
           id: pump_grow_output
           level: !lambda 'return x / 100.0;'
       - logger.log:
-          format: "PWM GPIO20 (Nutrient Pump A) set to %.0f%% (duty cycle: %.2f)"
+          format: "PWM GPIO5 (Nutrient Pump A) set to %.0f%% (duty cycle: %.2f)"
           args: ['x', 'x / 100.0']
 
   - platform: template
-    id: pwm_gpio21_slider
-    name: "15_04_GPIO21 - Nutrient Pump B PWM"
+    id: pwm_gpio6_slider
+    name: "15_04_GPIO6 - Nutrient Pump B PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0
@@ -2596,12 +2597,12 @@ number:
           id: pump_micro_output
           level: !lambda 'return x / 100.0;'
       - logger.log:
-          format: "PWM GPIO21 (Nutrient Pump B) set to %.0f%% (duty cycle: %.2f)"
+          format: "PWM GPIO6 (Nutrient Pump B) set to %.0f%% (duty cycle: %.2f)"
           args: ['x', 'x / 100.0']
 
   - platform: template
-    id: pwm_gpio22_slider
-    name: "15_05_GPIO22 - Nutrient Pump C PWM"
+    id: pwm_gpio7_slider
+    name: "15_05_GPIO7 - Nutrient Pump C PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0
@@ -2616,7 +2617,7 @@ number:
           id: pump_bloom_output
           level: !lambda 'return x / 100.0;'
       - logger.log:
-          format: "PWM GPIO22 (Nutrient Pump C) set to %.0f%% (duty cycle: %.2f)"
+          format: "PWM GPIO7 (Nutrient Pump C) set to %.0f%% (duty cycle: %.2f)"
           args: ['x', 'x / 100.0']
 
   # === 14 - Air Pump Cycling Period Configuration ===
@@ -2679,36 +2680,25 @@ interval:
           ESP_LOGD("gpio_status", "");
           ESP_LOGD("gpio_status", "=== GPIO Status Report ===");
 
-          // Sensors
-          log_gpio(0, "Light Sensor (ADC)");
-          log_gpio(4, "EZO pH UART TX");
-          log_gpio(5, "EZO pH UART RX");
-
-          // I2C Bus
-          log_gpio(6, "I2C SDA");
-          log_gpio(7, "I2C SCL");
+          // Actuators (Active HIGH outputs - top of PCB)
+          log_gpio(1, "Water Valve (MagValve)");
+          log_gpio(4, "Acid Pump (PP_1)");
+          log_gpio(5, "Nutrient Pump A (PP_2)");
+          log_gpio(6, "Nutrient Pump B (PP_3)");
+          log_gpio(7, "Nutrient Pump C (PP_4)");
 
           // System LED
           log_gpio(8, "System LED (WS2812)");
 
-          // Water Level Sensors (future - XKC-Y23-V)
-          log_gpio(10, "Water Level HIGH");
-          log_gpio(11, "Water Level LOW");
-
-          // GPIO16 available for future use
-          // log_gpio(16, "Available");
-
-          // Temperature Sensor (1-Wire)
-          log_gpio(23, "Water Temp (DS18B20)");
-
-          // Actuators (Active HIGH outputs)
-          log_gpio(18, "Water Valve (Mag)");
-          log_gpio(19, "Acid Pump (pH)");
-          log_gpio(20, "Nutrient Pump (Grow)");
-          log_gpio(21, "Nutrient Pump (Micro)");
-          log_gpio(22, "Nutrient Pump (Bloom)");
-          // GPIO23 is now DS18B20 (1-Wire), not a GPIO output
-          // log_gpio(23, "Wastewater Pump");  // Removed - not MVP
+          // Sensors (bottom of PCB)
+          log_gpio(16, "EZO pH UART RX");
+          log_gpio(17, "EZO pH UART TX");
+          log_gpio(18, "Water Temp (WTR_TEMP)");
+          log_gpio(19, "Water Level HIGH (WTR_HI)");
+          log_gpio(20, "Water Level LOW (WTR_LO)");
+          log_gpio(21, "Water Level EMPTY (WTR_Empty)");
+          log_gpio(22, "I2C SCL (AIR_TEMP)");
+          log_gpio(23, "I2C SDA (AIR_TEMP)");
 
           ESP_LOGD("gpio_status", "=========================");
           ESP_LOGD("gpio_status", "");

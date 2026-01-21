@@ -28,7 +28,8 @@
       "Bash(grep:*)",
       "Bash(ls:*)",
       "Bash(git show:*)",
-      "WebFetch(domain:esphome.io)"
+      "WebFetch(domain:esphome.io)",
+      "WebFetch(domain:www.waveshare.com)"
     ],
     "deny": [],
     "ask": []

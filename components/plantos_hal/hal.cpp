@@ -38,11 +38,6 @@ void ESPHomeHAL::set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponen
     ESP_LOGI(TAG, "pH sensor component configured for calibration and direct readings");
 }
 
-void ESPHomeHAL::set_light_sensor(esphome::sensor::Sensor* light_sensor) {
-    light_sensor_ = light_sensor;
-    ESP_LOGI(TAG, "Light sensor configured");
-}
-
 void ESPHomeHAL::set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor) {
     temperature_sensor_ = temperature_sensor;
     ESP_LOGI(TAG, "Temperature sensor configured");
@@ -55,12 +50,12 @@ void ESPHomeHAL::set_water_level_high_sensor(esphome::binary_sensor::BinarySenso
 
 void ESPHomeHAL::set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor) {
     water_level_low_sensor_ = sensor;
-    ESP_LOGI(TAG, "Water level LOW sensor configured (GPIO11 - auto-feed trigger level)");
+    ESP_LOGI(TAG, "Water level LOW sensor configured (GPIO20 - WTR_LO - auto-feed trigger level)");
 }
 
 void ESPHomeHAL::set_water_level_empty_sensor(esphome::binary_sensor::BinarySensor* sensor) {
     water_level_empty_sensor_ = sensor;
-    ESP_LOGI(TAG, "Water level EMPTY sensor configured (GPIO16 - minimum safe level)");
+    ESP_LOGI(TAG, "Water level EMPTY sensor configured (GPIO21 - WTR_Empty - minimum safe level)");
 }
 
 void ESPHomeHAL::set_time_source(esphome::time::RealTimeClock* time_source) {
@@ -74,32 +69,32 @@ void ESPHomeHAL::set_time_source(esphome::time::RealTimeClock* time_source) {
 
 void ESPHomeHAL::set_mag_valve_output(esphome::output::FloatOutput* output) {
     mag_valve_output_ = output;
-    ESP_LOGI(TAG, "Magnetic valve output configured (GPIO18 - PWM capable)");
+    ESP_LOGI(TAG, "Magnetic valve output configured (GPIO1 - MagValve - PWM capable)");
 }
 
 void ESPHomeHAL::set_pump_ph_output(esphome::output::FloatOutput* output) {
     pump_ph_output_ = output;
-    ESP_LOGI(TAG, "pH pump output configured (GPIO19 - PWM capable)");
+    ESP_LOGI(TAG, "pH pump output configured (GPIO4 - PP_1 - PWM capable)");
 }
 
 void ESPHomeHAL::set_pump_grow_output(esphome::output::FloatOutput* output) {
     pump_grow_output_ = output;
-    ESP_LOGI(TAG, "Grow pump output configured (GPIO20 - PWM capable)");
+    ESP_LOGI(TAG, "Grow pump output configured (GPIO5 - PP_2 - PWM capable)");
 }
 
 void ESPHomeHAL::set_pump_micro_output(esphome::output::FloatOutput* output) {
     pump_micro_output_ = output;
-    ESP_LOGI(TAG, "Micro pump output configured (GPIO21 - PWM capable)");
+    ESP_LOGI(TAG, "Micro pump output configured (GPIO6 - PP_3 - PWM capable)");
 }
 
 void ESPHomeHAL::set_pump_bloom_output(esphome::output::FloatOutput* output) {
     pump_bloom_output_ = output;
-    ESP_LOGI(TAG, "Bloom pump output configured (GPIO22 - PWM capable)");
+    ESP_LOGI(TAG, "Bloom pump output configured (GPIO7 - PP_4 - PWM capable)");
 }
 
 void ESPHomeHAL::set_pump_wastewater_output(esphome::output::FloatOutput* output) {
     pump_wastewater_output_ = output;
-    ESP_LOGI(TAG, "Wastewater pump output configured (GPIO23 - PWM capable)");
+    ESP_LOGI(TAG, "Wastewater pump output configured (Shelly Socket 2 - HTTP control)");
 }
 
 void ESPHomeHAL::set_air_pump_switch(esphome::switch_::Switch* sw) {
@@ -135,9 +130,6 @@ void ESPHomeHAL::setup() {
     }
     if (!ph_sensor_component_) {
         ESP_LOGW(TAG, "pH sensor component not configured - calibration and direct readings will be disabled");
-    }
-    if (!light_sensor_) {
-        ESP_LOGW(TAG, "Light sensor not configured - light intensity monitoring will be disabled");
     }
     if (!temperature_sensor_) {
         ESP_LOGW(TAG, "Temperature sensor not configured - temperature monitoring will be disabled");
@@ -251,7 +243,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
 
     // Route to appropriate GPIO output based on pump ID
     if (pumpId == "AcidPump") {
-        // pH pump (acid dosing) on GPIO19
+        // pH pump (acid dosing) on GPIO4 (PP_1)
         if (pump_ph_output_) {
             pump_ph_output_->set_level(dutyCycle);
         } else {
@@ -259,7 +251,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
         }
     }
     else if (pumpId == "NutrientPumpA") {
-        // Grow pump on GPIO20
+        // Grow pump on GPIO5 (PP_2)
         if (pump_grow_output_) {
             pump_grow_output_->set_level(dutyCycle);
         } else {
@@ -267,7 +259,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
         }
     }
     else if (pumpId == "NutrientPumpB") {
-        // Micro pump on GPIO21
+        // Micro pump on GPIO6 (PP_3)
         if (pump_micro_output_) {
             pump_micro_output_->set_level(dutyCycle);
         } else {
@@ -275,7 +267,7 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
         }
     }
     else if (pumpId == "NutrientPumpC") {
-        // Bloom pump on GPIO22
+        // Bloom pump on GPIO7 (PP_4)
         if (pump_bloom_output_) {
             pump_bloom_output_->set_level(dutyCycle);
         } else {
@@ -391,7 +383,7 @@ void ESPHomeHAL::setValve(const std::string& valveId, bool state) {
 
     // Route to appropriate GPIO output based on valve ID
     if (valveId == "WaterValve") {
-        // Magnetic valve (fresh water inlet) on GPIO18
+        // Magnetic valve (fresh water inlet) on GPIO1 (MagValve)
         if (mag_valve_output_) {
             if (state) {
                 mag_valve_output_->turn_on();
@@ -810,14 +802,13 @@ bool ESPHomeHAL::hasWaterLevelSensors() const {
 }
 
 float ESPHomeHAL::readLightIntensity() {
-    if (!light_sensor_ || !light_sensor_->has_state()) {
-        return 0.0f;
-    }
-    return light_sensor_->state;
+    // Light sensor removed from hardware - always return 0
+    return 0.0f;
 }
 
 bool ESPHomeHAL::hasLightIntensity() const {
-    return light_sensor_ && light_sensor_->has_state();
+    // Light sensor removed from hardware
+    return false;
 }
 
 float ESPHomeHAL::readTemperature() {

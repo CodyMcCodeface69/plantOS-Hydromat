@@ -1,5 +1,5 @@
 # PlantOS ESP32-C6 GPIO Pinout Reference
-
+This file documents the current pinout of the esp32 and explains the connected devices. For a guide on how to change the pinout in the code, see PINOUT_CHANGE.md.
 **Waveshare ESP32-C6-DEV-KIT-N8 Hardware Configuration**
 
 Last Updated: 2025-01-22

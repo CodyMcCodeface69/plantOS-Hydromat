@@ -2,7 +2,7 @@
 This file documents the current pinout of the esp32 and explains the connected devices. For a guide on how to change the pinout in the code, see PINOUT_CHANGE.md.
 **Waveshare ESP32-C6-DEV-KIT-N8 Hardware Configuration**
 
-Last Updated: 2025-01-22
+Last Updated: 2025-01-23
 Firmware: PlantOS v1.0
 
 ---
@@ -22,14 +22,14 @@ Firmware: PlantOS v1.0
 | **SYSTEM** |||||
 | GPIO8 | System LED | WS2812 RGB (RMT) | Output | `led_` | No |
 | **SENSORS (Bottom of PCB)** |||||
-| GPIO16 | EZO pH UART RX | ESP←EZO | Input | `ph_sensor_component_` | No |
-| GPIO17 | EZO pH UART TX | ESP→EZO | Output | `ph_sensor_component_` | No |
-| GPIO18 | DS18B20 Water Temp | WTR_TEMP (1-Wire) | Bidirectional | `temperature_sensor_` | ✅ 4.7kΩ to 3.3V |
-| GPIO19 | Water Level HIGH | WTR_HI | Input | `water_level_high_sensor_` | No |
-| GPIO20 | Water Level LOW | WTR_LO | Input | `water_level_low_sensor_` | No |
-| GPIO21 | Water Level EMPTY | WTR_Empty | Input | `water_level_empty_sensor_` | No |
-| GPIO22 | I2C SCL | AIR_TEMP (BME280) | Output | - | ✅ 4.7kΩ to 3.3V |
-| GPIO23 | I2C SDA | AIR_TEMP (BME280) | Bidirectional | - | ✅ 4.7kΩ to 3.3V |
+| GPIO3 | DS18B20 Water Temp | WTR_TEMP (1-Wire) | Bidirectional | `temperature_sensor_` | ✅ 4.7kΩ to 3.3V |
+| GPIO17 | Water Level HIGH | WTR_HI | Input | `water_level_high_sensor_` | No |
+| GPIO18 | EZO pH UART TX | ESP→EZO | Output | `ph_sensor_component_` | No |
+| GPIO19 | EZO pH UART RX | ESP←EZO | Input | `ph_sensor_component_` | No |
+| GPIO20 | I2C SDA | AIR_TEMP (BME280) | Bidirectional | - | ✅ 4.7kΩ to 3.3V |
+| GPIO21 | I2C SCL | AIR_TEMP (BME280) | Output | - | ✅ 4.7kΩ to 3.3V |
+| GPIO22 | Water Level EMPTY | WTR_Empty | Input | `water_level_empty_sensor_` | No |
+| GPIO23 | Water Level LOW | WTR_LO | Input | `water_level_low_sensor_` | No |
 
 [Waveshare ESP32-C6-DEV-KIT-N8 Official Pinout](https://www.waveshare.com/wiki/ESP32-C6-DEV-KIT-N8#Pinout)
 
@@ -49,14 +49,14 @@ ACTUATOR SIDE (Top of board)
 
 SENSOR SIDE (Bottom of board)
 ┌─────────────────────────────────┐
-│  GPIO16 - EZO pH RX (ESP←EZO)   │
-│  GPIO17 - EZO pH TX (ESP→EZO)   │
-│  GPIO18 - DS18B20 (WTR_TEMP)    │
-│  GPIO19 - Water Level HIGH      │
-│  GPIO20 - Water Level LOW       │
-│  GPIO21 - Water Level EMPTY     │
-│  GPIO22 - I2C SCL (AIR_TEMP)    │
-│  GPIO23 - I2C SDA (AIR_TEMP)    │
+│  GPIO3  - DS18B20 (WTR_TEMP)    │
+│  GPIO17 - Water Level HIGH      │
+│  GPIO18 - EZO pH TX (ESP→EZO)   │
+│  GPIO19 - EZO pH RX (ESP←EZO)   │
+│  GPIO20 - I2C SDA (AIR_TEMP)    │
+│  GPIO21 - I2C SCL (AIR_TEMP)    │
+│  GPIO22 - Water Level EMPTY     │
+│  GPIO23 - Water Level LOW       │
 └─────────────────────────────────┘
 
 UNCHANGED
@@ -72,8 +72,8 @@ UNCHANGED
 ### 📡 Communication Interfaces
 
 #### UART Bus (EZO pH Sensor)
-- **GPIO17** (TX): ESP32 → EZO RX
-- **GPIO16** (RX): ESP32 ← EZO TX
+- **GPIO18** (TX): ESP32 → EZO RX
+- **GPIO19** (RX): ESP32 ← EZO TX
 - **Baud Rate**: 9600 (8N1)
 - **Component**: `ezo_ph_uart` (Atlas Scientific EZO pH circuit)
 - **Notes**:
@@ -82,8 +82,8 @@ UNCHANGED
   - Three-point calibration (pH 4.0, 7.0, 10.01)
 
 #### I2C Bus (BME280 Environmental Sensor)
-- **GPIO23** (SDA): Serial Data Line
-- **GPIO22** (SCL): Serial Clock Line
+- **GPIO20** (SDA): Serial Data Line
+- **GPIO21** (SCL): Serial Clock Line
 - **Frequency**: 100kHz (Standard Mode)
 - **Pull-ups**: 4.7kΩ resistors to 3.3V **REQUIRED**
 - **PCB Label**: AIR_TEMP
@@ -93,7 +93,8 @@ UNCHANGED
 - **Notes**: Can support multiple devices (future expansion)
 
 #### 1-Wire Bus (Temperature Sensor)
-- **GPIO18**: DS18B20 Digital Temperature Sensor
+- **GPIO3**: DS18B20 Digital Temperature Sensor
+- **PCB Label**: WTR_TEMP
 - **PCB Label**: WTR_TEMP
 - **Pull-up**: 4.7kΩ resistor to 3.3V **REQUIRED**
 - **Component**: `dallas_temp` (ESPHome built-in)
@@ -106,7 +107,7 @@ UNCHANGED
 
 #### Binary Sensors (Water Level)
 
-**GPIO19 - Water Level HIGH Sensor (WTR_HI)**
+**GPIO17 - Water Level HIGH Sensor (WTR_HI)**
 - **Type**: Binary input
 - **Hardware**: XKC-Y23-V 3.3V-compatible capacitive level sensor
 - **Purpose**: Prevent tank overflow during WATER_FILLING
@@ -114,7 +115,7 @@ UNCHANGED
 - **HAL ID**: `water_level_high_sensor_`
 - **Debounce**: 500ms filter in ESPHome to prevent water ripple false triggers
 
-**GPIO20 - Water Level LOW Sensor (WTR_LO)**
+**GPIO23 - Water Level LOW Sensor (WTR_LO)**
 - **Type**: Binary input
 - **Hardware**: XKC-Y23-V 3.3V-compatible capacitive level sensor
 - **Purpose**: Auto-feed trigger level
@@ -122,7 +123,7 @@ UNCHANGED
 - **HAL ID**: `water_level_low_sensor_`
 - **Debounce**: 500ms filter in ESPHome to prevent water ripple false triggers
 
-**GPIO21 - Water Level EMPTY Sensor (WTR_Empty)**
+**GPIO22 - Water Level EMPTY Sensor (WTR_Empty)**
 - **Type**: Binary input
 - **Hardware**: XKC-Y23-V 3.3V-compatible capacitive level sensor
 - **Purpose**: Minimum safe level (prevents pump dry-running)
@@ -221,9 +222,9 @@ All actuators use **active HIGH** logic:
 
 | GPIO | Component | Pull-up |
 |------|-----------|---------|
-| GPIO18 | DS18B20 (1-Wire) | 4.7kΩ to 3.3V |
-| GPIO22 | I2C SCL | 4.7kΩ to 3.3V |
-| GPIO23 | I2C SDA | 4.7kΩ to 3.3V |
+| GPIO3 | DS18B20 (1-Wire) | 4.7kΩ to 3.3V |
+| GPIO20 | I2C SDA | 4.7kΩ to 3.3V |
+| GPIO21 | I2C SCL | 4.7kΩ to 3.3V |
 
 ---
 
@@ -235,8 +236,8 @@ All actuators use **active HIGH** logic:
 ```yaml
 i2c:
   id: i2c_bus
-  sda: GPIO23
-  scl: GPIO22
+  sda: GPIO20
+  scl: GPIO21
   frequency: 100kHz
 ```
 
@@ -244,8 +245,8 @@ i2c:
 ```yaml
 uart:
   id: uart_bus
-  tx_pin: GPIO17
-  rx_pin: GPIO16
+  tx_pin: GPIO18
+  rx_pin: GPIO19
   baud_rate: 9600
 ```
 
@@ -253,7 +254,7 @@ uart:
 ```yaml
 one_wire:
   - platform: gpio
-    pin: GPIO18
+    pin: GPIO3
     id: one_wire_bus
 ```
 
@@ -297,15 +298,15 @@ output:
 binary_sensor:
   - platform: gpio
     id: water_level_high_sensor
-    pin: GPIO19
+    pin: GPIO17
 
   - platform: gpio
     id: water_level_low_sensor
-    pin: GPIO20
+    pin: GPIO23
 
   - platform: gpio
     id: water_level_empty_sensor
-    pin: GPIO21
+    pin: GPIO22
 ```
 
 ---
@@ -321,8 +322,8 @@ binary_sensor:
    - Power relays from separate 12V/24V supply (NOT from ESP32)
 
 2. **Pull-up Resistors**
-   - I2C (GPIO22/23): 4.7kΩ to 3.3V **REQUIRED**
-   - 1-Wire (GPIO18): 4.7kΩ to 3.3V **REQUIRED**
+   - I2C (GPIO20/21): 4.7kΩ to 3.3V **REQUIRED**
+   - 1-Wire (GPIO3): 4.7kΩ to 3.3V **REQUIRED**
    - Missing pull-ups will cause bus timeouts and sensor failures
 
 3. **Strapping Pins**
@@ -341,6 +342,16 @@ All actuators flow through Layer 2 safety validation:
 ---
 
 ## Version History
+
+- **2025-01-23**: Sensor pinout reorganization for hardware layout changes
+  - Water Temp (DS18B20): GPIO18 → GPIO3
+  - Water Level HIGH: GPIO19 → GPIO17
+  - Water Level LOW: GPIO20 → GPIO23
+  - Water Level EMPTY: GPIO21 → GPIO22
+  - I2C SCL: GPIO22 → GPIO21
+  - I2C SDA: GPIO23 → GPIO20
+  - EZO UART TX: GPIO17 → GPIO18
+  - EZO UART RX: GPIO16 → GPIO19
 
 - **2025-01-22**: Complete GPIO reassignment for new PCB layout
   - Actuators moved to GPIO1, 4, 5, 6, 7 (top of PCB)

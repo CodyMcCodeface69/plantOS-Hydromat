@@ -524,9 +524,9 @@ All actuator commands flow through ActuatorSafetyGate which provides:
 ## 3. Water Level Sensor Monitoring (3-Sensor System)
 
 ### Hardware Configuration
-- **GPIO10**: HIGH sensor (XKC-Y23-V) - Tank full indicator
-- **GPIO11**: LOW sensor (XKC-Y23-V) - Auto-feed trigger level (physically moved upward)
-- **GPIO16**: EMPTY sensor (XKC-Y23-V) - Minimum safe level (prevents pump dry-running)
+- **GPIO17**: HIGH sensor (XKC-Y23-V) - Tank full indicator
+- **GPIO23**: LOW sensor (XKC-Y23-V) - Auto-feed trigger level (physically moved upward)
+- **GPIO22**: EMPTY sensor (XKC-Y23-V) - Minimum safe level (prevents pump dry-running)
 - **Tank Volume**: 1.7L (LOW to HIGH sensor range) - used for nutrient dose calculations
 
 ### 5 Water Level States

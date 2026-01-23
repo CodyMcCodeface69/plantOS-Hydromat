@@ -340,19 +340,19 @@ public:
     virtual bool hasWaterLevel() const = 0;
 
     /**
-     * Read water level HIGH sensor (XKC-Y23-V on GPIO19 - WTR_HI)
+     * Read water level HIGH sensor (XKC-Y23-V on GPIO17 - WTR_HI)
      * @return true if water is at or above HIGH level, false otherwise
      */
     virtual bool readWaterLevelHigh() = 0;
 
     /**
-     * Read water level LOW sensor (XKC-Y23-V on GPIO20 - WTR_LO)
+     * Read water level LOW sensor (XKC-Y23-V on GPIO23 - WTR_LO)
      * @return true if water is at or above LOW level, false otherwise
      */
     virtual bool readWaterLevelLow() = 0;
 
     /**
-     * Read water level EMPTY sensor (XKC-Y23-V on GPIO21 - WTR_Empty)
+     * Read water level EMPTY sensor (XKC-Y23-V on GPIO22 - WTR_Empty)
      * @return true if water is at or above EMPTY level (minimum safe level), false otherwise
      */
     virtual bool readWaterLevelEmpty() = 0;

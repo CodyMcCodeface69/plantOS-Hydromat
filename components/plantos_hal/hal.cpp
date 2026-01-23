@@ -50,12 +50,12 @@ void ESPHomeHAL::set_water_level_high_sensor(esphome::binary_sensor::BinarySenso
 
 void ESPHomeHAL::set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor) {
     water_level_low_sensor_ = sensor;
-    ESP_LOGI(TAG, "Water level LOW sensor configured (GPIO20 - WTR_LO - auto-feed trigger level)");
+    ESP_LOGI(TAG, "Water level LOW sensor configured (GPIO23 - WTR_LO - auto-feed trigger level)");
 }
 
 void ESPHomeHAL::set_water_level_empty_sensor(esphome::binary_sensor::BinarySensor* sensor) {
     water_level_empty_sensor_ = sensor;
-    ESP_LOGI(TAG, "Water level EMPTY sensor configured (GPIO21 - WTR_Empty - minimum safe level)");
+    ESP_LOGI(TAG, "Water level EMPTY sensor configured (GPIO22 - WTR_Empty - minimum safe level)");
 }
 
 void ESPHomeHAL::set_time_source(esphome::time::RealTimeClock* time_source) {

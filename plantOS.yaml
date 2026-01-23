@@ -218,20 +218,20 @@ external_components:
                  i2c_scanner, time_dummy, wdt_manager, plantos_hal,
                  plantos_controller]
 
-# I²C Bus - SDA: GPIO23, SCL: GPIO22 (BME280 - air temp sensor)
+# I²C Bus - SDA: GPIO20, SCL: GPIO21 (BME280 - air temp sensor)
 # Requires 4.7kΩ external pull-ups to 3.3V
 i2c:
   id: i2c_bus
-  sda: GPIO23  # Serial Data Line
-  scl: GPIO22  # Serial Clock Line
+  sda: GPIO20  # Serial Data Line
+  scl: GPIO21  # Serial Clock Line
   scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
   frequency: 100kHz  # Standard mode - change to 400kHz for fast mode if needed
 
-# UART for EZO pH sensor - TX: GPIO17, RX: GPIO16, 9600 baud
+# UART for EZO pH sensor - TX: GPIO18, RX: GPIO19, 9600 baud
 uart:
   id: uart_bus
-  tx_pin: GPIO17  # ESP32-C6 TX -> EZO RX
-  rx_pin: GPIO16  # ESP32-C6 RX -> EZO TX
+  tx_pin: GPIO18  # ESP32-C6 TX -> EZO RX
+  rx_pin: GPIO19  # ESP32-C6 RX <- EZO TX
   baud_rate: 9600  # Standard baud rate for EZO carrier boards
   data_bits: 8
   parity: NONE
@@ -356,13 +356,13 @@ output:
 # Only requires a single data line plus ground (can parasitic power from data).
 # Requires 4.7kΩ pull-up resistor between data line and 3.3V.
 #
-# GPIO18 - WTR_TEMP on PCB
+# GPIO3 - WTR_TEMP on PCB
 # Wastewater pump now controlled via Shelly Plus 4PM Socket 2 (HTTP control).
 # AirPump actuator now controlled via Shelly Plus 4PM Socket 0 (HTTP control).
 ################################################################################
 one_wire:
   - platform: gpio
-    pin: GPIO18
+    pin: GPIO3
     id: one_wire_bus
 
 # Sensor Configuration
@@ -371,13 +371,13 @@ sensor:
   #
   # DS18B20 is a 1-Wire digital temperature sensor providing accurate readings
   # from -55°C to +125°C with ±0.5°C accuracy between -10°C and +85°C.
-  # Connected to GPIO18 (WTR_TEMP on PCB) via one_wire bus.
+  # Connected to GPIO3 (WTR_TEMP on PCB) via one_wire bus.
   #
-  # HARDWARE: Requires 4.7kΩ pull-up resistor between data line (GPIO18) and 3.3V
+  # HARDWARE: Requires 4.7kΩ pull-up resistor between data line (GPIO3) and 3.3V
   # WIRING:
   #   - Red wire (VCC) -> 3.3V
   #   - Black wire (GND) -> GND
-  #   - Yellow wire (DATA) -> GPIO18 (with 4.7kΩ pull-up to 3.3V)
+  #   - Yellow wire (DATA) -> GPIO3 (with 4.7kΩ pull-up to 3.3V)
   - platform: dallas_temp
     one_wire_id: one_wire_bus
     id: water_temperature
@@ -393,15 +393,15 @@ sensor:
   # - Humidity: 0-100% RH (±3% accuracy)
   # - Pressure: 300-1100 hPa (±1 hPa accuracy)
   #
-  # Connected via I²C bus (GPIO23=SDA, GPIO22=SCL) at address 0x76 or 0x77
+  # Connected via I²C bus (GPIO20=SDA, GPIO21=SCL) at address 0x76 or 0x77
   # AIR_TEMP on PCB
   #
   # HARDWARE: Requires 4.7kΩ pull-up resistors on SDA/SCL to 3.3V (already present on I²C bus)
   # WIRING:
   #   - VCC -> 3.3V
   #   - GND -> GND
-  #   - SDA -> GPIO23 (I²C SDA with 4.7kΩ pull-up)
-  #   - SCL -> GPIO22 (I²C SCL with 4.7kΩ pull-up)
+  #   - SDA -> GPIO20 (I²C SDA with 4.7kΩ pull-up)
+  #   - SCL -> GPIO21 (I²C SCL with 4.7kΩ pull-up)
   #
   # NOTE: This sensor is non-critical - system operates normally if not present
   # FIXED: Changed platform from 'bme280' to 'bme280_i2c' (ESPHome 2024.2.0+ requirement)
@@ -456,9 +456,9 @@ sensor:
 #
 # Three capacitive non-contact water level sensors for tank monitoring and
 # automatic feeding:
-# - HIGH sensor (GPIO19): Tank full indicator - WTR_HI on PCB
-# - LOW sensor (GPIO20): Auto-feed trigger level - WTR_LO on PCB
-# - EMPTY sensor (GPIO21): Minimum safe level (prevents pump dry-running) - WTR_Empty on PCB
+# - HIGH sensor (GPIO17): Tank full indicator - WTR_HI on PCB
+# - LOW sensor (GPIO23): Auto-feed trigger level - WTR_LO on PCB
+# - EMPTY sensor (GPIO22): Minimum safe level (prevents pump dry-running) - WTR_Empty on PCB
 #
 # 5 Tank States (3-Sensor System):
 # - HIGH=ON, LOW=ON:         FULL (above HIGH)
@@ -468,13 +468,13 @@ sensor:
 # - HIGH=ON, LOW=OFF:        ERROR (invalid - check wiring)
 ################################################################################
 binary_sensor:
-  # XKC-Y23-V Water Level HIGH Sensor (GPIO19 - WTR_HI)
+  # XKC-Y23-V Water Level HIGH Sensor (GPIO17 - WTR_HI)
   # Triggers when water reaches high level (tank near full)
   - platform: gpio
     id: water_level_high_sensor
     name: "00_07_Water Level HIGH"
     pin:
-      number: GPIO19
+      number: GPIO17
       mode:
         input: true
         pulldown: true  # Pull down when sensor not active
@@ -489,14 +489,14 @@ binary_sensor:
       then:
         - logger.log: "Water level HIGH cleared - tank below high level"
 
-  # XKC-Y23-V Water Level LOW Sensor (GPIO20 - WTR_LO)
+  # XKC-Y23-V Water Level LOW Sensor (GPIO23 - WTR_LO)
   # Triggers when water reaches auto-feed trigger level (moved up from original position)
   # When OFF (with EMPTY=ON), triggers automatic feeding once per day
   - platform: gpio
     id: water_level_low_sensor
     name: "00_08_Water Level LOW"
     pin:
-      number: GPIO20
+      number: GPIO23
       mode:
         input: true
         pulldown: true  # Pull down when sensor not active
@@ -511,14 +511,14 @@ binary_sensor:
       then:
         - logger.log: "Water level LOW cleared - entering auto-feed trigger zone"
 
-  # XKC-Y23-V Water Level EMPTY Sensor (GPIO21 - WTR_Empty)
+  # XKC-Y23-V Water Level EMPTY Sensor (GPIO22 - WTR_Empty)
   # Triggers when water is at absolute minimum safe level
   # Prevents pump dry-running during drain operations
   - platform: gpio
     id: water_level_empty_sensor
     name: "00_09_Water Level EMPTY"
     pin:
-      number: GPIO21
+      number: GPIO22
       mode:
         input: true
         pulldown: true  # Pull down when sensor not active
@@ -1324,10 +1324,10 @@ plantos_hal:
   system_led: system_led
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
-  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO18 (WTR_TEMP)
-  water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO19 (WTR_HI)
-  water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO20 (WTR_LO - auto-feed trigger level)
-  water_level_empty_sensor: water_level_empty_sensor  # XKC-Y23-V capacitive sensor on GPIO21 (WTR_Empty - minimum safe level)
+  temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO3 (WTR_TEMP)
+  water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO17 (WTR_HI)
+  water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO23 (WTR_LO - auto-feed trigger level)
+  water_level_empty_sensor: water_level_empty_sensor  # XKC-Y23-V capacitive sensor on GPIO22 (WTR_Empty - minimum safe level)
   time_source: sntp_time  # Time source for clock-based pH scheduling (time_dummy for testing, can be NTP/RTC)
 
   # Actuator GPIO Outputs (Phase 2: Hardware Control - 5 GPIO actuators)

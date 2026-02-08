@@ -20,6 +20,10 @@ plantos_hal_ns = cg.esphome_ns.namespace('plantos_hal')
 HAL = plantos_hal_ns.class_('HAL')
 ESPHomeHAL = plantos_hal_ns.class_('ESPHomeHAL', HAL, cg.Component)
 
+# ActuatorSafetyGate namespace and class reference
+actuator_safety_gate_ns = cg.esphome_ns.namespace('actuator_safety_gate')
+ActuatorSafetyGate = actuator_safety_gate_ns.class_('ActuatorSafetyGate', cg.Component)
+
 # Configuration keys
 CONF_SYSTEM_LED = 'system_led'
 CONF_PH_SENSOR = 'ph_sensor'
@@ -42,10 +46,14 @@ CONF_PUMP_MICRO_OUTPUT = 'pump_micro_output'
 CONF_PUMP_BLOOM_OUTPUT = 'pump_bloom_output'
 CONF_PUMP_WASTEWATER_OUTPUT = 'pump_wastewater_output'
 
-# Shelly HTTP switch keys (MVP: AirPump and WastewaterPump)
+# Shelly HTTP switch keys (MVP: AirPump, WastewaterPump, GrowLight)
 CONF_AIR_PUMP_SWITCH = 'air_pump_switch'
 CONF_WASTEWATER_PUMP_SWITCH = 'wastewater_pump_switch'
+CONF_GROW_LIGHT_SWITCH = 'grow_light_switch'
 CONF_HTTP_REQUEST = 'http_request_id'
+
+# ActuatorSafetyGate reference (for state sync on Shelly poll)
+CONF_ACTUATOR_SAFETY_GATE = 'actuator_safety_gate'
 
 # Tank volume and valve configuration
 CONF_TANK_VOLUME_DELTA_LITERS = 'tank_volume_delta_liters'  # Volume from LOW to HIGH (for normal daily feeding)
@@ -86,10 +94,14 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_PUMP_BLOOM_OUTPUT): cv.use_id(output.FloatOutput),
     cv.Optional(CONF_PUMP_WASTEWATER_OUTPUT): cv.use_id(output.FloatOutput),
 
-    # Shelly HTTP switches (MVP: AirPump and WastewaterPump)
+    # Shelly HTTP switches (MVP: AirPump, WastewaterPump, GrowLight)
     cv.Optional(CONF_AIR_PUMP_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_WASTEWATER_PUMP_SWITCH): cv.use_id(switch.Switch),
+    cv.Optional(CONF_GROW_LIGHT_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_HTTP_REQUEST): cv.use_id(http_request.HttpRequestComponent),
+
+    # ActuatorSafetyGate reference (for state sync on Shelly poll)
+    cv.Optional(CONF_ACTUATOR_SAFETY_GATE): cv.use_id(ActuatorSafetyGate),
 
     # Tank volume and valve configuration
     cv.Optional(CONF_TANK_VOLUME_DELTA_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
@@ -184,7 +196,7 @@ async def to_code(config):
         pump_wastewater_out = await cg.get_variable(config[CONF_PUMP_WASTEWATER_OUTPUT])
         cg.add(var.set_pump_wastewater_output(pump_wastewater_out))
 
-    # Inject Shelly HTTP switches (MVP: AirPump and WastewaterPump)
+    # Inject Shelly HTTP switches (MVP: AirPump, WastewaterPump, GrowLight)
     if CONF_AIR_PUMP_SWITCH in config:
         air_pump_sw = await cg.get_variable(config[CONF_AIR_PUMP_SWITCH])
         cg.add(var.set_air_pump_switch(air_pump_sw))
@@ -192,6 +204,15 @@ async def to_code(config):
     if CONF_WASTEWATER_PUMP_SWITCH in config:
         wastewater_pump_sw = await cg.get_variable(config[CONF_WASTEWATER_PUMP_SWITCH])
         cg.add(var.set_wastewater_pump_switch(wastewater_pump_sw))
+
+    if CONF_GROW_LIGHT_SWITCH in config:
+        grow_light_sw = await cg.get_variable(config[CONF_GROW_LIGHT_SWITCH])
+        cg.add(var.set_grow_light_switch(grow_light_sw))
+
+    # Inject ActuatorSafetyGate for state sync on Shelly poll
+    if CONF_ACTUATOR_SAFETY_GATE in config:
+        asg = await cg.get_variable(config[CONF_ACTUATOR_SAFETY_GATE])
+        cg.add(var.set_actuator_safety_gate(asg))
 
     # Inject HTTP request component for direct Shelly control
     if CONF_HTTP_REQUEST in config:

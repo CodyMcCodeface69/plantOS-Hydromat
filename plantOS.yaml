@@ -38,6 +38,13 @@ esp32:
     # - Official Espressif support and documentation
     type: esp-idf
     version: recommended
+    sdkconfig_options:
+      # HTTP Connection Fix: Reduce TIME_WAIT socket exhaustion
+      # Problem: Each HTTP request creates a TCP connection that enters TIME_WAIT for 120s
+      # ESP32 lwIP has only 10 max sockets by default, causing ESP_ERR_HTTP_CONNECT errors
+      # Solution: Reduce TCP_MSL from 60s to 5s (TIME_WAIT = 2×MSL = 10s instead of 120s)
+      CONFIG_LWIP_TCP_MSL: "5000"        # 5s MSL = 10s TIME_WAIT (was 60s = 120s TIME_WAIT)
+      CONFIG_LWIP_MAX_SOCKETS: "16"      # 16 sockets (was 10) for headroom
 
 logger:
   # DEBUG level enables detailed component logging for development
@@ -1339,10 +1346,14 @@ plantos_hal:
   pump_micro_output: pump_micro_output      # GPIO6 - Micro pump (NutrientPumpB → nutrient_B_ml_per_liter) - PP_3 on PCB
   pump_bloom_output: pump_bloom_output      # GPIO7 - Bloom pump (NutrientPumpC → nutrient_C_ml_per_liter) - PP_4 on PCB
 
-  # Shelly HTTP Switches (MVP: AirPump and WastewaterPump via Shelly Plus 4PM @ 192.168.0.130)
+  # Shelly HTTP Switches (MVP: AirPump, WastewaterPump, GrowLight via Shelly Plus 4PM @ 192.168.0.130)
   air_pump_switch: air_pump_shelly_switch           # Shelly Socket 0 - Air pump for pH mixing
   wastewater_pump_switch: wastewater_pump_shelly_switch  # Shelly Socket 2 - Tank drainage
+  grow_light_switch: grow_light_shelly_switch       # Shelly Socket 3 - Grow light
   http_request_id: http_client                      # HTTP client for direct Shelly control
+
+  # ActuatorSafetyGate reference (for state sync on Shelly poll - consolidated HTTP)
+  actuator_safety_gate: actuator_safety
 
   # Tank Volume Configuration (for mL/L dosing calculations)
   # Tank Volume Delta: Measured volume between LOW and HIGH water level sensors
@@ -2714,88 +2725,9 @@ interval:
           // - Checks if HTTP request can be sent
           // - Sends synchronous ping with proper response handling
           // - Updates health status internally
+          // HAL now uses states endpoint and handles switch state sync internally
+          // (consolidated from separate shelly_poll interval to prevent dual HTTP requests)
           id(hal).pingShellyDevice(nullptr);
-
-  # Shelly State Polling Interval - Poll switch states every 5 seconds
-  # This ensures Web UI toggles show actual Shelly state (max 5s delay)
-  # and ASG debouncing uses actual device state, not just requested state
-  - interval: 31s
-    then:
-      - http_request.get:
-          url: "http://192.168.0.130/script/1/api?action=states"
-          capture_response: true
-          headers:
-            Connection: close
-          on_response:
-            then:
-              - lambda: |-
-                  if (response->status_code == 200) {
-                    // Parse JSON response: {"switches": {"0": true, "1": false, ...}, ...}
-                    // 'body' is automatically available as std::string when capture_response: true
-
-                    // Helper to find boolean value for a switch
-                    auto findSwitchState = [&body](const char* key) -> int {
-                      std::string search = std::string("\"") + key + "\":";
-                      size_t pos = body.find(search);
-                      if (pos == std::string::npos) return -1;  // Not found
-                      pos += search.length();
-                      // Skip whitespace
-                      while (pos < body.length() && (body[pos] == ' ' || body[pos] == '\t')) pos++;
-                      if (pos >= body.length()) return -1;
-                      if (body[pos] == 't') return 1;   // true
-                      if (body[pos] == 'f') return 0;   // false
-                      return -1;  // Unknown
-                    };
-
-                    // Update switch states in HAL and ASG
-                    int state0 = findSwitchState("0");
-                    int state2 = findSwitchState("2");
-                    int state3 = findSwitchState("3");
-
-                    if (state0 >= 0) {
-                      bool s0 = (state0 == 1);
-                      id(hal).updateShellySwitchState(0, s0);
-                      id(actuator_safety).updateActualState("AirPump", s0);
-                      // Update Web UI toggle to match actual Shelly state
-                      id(air_pump_shelly_switch).publish_state(s0);
-                    }
-                    if (state2 >= 0) {
-                      bool s2 = (state2 == 1);
-                      id(hal).updateShellySwitchState(2, s2);
-                      id(actuator_safety).updateActualState("WastewaterPump", s2);
-                      // Update Web UI toggle to match actual Shelly state
-                      id(wastewater_pump_shelly_switch).publish_state(s2);
-                    }
-                    if (state3 >= 0) {
-                      bool s3 = (state3 == 1);
-                      id(hal).updateShellySwitchState(3, s3);
-                      id(actuator_safety).updateActualState("GrowLight", s3);
-                      // Update Web UI toggle to match actual Shelly state
-                      id(grow_light_shelly_switch).publish_state(s3);
-                    }
-
-                    // Also update Shelly health since we got a successful response
-                    id(hal).updateShellyHealth(true, 0);
-
-                    ESP_LOGD("shelly_poll", "States: AirPump=%d, Wastewater=%d, GrowLight=%d",
-                             state0, state2, state3);
-
-                    // ================================================================
-                    // NORMAL MODE ACTIVATION: If cycling disabled but AirPump is OFF
-                    // This handles the deferred ON from boot (before first poll)
-                    // Goes through ASG for proper debouncing
-                    // ================================================================
-                    if (state0 == 0 && !id(actuator_safety).isCyclingEnabled("AirPump")) {
-                      ESP_LOGI("shelly_poll", "AirPump OFF but Normal mode desired - activating via ASG");
-                      id(actuator_safety).enableCycling("AirPump", false);  // ASG will send HTTP now that state is synced
-                    }
-                  } else {
-                    ESP_LOGW("shelly_poll", "State poll failed (status %d)", response->status_code);
-                  }
-          on_error:
-            then:
-              - lambda: |-
-                  ESP_LOGW("shelly_poll", "State poll HTTP error");
 
 ################################################################################
 # Scripts - Reusable Automation Sequences

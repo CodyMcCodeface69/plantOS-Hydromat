@@ -26,8 +26,8 @@ Firmware: PlantOS v1.0
 | GPIO17 | Water Level HIGH | WTR_HI | Input | `water_level_high_sensor_` | No |
 | GPIO18 | EZO pH UART TX | ESP→EZO | Output | `ph_sensor_component_` | No |
 | GPIO19 | EZO pH UART RX | ESP←EZO | Input | `ph_sensor_component_` | No |
-| GPIO20 | I2C SDA | AIR_TEMP (BME280) | Bidirectional | - | ✅ 4.7kΩ to 3.3V |
-| GPIO21 | I2C SCL | AIR_TEMP (BME280) | Output | - | ✅ 4.7kΩ to 3.3V |
+| GPIO20 | I2C SDA | AIR_TEMP (BME280) | Bidirectional | - | ✅ 4.7kΩ to 3.3V built-in |
+| GPIO21 | I2C SCL | AIR_TEMP (BME280) | Output | - | ✅ 4.7kΩ to 3.3V built-in |
 | GPIO22 | Water Level EMPTY | WTR_Empty | Input | `water_level_empty_sensor_` | No |
 | GPIO23 | Water Level LOW | WTR_LO | Input | `water_level_low_sensor_` | No |
 

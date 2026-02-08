@@ -31,6 +31,9 @@ class EZOPHUARTComponent;
 namespace http_request {
 class HttpRequestComponent;
 }
+namespace actuator_safety_gate {
+class ActuatorSafetyGate;
+}
 }  // namespace esphome
 
 namespace plantos_hal {
@@ -565,9 +568,13 @@ public:
     void set_pump_bloom_output(esphome::output::FloatOutput* output);
     void set_pump_wastewater_output(esphome::output::FloatOutput* output);
 
-    // Shelly HTTP switch setters (MVP: AirPump and WastewaterPump via Shelly Plus 4PM)
+    // Shelly HTTP switch setters (MVP: AirPump, WastewaterPump, GrowLight via Shelly Plus 4PM)
     void set_air_pump_switch(esphome::switch_::Switch* sw);
     void set_wastewater_pump_switch(esphome::switch_::Switch* sw);
+    void set_grow_light_switch(esphome::switch_::Switch* sw);
+
+    // ActuatorSafetyGate setter (for state sync on Shelly poll)
+    void set_actuator_safety_gate(esphome::actuator_safety_gate::ActuatorSafetyGate* asg);
 
     // HTTP request component setter (for direct Shelly control)
     void set_http_request(esphome::http_request::HttpRequestComponent* http);
@@ -674,9 +681,13 @@ private:
     esphome::output::FloatOutput* pump_bloom_output_{nullptr};
     esphome::output::FloatOutput* pump_wastewater_output_{nullptr};
 
-    // Shelly HTTP switches (MVP: AirPump and WastewaterPump)
+    // Shelly HTTP switches (MVP: AirPump, WastewaterPump, GrowLight)
     esphome::switch_::Switch* air_pump_switch_{nullptr};
     esphome::switch_::Switch* wastewater_pump_switch_{nullptr};
+    esphome::switch_::Switch* grow_light_switch_{nullptr};
+
+    // ActuatorSafetyGate reference (for state sync on Shelly poll)
+    esphome::actuator_safety_gate::ActuatorSafetyGate* actuator_safety_gate_{nullptr};
 
     // HTTP request component for direct Shelly control
     esphome::http_request::HttpRequestComponent* http_request_{nullptr};
@@ -722,6 +733,47 @@ private:
     bool shelly_reachable_{false};
     uint32_t shelly_uptime_seconds_{0};
     uint32_t shelly_last_ping_ms_{0};
+
+    // Shelly connection health with exponential backoff
+    // Tracks consecutive failures and implements backoff to prevent request hammering
+    struct ShellyConnectionHealth {
+        uint8_t consecutive_failures{0};    // Count of consecutive failed requests
+        uint32_t backoff_until_ms{0};       // Don't attempt requests until this time (millis())
+        uint32_t last_success_ms{0};        // Time of last successful request
+
+        static constexpr uint8_t MAX_FAILURES = 6;           // Max failures before max backoff
+        static constexpr uint32_t MIN_BACKOFF_MS = 1000;     // 1 second initial backoff
+        static constexpr uint32_t MAX_BACKOFF_MS = 60000;    // 60 second max backoff
+
+        // Check if we can attempt a request (backoff period expired)
+        bool canAttempt(uint32_t now) const {
+            return now >= backoff_until_ms;
+        }
+
+        // Record a successful request - reset backoff
+        void recordSuccess(uint32_t now) {
+            consecutive_failures = 0;
+            backoff_until_ms = 0;
+            last_success_ms = now;
+        }
+
+        // Record a failed request - apply exponential backoff
+        void recordFailure(uint32_t now) {
+            consecutive_failures = std::min(static_cast<uint8_t>(consecutive_failures + 1), MAX_FAILURES);
+            // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (capped)
+            uint32_t backoff = MIN_BACKOFF_MS << (consecutive_failures - 1);
+            backoff = std::min(backoff, MAX_BACKOFF_MS);
+            backoff_until_ms = now + backoff;
+        }
+
+        // Get current backoff duration for logging
+        uint32_t getCurrentBackoffMs() const {
+            if (consecutive_failures == 0) return 0;
+            uint32_t backoff = MIN_BACKOFF_MS << (consecutive_failures - 1);
+            return std::min(backoff, MAX_BACKOFF_MS);
+        }
+    };
+    ShellyConnectionHealth shelly_health_;
 
     // HTTP request serialization to prevent socket exhaustion
     // Only one HTTP request should be in-flight at a time

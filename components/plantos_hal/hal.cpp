@@ -44,6 +44,11 @@ void ESPHomeHAL::set_temperature_sensor(esphome::sensor::Sensor* temperature_sen
     ESP_LOGI(TAG, "Temperature sensor configured");
 }
 
+void ESPHomeHAL::set_ec_sensor(esphome::sensor::Sensor* ec_sensor) {
+    ec_sensor_ = ec_sensor;
+    ESP_LOGI(TAG, "EC sensor configured");
+}
+
 void ESPHomeHAL::set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor) {
     water_level_high_sensor_ = sensor;
     ESP_LOGI(TAG, "Water level HIGH sensor configured");
@@ -144,6 +149,9 @@ void ESPHomeHAL::setup() {
     }
     if (!temperature_sensor_) {
         ESP_LOGW(TAG, "Temperature sensor not configured - temperature monitoring will be disabled");
+    }
+    if (!ec_sensor_) {
+        ESP_LOGW(TAG, "EC sensor not configured - EC monitoring will be disabled");
     }
 
     // Initialize actuator state tracking
@@ -925,6 +933,30 @@ bool ESPHomeHAL::sendPhTemperatureCompensation(float temperature) {
 
     ESP_LOGI(TAG, "Sending temperature compensation to pH sensor: %.1f°C", temperature);
     return ph_sensor_component_->send_temperature_compensation(temperature);
+}
+
+float ESPHomeHAL::readEC() {
+    if (!ec_sensor_ || !ec_sensor_->has_state()) {
+        return 0.0f;
+    }
+    return ec_sensor_->state;
+}
+
+bool ESPHomeHAL::hasECValue() const {
+    return ec_sensor_ && ec_sensor_->has_state();
+}
+
+void ESPHomeHAL::onECChange(std::function<void(float)> callback) {
+    if (!ec_sensor_) {
+        ESP_LOGW(TAG, "Cannot register EC callback - sensor not configured");
+        return;
+    }
+
+    ec_sensor_->add_on_state_callback([callback](float value) {
+        callback(value);
+    });
+
+    ESP_LOGD(TAG, "EC change callback registered");
 }
 
 // ============================================================================

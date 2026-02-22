@@ -76,6 +76,7 @@ logger:
     wifi: VERBOSE       # Verbose WiFi logs for connection issues (toggle via 11_10)
     shelly_poll: WARN   # Suppress Shelly polling logs (toggle via 11_13)
     ledc.output: WARN  # Suppress LEDC output logs (toggle via 11_14)
+    tds_sensor: INFO   # TDS/EC sensor logs
     template.number: INFO  # Suppress template number logs
 
 
@@ -223,7 +224,15 @@ external_components:
     components: [sensor_dummy, sensor_filter, ezo_ph_uart,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
                  i2c_scanner, time_dummy, wdt_manager, plantos_hal,
-                 plantos_controller]
+                 plantos_controller, tds_sensor]
+  # ADC fix for ESP32-C6 (oneshot API - built-in ADC doesn't compile on C6)
+  # Ref: https://github.com/esphome/issues/issues/5363
+  - source:
+      type: git
+      url: https://github.com/leon-v/esphome
+      ref: adc_one_shot_C2
+    components: [adc]
+    refresh: 0s
 
 # I²C Bus - SDA: GPIO20, SCL: GPIO21 (BME280 - air temp sensor)
 # Requires 4.7kΩ external pull-ups to 3.3V
@@ -435,6 +444,38 @@ sensor:
       accuracy_decimals: 1
       oversampling: 16x
 
+  # TDS/EC Sensor: KS0429 TDS Meter V1.0 via ADC
+  #
+  # Reads water conductivity (EC) for nutrient monitoring.
+  # Uses leon-v ADC fork for ESP32-C6 compatibility (oneshot API).
+  # Signal chain: ADC voltage → tds_sensor (median filter + temp comp + polynomial) → EC (uS/cm)
+  #
+  # HARDWARE: KS0429 TDS Meter V1.0
+  #   - VCC -> 3.3V (supports 3.3-5.5V)
+  #   - GND -> GND
+  #   - Signal -> GPIO0 (ADC1_CH0)
+  #   - Output range: 0-2.3V (0-1000ppm TDS)
+  - platform: adc
+    id: tds_adc_raw
+    pin: GPIO0
+    name: "TDS ADC Raw Voltage"
+    internal: true
+    update_interval: 100ms
+    samples: 5
+
+  # TDS Sensor: Median filter + temperature compensation + KS0429 polynomial
+  # Converts raw ADC voltage to EC (uS/cm)
+  # EC (uS/cm) = 133.42*V^3 - 255.86*V^2 + 857.39*V (compensated for temperature)
+  - platform: tds_sensor
+    id: ec_sensor
+    name: "00_15_EC (Electrical Conductivity)"
+    sensor_source: tds_adc_raw
+    temperature_sensor: water_temperature
+    sample_count: 30
+    default_temperature: 25.0
+    update_interval: 5s
+    accuracy_decimals: 1
+
   # Sensor Filter: Robust Averaging with Outlier Rejection
   #
   # Filters the raw sensor data using robust averaging to reject outliers.
@@ -639,6 +680,32 @@ text_sensor:
         return {"N/A (BME280 offline)"};
       }
     # Update every 10 seconds to match sensor update interval
+    update_interval: 10s
+
+  - platform: template
+    name: "00_15_EC (Electrical Conductivity)"
+    id: ec_text
+    lambda: |-
+      if (id(hal)->hasECValue()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.0f uS/cm", id(hal)->readEC());
+        return {buf};
+      } else {
+        return {"N/A"};
+      }
+    update_interval: 10s
+
+  - platform: template
+    name: "00_16_TDS (Water Quality)"
+    id: tds_ppm_text
+    lambda: |-
+      if (id(hal)->hasECValue()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.0f ppm", id(hal)->readEC() * 0.5f);
+        return {buf};
+      } else {
+        return {"N/A"};
+      }
     update_interval: 10s
 
   - platform: template
@@ -1332,6 +1399,7 @@ plantos_hal:
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO3 (WTR_TEMP)
+  ec_sensor: ec_sensor                   # TDS/EC sensor (KS0429 via ADC on GPIO0)
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO17 (WTR_HI)
   water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO23 (WTR_LO - auto-feed trigger level)
   water_level_empty_sensor: water_level_empty_sensor  # XKC-Y23-V capacitive sensor on GPIO22 (WTR_Empty - minimum safe level)

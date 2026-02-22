@@ -174,6 +174,13 @@ public:
     void updateWaterTemperature(float temp, bool available);
 
     /**
+     * Update EC (Electrical Conductivity) reading
+     * @param ec Current EC value in uS/cm
+     * @param available Whether EC reading is available
+     */
+    void updateEC(float ec, bool available);
+
+    /**
      * Update water level sensor states (3-sensor system)
      * @param high_sensor State of HIGH water level sensor (true = water present)
      * @param low_sensor State of LOW water level sensor (true = water present)
@@ -426,6 +433,8 @@ private:
     // Additional sensor data
     float waterTemperature;              // Water temperature (DS18B20)
     bool waterTempAvailable;             // Whether temperature reading is available
+    float ecValue;                       // EC value in uS/cm (TDS sensor)
+    bool ecAvailable;                    // Whether EC reading is available
     bool waterLevelHighSensor;           // HIGH water level sensor state
     bool waterLevelLowSensor;            // LOW water level sensor state
     bool waterLevelEmptySensor;          // EMPTY water level sensor state

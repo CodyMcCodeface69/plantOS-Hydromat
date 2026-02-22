@@ -9,6 +9,8 @@ CentralStatusLogger::CentralStatusLogger()
       activeRoutine("INIT"),
       waterTemperature(0.0f),
       waterTempAvailable(false),
+      ecValue(0.0f),
+      ecAvailable(false),
       waterLevelHighSensor(false),
       waterLevelLowSensor(false),
       waterLevelSensorsAvailable(false),
@@ -77,6 +79,11 @@ void CentralStatusLogger::updateStatus(float ph, const char* routine) {
 void CentralStatusLogger::updateWaterTemperature(float temp, bool available) {
     waterTemperature = temp;
     waterTempAvailable = available;
+}
+
+void CentralStatusLogger::updateEC(float ec, bool available) {
+    ecValue = ec;
+    ecAvailable = available;
 }
 
 void CentralStatusLogger::updateWaterLevelSensors(bool high_sensor, bool low_sensor, bool empty_sensor, bool available) {
@@ -446,6 +453,11 @@ void CentralStatusLogger::logStatus() {
         ESP_LOGI(TAG, "  Water Temp: %.1f°C", waterTemperature);
     } else {
         ESP_LOGW(TAG, "  Water Temp: N/A");
+    }
+    if (ecAvailable) {
+        ESP_LOGI(TAG, "  EC: %.0f uS/cm (TDS: %.0f ppm)", ecValue, ecValue * 0.5f);
+    } else {
+        ESP_LOGW(TAG, "  EC: N/A");
     }
 
     // Calendar Status

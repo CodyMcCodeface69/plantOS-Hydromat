@@ -576,11 +576,11 @@ sensor:
 
 ---
 
-#### Light Sensor (KY-046)
+#### TDS Sensor
 
-**Purpose**: Ambient light monitoring
+**Purpose**: Water conductivity monitoring
 **Platform**: ESPHome built-in ADC
-**Status**: ✅ CONFIGURED
+**Status**: NOT CONFIGURED
 **GPIO**: GPIO0 (ADC1_CH0)
 
 **Usage:**

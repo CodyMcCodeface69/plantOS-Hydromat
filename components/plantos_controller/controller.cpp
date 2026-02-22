@@ -188,6 +188,9 @@ void PlantOSController::loop() {
         // Update water temperature in sensor data section
         status_logger_.updateWaterTemperature(temp, hasReading);
 
+        // Update EC sensor data in status logger
+        status_logger_.updateEC(hal_->readEC(), hal_->hasECValue());
+
         // Update water level sensors in sensor data section (3-sensor system)
         bool hasWaterLevelSensors = hal_->hasWaterLevelSensors();
         bool highSensor = false;

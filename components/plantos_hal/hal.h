@@ -397,6 +397,24 @@ public:
     virtual void onTemperatureChange(std::function<void(float)> callback) = 0;
 
     /**
+     * Read EC (Electrical Conductivity) value from TDS sensor
+     * @return EC value in uS/cm, or 0.0 if not available
+     */
+    virtual float readEC() = 0;
+
+    /**
+     * Check if EC sensor has valid reading
+     * @return true if EC value is available
+     */
+    virtual bool hasECValue() const = 0;
+
+    /**
+     * Register callback for EC value changes
+     * @param callback Function to call when EC value updates
+     */
+    virtual void onECChange(std::function<void(float)> callback) = 0;
+
+    /**
      * Send temperature compensation to pH sensor
      * @param temperature Temperature in degrees Celsius
      * @return true if compensation was successfully sent
@@ -557,6 +575,7 @@ public:
     void set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_empty_sensor(esphome::binary_sensor::BinarySensor* sensor);
+    void set_ec_sensor(esphome::sensor::Sensor* ec_sensor);
     void set_time_source(esphome::time::RealTimeClock* time_source);
 
     // Actuator output setters (Phase 2: Hardware Control)
@@ -634,6 +653,10 @@ public:
     void onTemperatureChange(std::function<void(float)> callback) override;
     bool sendPhTemperatureCompensation(float temperature) override;
 
+    float readEC() override;
+    bool hasECValue() const override;
+    void onECChange(std::function<void(float)> callback) override;
+
     void setSystemLED(float r, float g, float b, float brightness = 1.0f) override;
     void turnOffLED() override;
     bool isLEDOn() const override;
@@ -667,6 +690,7 @@ private:
     esphome::sensor::Sensor* ph_sensor_{nullptr};
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
+    esphome::sensor::Sensor* ec_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_high_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_low_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_empty_sensor_{nullptr};

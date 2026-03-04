@@ -22,6 +22,7 @@ Firmware: PlantOS v1.0
 | **SYSTEM** |||||
 | GPIO8 | System LED | WS2812 RGB (RMT) | Output | `led_` | No |
 | **SENSORS (Bottom of PCB)** |||||
+| GPIO0 | TDS Sensor | WTR_TDS (Analog) | `ec_sensor_`| No |
 | GPIO3 | DS18B20 Water Temp | WTR_TEMP (1-Wire) | Bidirectional | `temperature_sensor_` | ✅ 4.7kΩ to 3.3V |
 | GPIO17 | Water Level HIGH | WTR_HI | Input | `water_level_high_sensor_` | No |
 | GPIO18 | EZO pH UART TX | ESP→EZO | Output | `ph_sensor_component_` | No |

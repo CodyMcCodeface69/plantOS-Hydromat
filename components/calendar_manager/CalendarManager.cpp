@@ -41,10 +41,12 @@ void CalendarManager::setup() {
 
     // Log current schedule
     DailySchedule today = this->get_today_schedule();
-    ESP_LOGI(TAG, "Day %d schedule: pH %.2f-%.2f, Nutrient A: %.2f mL/L, B: %.2f mL/L, C: %.2f mL/L, Light: %02d:%02d ON / %02d:%02d OFF",
+    ESP_LOGI(TAG, "Day %d schedule: pH %.2f-%.2f, EC %.2f±%.2f mS/cm, A: %.2f mL/L, B: %.2f mL/L, C: %.2f mL/L, Light: %02d:%02d ON / %02d:%02d OFF",
              today.day_number,
              today.target_ph_min,
              today.target_ph_max,
+             today.ec_target,
+             today.ec_tolerance,
              today.nutrient_A_ml_per_liter,
              today.nutrient_B_ml_per_liter,
              today.nutrient_C_ml_per_liter,
@@ -75,8 +77,8 @@ bool CalendarManager::parse_schedule_json() {
 
     // Use ArduinoJson to parse the JSON string
     // Calculate required capacity (estimate: 120 days * ~100 bytes/entry)
-    // Each object now has 8 fields: day, ph_min, ph_max, dose_A/B/C_ml_per_L, light_on_time, light_off_time
-    const size_t capacity = JSON_ARRAY_SIZE(120) + 120 * JSON_OBJECT_SIZE(8) + 3072;
+    // Each object now has 10 fields: day, ph_min, ph_max, dose_A/B/C_ml_per_L, light_on_time, light_off_time, ec_target, ec_tolerance
+    const size_t capacity = JSON_ARRAY_SIZE(120) + 120 * JSON_OBJECT_SIZE(10) + 3072;
     DynamicJsonDocument doc(capacity);
 
     DeserializationError error = deserializeJson(doc, this->schedule_json_);
@@ -105,6 +107,8 @@ bool CalendarManager::parse_schedule_json() {
         float dose_c = obj["dose_C_ml_per_L"] | 0.0f;
         uint16_t light_on = obj["light_on_time"] | 960;   // Default: 16:00
         uint16_t light_off = obj["light_off_time"] | 480;  // Default: 08:00
+        float ec_target = obj["ec_target"] | 0.0f;
+        float ec_tolerance = obj["ec_tolerance"] | 0.20f;
 
         // Validate day number
         if (day < 1 || day > 120) {
@@ -113,12 +117,12 @@ bool CalendarManager::parse_schedule_json() {
         }
 
         // Store in map
-        this->schedule_map_[day] = DailySchedule(day, ph_min, ph_max, dose_a, dose_b, dose_c, light_on, light_off);
+        this->schedule_map_[day] = DailySchedule(day, ph_min, ph_max, dose_a, dose_b, dose_c, light_on, light_off, ec_target, ec_tolerance);
         parsed_count++;
 
         if (this->verbose_) {
-            ESP_LOGD(TAG, "Day %d: pH %.2f-%.2f, A:%.2f mL/L B:%.2f mL/L C:%.2f mL/L, Light: %02d:%02d ON / %02d:%02d OFF",
-                     day, ph_min, ph_max, dose_a, dose_b, dose_c,
+            ESP_LOGD(TAG, "Day %d: pH %.2f-%.2f, EC %.2f±%.2f mS/cm, A:%.2f mL/L B:%.2f mL/L C:%.2f mL/L, Light: %02d:%02d ON / %02d:%02d OFF",
+                     day, ph_min, ph_max, ec_target, ec_tolerance, dose_a, dose_b, dose_c,
                      light_on / 60, light_on % 60, light_off / 60, light_off % 60);
         }
     }
@@ -229,6 +233,7 @@ void CalendarManager::log_status() {
     ESP_LOGI(TAG, "Current Day: %d/120", this->current_day_);
     ESP_LOGI(TAG, "Safe Mode: %s", this->safe_mode_ ? "ENABLED" : "DISABLED");
     ESP_LOGI(TAG, "Target pH Range: %.2f - %.2f", today.target_ph_min, today.target_ph_max);
+    ESP_LOGI(TAG, "Target EC: %.2f mS/cm (±%.2f)", today.ec_target, today.ec_tolerance);
     ESP_LOGI(TAG, "Nutrient A: %.2f mL/L", today.nutrient_A_ml_per_liter);
     ESP_LOGI(TAG, "Nutrient B: %.2f mL/L", today.nutrient_B_ml_per_liter);
     ESP_LOGI(TAG, "Nutrient C: %.2f mL/L", today.nutrient_C_ml_per_liter);

@@ -25,6 +25,10 @@ struct DailySchedule {
     float nutrient_C_ml_per_liter;      // Nutrient C concentration (mL per liter of tank volume)
     uint16_t light_on_time;             // Light ON time (minutes since midnight, e.g., 960 = 16:00)
     uint16_t light_off_time;            // Light OFF time (minutes since midnight, e.g., 480 = 08:00)
+    float ec_target;                    // Target EC in mS/cm (e.g., 1.20); 0.0 = EC feeding disabled
+    float ec_tolerance;                 // Tolerance band in mS/cm (e.g., 0.20)
+    // Derived: ec_min_trigger = ec_target - ec_tolerance
+    //          ec_max_alarm   = ec_target + ec_tolerance * 1.5
 
     DailySchedule()
         : day_number(0),
@@ -34,11 +38,14 @@ struct DailySchedule {
           nutrient_B_ml_per_liter(0.0f),
           nutrient_C_ml_per_liter(0.0f),
           light_on_time(960),             // Default: 16:00
-          light_off_time(480) {}          // Default: 08:00
+          light_off_time(480),            // Default: 08:00
+          ec_target(0.0f),
+          ec_tolerance(0.20f) {}
 
     DailySchedule(uint8_t day, float ph_min, float ph_max,
                   float dose_a, float dose_b, float dose_c,
-                  uint16_t light_on = 960, uint16_t light_off = 480)
+                  uint16_t light_on = 960, uint16_t light_off = 480,
+                  float ec_tgt = 0.0f, float ec_tol = 0.20f)
         : day_number(day),
           target_ph_min(ph_min),
           target_ph_max(ph_max),
@@ -46,7 +53,9 @@ struct DailySchedule {
           nutrient_B_ml_per_liter(dose_b),
           nutrient_C_ml_per_liter(dose_c),
           light_on_time(light_on),
-          light_off_time(light_off) {}
+          light_off_time(light_off),
+          ec_target(ec_tgt),
+          ec_tolerance(ec_tol) {}
 };
 
 /**
@@ -118,7 +127,9 @@ struct DailySchedule {
  *     "dose_B_ml_per_L": 2.0,
  *     "dose_C_ml_per_L": 1.0,
  *     "light_on_time": 960,
- *     "light_off_time": 480
+ *     "light_off_time": 480,
+ *     "ec_target": 1.20,
+ *     "ec_tolerance": 0.20
  *   },
  *   ...
  * ]

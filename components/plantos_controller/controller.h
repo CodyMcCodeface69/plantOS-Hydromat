@@ -59,7 +59,12 @@ enum class ControllerState {
     FEEDING,           // Nutrient dosing (Orange Pulse)
     WATER_FILLING,     // Fresh water addition (Blue Solid)
     WATER_EMPTYING,    // Wastewater removal (Purple Pulse)
-    FEED_FILLING       // Fill tank before feeding (part of Feed operation) (Blue Solid)
+    FEED_FILLING,      // Fill tank before feeding (part of Feed operation) (Blue Solid)
+    EC_PROCESSING,     // Check EC reading, decide if feeding needed (Yellow Pulse)
+    EC_CALCULATING,    // Calculate nutrient doses from EC delta (Yellow Fast Blink)
+    EC_FEEDING,        // Sequential nutrient pump A → B → C (Orange Pulse)
+    EC_MIXING,         // Air pump mixing after EC nutrient dosing (Blue Pulse)
+    EC_MEASURING       // Re-measure EC, update K-factor (Yellow Pulse)
 };
 
 /**
@@ -225,6 +230,12 @@ public:
      * Uses wastewater pump (Shelly Socket 2) for automated tank drainage
      */
     void startReservoirChange();
+
+    /**
+     * Start EC check sequence
+     * Transitions to EC_PROCESSING state which decides whether feeding is needed
+     */
+    void startEcCheck();
 
     /**
      * Enable or disable automatic feeding
@@ -455,6 +466,32 @@ private:
     static constexpr const char* NVS_KEY_AUTO_RES_DAY = "AutoResDay";
 
     // ========================================================================
+    // EC Feeding State
+    // ========================================================================
+
+    // EC Adaptive K-factor (EC_Feeding_Logik.md Section 6)
+    float ec_K_feed_{0.15f};                        // Current EC K-factor (EMA-smoothed), mL/L per mS/cm
+    static constexpr float EC_K_EMA_ALPHA = 0.20f;
+    static constexpr float EC_K_MIN_CLAMP = 0.02f;
+    static constexpr float EC_K_MAX_CLAMP = 0.50f;
+    float ec_pre_feeding_{0.0f};                    // EC value before feeding cycle started (mS/cm)
+    float ec_total_ml_per_L_{0.0f};                 // Total mL/L dosed in current EC cycle (accumulated)
+    uint8_t ec_attempt_count_{0};                   // Number of EC correction attempts in current cycle
+    static constexpr uint8_t MAX_EC_ATTEMPTS = 3;
+    int64_t last_ec_feeding_timestamp_{0};           // Unix timestamp (s) of last completed EC feeding
+    static constexpr int64_t EC_MIN_INTERVAL_S = 14400;  // 4 hours minimum between EC feedings
+    float ec_dose_A_ml_{0.0f};                      // Calculated dose for NutrientPumpA (mL)
+    float ec_dose_B_ml_{0.0f};                      // Calculated dose for NutrientPumpB (mL)
+    float ec_dose_C_ml_{0.0f};                      // Calculated dose for NutrientPumpC (mL)
+    bool ec_cycle_water_filled_{false};             // Guard: water fill happened during EC cycle
+    bool auto_ec_check_pending_{false};             // Flag: trigger EC check after WATER_FILLING
+    static constexpr const char* NVS_KEY_EC_K = "EcK";
+
+    // Periodic EC monitoring timer (IDLE → EC_PROCESSING)
+    uint32_t last_ec_check_time_{0};               // millis() when last EC check was triggered
+    static constexpr uint32_t EC_CHECK_INTERVAL_MS = 7200000;  // 2 hours between EC checks
+
+    // ========================================================================
     // pH Correction State
     // ========================================================================
 
@@ -555,6 +592,11 @@ private:
     void handleWaterFilling();
     void handleWaterEmptying();
     void handleFeedFilling();
+    void handleEcProcessing();
+    void handleEcCalculating();
+    void handleEcFeeding();
+    void handleEcMixing();
+    void handleEcMeasuring();
 
     // Helper methods for calibration
     void resetCalibrationBatch();
@@ -699,6 +741,14 @@ private:
      * @param ml_total Total mL of acid dosed in cycle
      */
     void updatePhKFactor(float ph_before, float ph_after, float ml_total);
+
+    /**
+     * Update adaptive EC K-factor after a completed feeding cycle
+     * @param ec_before EC at start of cycle (mS/cm)
+     * @param ec_after EC after final measurement (mS/cm)
+     * @param ml_per_L_total Total mL/L of nutrients dosed across all attempts
+     */
+    void updateEcKFactor(float ec_before, float ec_after, float ml_per_L_total);
 
     // ========================================================================
     // Constants

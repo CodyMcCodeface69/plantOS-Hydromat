@@ -40,7 +40,12 @@ enum class ControllerState {
     FEEDING,
     WATER_FILLING,
     WATER_EMPTYING,
-    FEED_FILLING
+    FEED_FILLING,
+    EC_PROCESSING,
+    EC_CALCULATING,
+    EC_FEEDING,
+    EC_MIXING,
+    EC_MEASURING
 };
 
 LedBehaviorSystem::LedBehaviorSystem()
@@ -176,6 +181,31 @@ void LedBehaviorSystem::transitionToBehavior(ControllerState newState) {
         case ControllerState::FEED_FILLING:
             newBehavior = std::make_unique<FeedFillingBehavior>();
             ESP_LOGI(TAG, "LED: Blue Solid (Feed Filling)");
+            break;
+
+        case ControllerState::EC_PROCESSING:
+            newBehavior = std::make_unique<YellowPulseBehavior>();
+            ESP_LOGI(TAG, "LED: Yellow Pulse (EC Processing)");
+            break;
+
+        case ControllerState::EC_CALCULATING:
+            newBehavior = std::make_unique<YellowFastBlinkBehavior>();
+            ESP_LOGI(TAG, "LED: Yellow Fast Blink (EC Calculating)");
+            break;
+
+        case ControllerState::EC_FEEDING:
+            newBehavior = std::make_unique<OrangePulseBehavior>();
+            ESP_LOGI(TAG, "LED: Orange Pulse (EC Feeding)");
+            break;
+
+        case ControllerState::EC_MIXING:
+            newBehavior = std::make_unique<BluePulseBehavior>();
+            ESP_LOGI(TAG, "LED: Blue Pulse (EC Mixing)");
+            break;
+
+        case ControllerState::EC_MEASURING:
+            newBehavior = std::make_unique<YellowPulseBehavior>();
+            ESP_LOGI(TAG, "LED: Yellow Pulse (EC Measuring)");
             break;
 
         default:

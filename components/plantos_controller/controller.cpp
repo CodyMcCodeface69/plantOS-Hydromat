@@ -62,6 +62,10 @@ void PlantOSController::setup() {
         ph_K_ = psm_->loadFloat(NVS_KEY_PH_K, 0.07f);
         ESP_LOGI(TAG, "pH K-factor loaded from NVS: %.4f", ph_K_);
 
+        // Load adaptive EC K-factor from NVS
+        ec_K_feed_ = psm_->loadFloat(NVS_KEY_EC_K, 0.15f);
+        ESP_LOGI(TAG, "EC K-factor loaded from NVS: %.4f", ec_K_feed_);
+
         // Initialize last feed date (will be loaded from NVS on first check)
         last_auto_feed_date_ = 0;
     } else {
@@ -337,6 +341,26 @@ void PlantOSController::loop() {
 
         case ControllerState::FEED_FILLING:
             handleFeedFilling();
+            break;
+
+        case ControllerState::EC_PROCESSING:
+            handleEcProcessing();
+            break;
+
+        case ControllerState::EC_CALCULATING:
+            handleEcCalculating();
+            break;
+
+        case ControllerState::EC_FEEDING:
+            handleEcFeeding();
+            break;
+
+        case ControllerState::EC_MIXING:
+            handleEcMixing();
+            break;
+
+        case ControllerState::EC_MEASURING:
+            handleEcMeasuring();
             break;
     }
 
@@ -614,6 +638,21 @@ void PlantOSController::handleIdle() {
 
             transitionTo(ControllerState::PH_PROCESSING);
             return;  // Exit IDLE immediately
+        }
+    }
+
+    // ========================================================================
+    // PERIODIC EC MONITORING - Every 2 hours, trigger EC_PROCESSING
+    // EC_PROCESSING then decides if actual feeding is needed (with 4h guard)
+    // ========================================================================
+    if (hal_->hasECValue()) {
+        if (now - last_ec_check_time_ >= EC_CHECK_INTERVAL_MS) {
+            last_ec_check_time_ = now;
+            ESP_LOGI(TAG, "========================================================");
+            ESP_LOGI(TAG, "  AUTOMATIC EC CHECK (every 2 hours)");
+            ESP_LOGI(TAG, "========================================================");
+            transitionTo(ControllerState::EC_PROCESSING);
+            return;
         }
     }
 
@@ -2049,6 +2088,332 @@ void PlantOSController::handleFeedFilling() {
     }
 }
 
+// ============================================================================
+// EC Feeding State Handlers
+// ============================================================================
+
+void PlantOSController::handleEcProcessing() {
+    // Yellow pulse - check EC reading and decide if feeding is needed
+    if (!hal_) {
+        transitionTo(ControllerState::ERROR);
+        return;
+    }
+
+    // Guard: EC sensor must have a valid reading
+    if (!hal_->hasECValue()) {
+        ESP_LOGW(TAG, "[EC_PROCESSING] No EC reading available - returning to IDLE");
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // Guard: CalendarManager required for EC targets
+    if (!calendar_manager_) {
+        ESP_LOGD(TAG, "[EC_PROCESSING] No calendar manager - skipping EC check");
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    auto schedule = calendar_manager_->get_today_schedule();
+
+    // Guard: EC feeding must be configured for today (ec_target == 0 means disabled)
+    if (schedule.ec_target <= 0.0f) {
+        ESP_LOGD(TAG, "[EC_PROCESSING] EC target not configured for day %d - skipping",
+                 calendar_manager_->get_current_day());
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // Guard: 4-hour minimum interval between actual feedings
+    if (hal_->hasTime() && last_ec_feeding_timestamp_ > 0) {
+        int64_t current_ts = hal_->getCurrentTimestamp();
+        int64_t elapsed_s = current_ts - last_ec_feeding_timestamp_;
+        if (elapsed_s < EC_MIN_INTERVAL_S) {
+            int64_t wait_s = EC_MIN_INTERVAL_S - elapsed_s;
+            ESP_LOGI(TAG, "[EC_PROCESSING] 4h guard: %lld/%lld s elapsed - %lld s remaining",
+                     elapsed_s, EC_MIN_INTERVAL_S, wait_s);
+            transitionTo(ControllerState::IDLE);
+            return;
+        }
+    }
+
+    float ec_current = hal_->readEC();  // mS/cm
+    float ec_min = schedule.ec_target - schedule.ec_tolerance;
+    float ec_max = schedule.ec_target + schedule.ec_tolerance * 1.5f;
+
+    ESP_LOGI(TAG, "[EC_PROCESSING] EC=%.3f mS/cm, target=%.2f±%.2f (min=%.2f, max=%.2f)",
+             ec_current, schedule.ec_target, schedule.ec_tolerance, ec_min, ec_max);
+
+    // Over-concentration: wait for natural evaporation to lower EC
+    if (ec_current > ec_max) {
+        ESP_LOGW(TAG, "[EC_PROCESSING] EC over-concentration (%.3f > %.3f) - no feeding, add plain water",
+                 ec_current, ec_max);
+        status_logger_.updateAlertStatus("EC_HIGH", "EC over-concentration - add plain water or wait");
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // EC in acceptable window - no feeding needed
+    if (ec_current >= ec_min) {
+        ESP_LOGD(TAG, "[EC_PROCESSING] EC in range [%.2f-%.2f] - no feeding needed", ec_min, ec_max);
+        status_logger_.resolveAlert("EC_HIGH");
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // EC below minimum - feeding required
+    ESP_LOGI(TAG, "[EC_PROCESSING] EC low (%.3f < %.3f) - starting feeding cycle", ec_current, ec_min);
+
+    // Store initial EC and reset cycle state for K-factor calculation
+    ec_pre_feeding_ = ec_current;
+    ec_total_ml_per_L_ = 0.0f;
+    ec_attempt_count_ = 0;
+    ec_cycle_water_filled_ = false;
+
+    // Log PSM event for crash recovery
+    if (psm_) {
+        psm_->logEvent("EC_FEEDING", 0);  // 0 = STARTED
+    }
+
+    transitionTo(ControllerState::EC_CALCULATING);
+}
+
+void PlantOSController::handleEcCalculating() {
+    // Yellow fast blink - calculating EC-based nutrient doses
+    if (!hal_ || !calendar_manager_) {
+        ESP_LOGW(TAG, "[EC_CALCULATING] Missing dependencies - aborting");
+        if (psm_) psm_->clearEvent();
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // Use current EC reading for delta (may differ from ec_pre_feeding_ on retries)
+    float ec_current = hal_->hasECValue() ? hal_->readEC() : ec_pre_feeding_;
+    auto schedule = calendar_manager_->get_today_schedule();
+    float delta_ec = schedule.ec_target - ec_current;
+
+    if (delta_ec <= 0.01f) {
+        ESP_LOGI(TAG, "[EC_CALCULATING] EC already at or above target - no dosing needed");
+        if (psm_) psm_->clearEvent();
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // Total dose in mL/L using adaptive K-factor
+    float total_ml_per_L = delta_ec / ec_K_feed_;
+
+    // Tank volume for absolute dose calculation
+    float tank_volume_L = hal_->getTankVolumeDelta();
+    if (tank_volume_L <= 0.0f) {
+        ESP_LOGW(TAG, "[EC_CALCULATING] Tank volume unavailable - using 10L fallback");
+        tank_volume_L = 10.0f;
+    }
+
+    // A:B:C ratio from CalendarManager
+    float r_A = schedule.nutrient_A_ml_per_liter;
+    float r_B = schedule.nutrient_B_ml_per_liter;
+    float r_C = schedule.nutrient_C_ml_per_liter;
+    float r_total = r_A + r_B + r_C;
+
+    if (r_total <= 0.0f) {
+        ESP_LOGW(TAG, "[EC_CALCULATING] No nutrient ratios for day %d - skipping",
+                 calendar_manager_->get_current_day());
+        if (psm_) psm_->clearEvent();
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    // Calculate absolute doses per pump, capped at calendar max dose
+    ec_dose_A_ml_ = std::min((r_A / r_total) * total_ml_per_L * tank_volume_L, r_A * tank_volume_L);
+    ec_dose_B_ml_ = std::min((r_B / r_total) * total_ml_per_L * tank_volume_L, r_B * tank_volume_L);
+    ec_dose_C_ml_ = std::min((r_C / r_total) * total_ml_per_L * tank_volume_L, r_C * tank_volume_L);
+
+    // Accumulate mL/L for K-factor update after mixing
+    float dosed_total_ml = ec_dose_A_ml_ + ec_dose_B_ml_ + ec_dose_C_ml_;
+    ec_total_ml_per_L_ += (tank_volume_L > 0.0f) ? (dosed_total_ml / tank_volume_L) : 0.0f;
+
+    ESP_LOGI(TAG, "[EC_CALCULATING] EC delta=%.3f mS/cm, K=%.4f, total=%.3f mL/L",
+             delta_ec, ec_K_feed_, total_ml_per_L);
+    ESP_LOGI(TAG, "[EC_CALCULATING] Doses: A=%.2f mL, B=%.2f mL, C=%.2f mL (tank %.1fL)",
+             ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_, tank_volume_L);
+
+    transitionTo(ControllerState::EC_FEEDING);
+}
+
+void PlantOSController::handleEcFeeding() {
+    // Orange pulse - sequential nutrient pump A → B → C (EC-calculated doses)
+    uint32_t elapsed = getStateElapsed();
+    static uint32_t current_ec_duration_ms = 0;
+
+    // Use state_counter_ as pump index (0=A, 1=B, 2=C, 3=done)
+    const char* pump_name = nullptr;
+    float dose_ml = 0.0f;
+
+    if (state_counter_ == 0) {
+        pump_name = NUTRIENT_PUMP_A;
+        dose_ml = ec_dose_A_ml_;
+    } else if (state_counter_ == 1) {
+        pump_name = NUTRIENT_PUMP_B;
+        dose_ml = ec_dose_B_ml_;
+    } else if (state_counter_ == 2) {
+        pump_name = NUTRIENT_PUMP_C;
+        dose_ml = ec_dose_C_ml_;
+    } else {
+        // All pumps complete - start mixing
+        ESP_LOGI(TAG, "[EC_FEEDING] Nutrient dosing complete - starting mixing phase");
+        transitionTo(ControllerState::EC_MIXING);
+        return;
+    }
+
+    // On entry for each pump: calculate duration and activate (only once per pump)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
+
+        if (dose_ml > 0.0f && hal_) {
+            float duration_sec = hal_->pumpflow(pump_name, dose_ml);
+            current_ec_duration_ms = static_cast<uint32_t>(duration_sec * 1000.0f);
+            ESP_LOGI(TAG, "[EC_FEEDING] %s: %.2f mL = %.2f sec (%d ms)",
+                     pump_name, dose_ml, duration_sec, current_ec_duration_ms);
+        } else {
+            current_ec_duration_ms = 0;
+        }
+
+        if (current_ec_duration_ms > 0) {
+            uint32_t duration_sec = (current_ec_duration_ms + 999) / 1000;
+            if (!requestPumpAdaptive(pump_name, true, duration_sec, false)) {
+                ESP_LOGE(TAG, "[EC_FEEDING] %s rejected by SafetyGate - aborting EC feeding", pump_name);
+                if (psm_) psm_->clearEvent();
+                transitionTo(ControllerState::IDLE);
+                return;
+            }
+            state_start_time_ = hal_->getSystemTime();
+        } else {
+            ESP_LOGI(TAG, "[EC_FEEDING] %s dose=0 - skipping", pump_name);
+            state_counter_++;
+            state_start_time_ = hal_->getSystemTime();
+        }
+        return;
+    }
+
+    // Wait for pump duration + 200ms safety margin
+    if (elapsed < current_ec_duration_ms + 200) {
+        return;
+    }
+
+    // Turn off pump explicitly
+    if (safety_gate_) {
+        safety_gate_->executeCommand(pump_name, false, 0);
+    }
+    ESP_LOGI(TAG, "[EC_FEEDING] %s complete", pump_name);
+
+    // Advance to next pump
+    state_counter_++;
+    state_start_time_ = hal_->getSystemTime();
+}
+
+void PlantOSController::handleEcMixing() {
+    // Blue pulse - 5 minute mixing after EC nutrient dosing
+    // AirPump controlled externally (Shelly pattern); we just wait for mixing to complete
+    static constexpr uint32_t EC_MIXING_DURATION_MS = 300000;  // 5 minutes
+
+    uint32_t elapsed = getStateElapsed();
+
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
+        ESP_LOGI(TAG, "[EC_MIXING] Waiting 5 minutes for nutrients to mix");
+    }
+
+    if (elapsed >= EC_MIXING_DURATION_MS) {
+        ESP_LOGI(TAG, "[EC_MIXING] Mixing complete - measuring EC");
+        transitionTo(ControllerState::EC_MEASURING);
+    }
+}
+
+void PlantOSController::handleEcMeasuring() {
+    // Yellow pulse - re-measure EC after mixing, update K-factor, decide next step
+    static constexpr uint32_t EC_SETTLE_MS = 30000;  // 30s settle time before reading
+
+    uint32_t elapsed = getStateElapsed();
+
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
+        ec_attempt_count_++;
+        ESP_LOGI(TAG, "[EC_MEASURING] Attempt %d/%d - waiting %.0fs for EC to stabilize",
+                 ec_attempt_count_, MAX_EC_ATTEMPTS, EC_SETTLE_MS / 1000.0f);
+        return;
+    }
+
+    if (elapsed < EC_SETTLE_MS) {
+        return;
+    }
+
+    if (!hal_->hasECValue()) {
+        ESP_LOGW(TAG, "[EC_MEASURING] No EC reading available - aborting cycle");
+        if (psm_) psm_->clearEvent();
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
+    float ec_after = hal_->readEC();
+    ESP_LOGI(TAG, "[EC_MEASURING] EC after feeding: %.3f mS/cm (pre-cycle: %.3f mS/cm, delta: %.3f)",
+             ec_after, ec_pre_feeding_, ec_after - ec_pre_feeding_);
+
+    // Update adaptive K-factor based on observed EC response
+    updateEcKFactor(ec_pre_feeding_, ec_after, ec_total_ml_per_L_);
+
+    // Record timestamp to enforce 4h minimum interval between feedings
+    if (hal_->hasTime()) {
+        last_ec_feeding_timestamp_ = hal_->getCurrentTimestamp();
+    }
+
+    // Get target to check if we're in range
+    float ec_min = 0.0f;
+    if (calendar_manager_) {
+        auto schedule = calendar_manager_->get_today_schedule();
+        ec_min = schedule.ec_target - schedule.ec_tolerance;
+    }
+
+    bool in_range = (ec_min > 0.0f) && (ec_after >= ec_min);
+    bool max_attempts_reached = (ec_attempt_count_ >= MAX_EC_ATTEMPTS);
+
+    if (in_range) {
+        ESP_LOGI(TAG, "[EC_MEASURING] EC in range (%.3f >= %.3f) - cycle complete", ec_after, ec_min);
+        status_logger_.resolveAlert("EC_HIGH");
+        status_logger_.resolveAlert("EC_LOW");
+    } else if (max_attempts_reached) {
+        ESP_LOGW(TAG, "[EC_MEASURING] Max attempts (%d) reached - EC still %.3f mS/cm",
+                 MAX_EC_ATTEMPTS, ec_after);
+        status_logger_.updateAlertStatus("EC_LOW",
+            "EC below target after max feeding attempts - check nutrient supply");
+    } else {
+        // EC still low - retry with recalculated dose
+        ESP_LOGI(TAG, "[EC_MEASURING] EC still low (%.3f < %.3f) - retry %d/%d",
+                 ec_after, ec_min, ec_attempt_count_, MAX_EC_ATTEMPTS);
+        transitionTo(ControllerState::EC_CALCULATING);
+        return;
+    }
+
+    // Always check pH after EC feeding (nutrients shift pH)
+    ESP_LOGI(TAG, "[EC_MEASURING] EC cycle complete - triggering pH check");
+
+    // Reset pH state for clean correction cycle
+    ph_attempt_count_ = 0;
+    ph_readings_.clear();
+    ph_current_ = 0.0f;
+    ph_dose_ml_ = 0.0f;
+    ph_dose_duration_ms_ = 0;
+    ph_cycle_start_ph_ = 0.0f;
+    ph_cycle_total_ml_ = 0.0f;
+    ph_cycle_water_filled_ = false;
+    ph_cycle_aborted_ = false;
+
+    if (psm_) {
+        psm_->clearEvent();
+        psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+    }
+
+    transitionTo(ControllerState::PH_PROCESSING);
+}
+
 void PlantOSController::handleWaterFilling() {
     // Blue solid LED handled by LedBehaviorSystem
     uint32_t elapsed = getStateElapsed();
@@ -2778,6 +3143,21 @@ void PlantOSController::startFeed() {
     }
 }
 
+void PlantOSController::startEcCheck() {
+    if (current_state_ != ControllerState::IDLE) {
+        ESP_LOGW(TAG, "Cannot start EC check - system not in IDLE state (state: %s)",
+                 getStateAsString().c_str());
+        return;
+    }
+
+    ESP_LOGI(TAG, "Manual EC check triggered");
+    ec_pre_feeding_ = 0.0f;
+    ec_total_ml_per_L_ = 0.0f;
+    ec_attempt_count_ = 0;
+    ec_cycle_water_filled_ = false;
+    transitionTo(ControllerState::EC_PROCESSING);
+}
+
 void PlantOSController::startReservoirChange() {
     if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
         ESP_LOGW(TAG, "Cannot start Reservoir Change - system busy");
@@ -2869,11 +3249,12 @@ std::string PlantOSController::getStateAsString() const {
     const char* state_names[] = {
         "INIT", "IDLE", "NIGHT", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
-        "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING"
+        "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING",
+        "EC_PROCESSING", "EC_CALCULATING", "EC_FEEDING", "EC_MIXING", "EC_MEASURING"
     };
 
     int state_index = static_cast<int>(current_state_);
-    if (state_index >= 0 && state_index < 16) {  // Updated from 15 to 16
+    if (state_index >= 0 && state_index < 21) {
         return std::string(state_names[state_index]);
     }
 
@@ -2893,7 +3274,8 @@ void PlantOSController::transitionTo(ControllerState newState) {
     const char* state_names[] = {
         "INIT", "IDLE", "NIGHT", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
-        "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING"
+        "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING",
+        "EC_PROCESSING", "EC_CALCULATING", "EC_FEEDING", "EC_MIXING", "EC_MEASURING"
     };
 
     const char* oldStateName = state_names[static_cast<int>(current_state_)];
@@ -3260,6 +3642,48 @@ void PlantOSController::updatePhKFactor(float ph_before, float ph_after, float m
     if (psm_) {
         psm_->saveFloat(NVS_KEY_PH_K, ph_K_);
         ESP_LOGD(TAG, "pH K-factor saved to NVS: %.4f", ph_K_);
+    }
+}
+
+void PlantOSController::updateEcKFactor(float ec_before, float ec_after, float ml_per_L_total) {
+    float ec_delta = ec_after - ec_before;
+
+    // Guard: need a meaningful positive EC rise
+    if (ec_delta < 0.05f) {
+        ESP_LOGD(TAG, "EC K-factor update skipped: delta too small (%.3f mS/cm < 0.05)", ec_delta);
+        return;
+    }
+    if (ml_per_L_total < 0.01f) {
+        ESP_LOGD(TAG, "EC K-factor update skipped: dose too small (%.4f mL/L < 0.01)", ml_per_L_total);
+        return;
+    }
+    if (ec_cycle_water_filled_) {
+        ESP_LOGD(TAG, "EC K-factor update skipped: water fill happened during cycle (dilution)");
+        return;
+    }
+
+    // K_observed = dose / EC_rise (mL/L per mS/cm)
+    float K_observed = ml_per_L_total / ec_delta;
+
+    // Clamp to valid range before EMA
+    K_observed = std::max(EC_K_MIN_CLAMP, std::min(EC_K_MAX_CLAMP, K_observed));
+
+    // EMA smoothing: new_K = alpha * K_observed + (1 - alpha) * K_current
+    float K_new = EC_K_EMA_ALPHA * K_observed + (1.0f - EC_K_EMA_ALPHA) * ec_K_feed_;
+
+    // Final clamp
+    K_new = std::max(EC_K_MIN_CLAMP, std::min(EC_K_MAX_CLAMP, K_new));
+
+    ESP_LOGI(TAG, "EC K-factor update: K_obs=%.4f → K_ema=%.4f (was %.4f) | "
+             "EC %.3f→%.3f mS/cm (delta=%.3f), %.4f mL/L",
+             K_observed, K_new, ec_K_feed_, ec_before, ec_after, ec_delta, ml_per_L_total);
+
+    ec_K_feed_ = K_new;
+
+    // Persist to NVS
+    if (psm_) {
+        psm_->saveFloat(NVS_KEY_EC_K, ec_K_feed_);
+        ESP_LOGD(TAG, "EC K-factor saved to NVS: %.4f", ec_K_feed_);
     }
 }
 

@@ -1,0 +1,42 @@
+HYDROMAT ? Hydroponik Zielwerttabelle: EC/TDS & pH nach Wachstumsphase;;;;;;;;;;;;;
+Alle Werte gelten fr Hydroponik (DWC, NFT, Drip, Ebb & Flow). Bei Kokos ca. +0,2 mS/cm m”glich. pH-Zielbereich: 5,5 ? 6,2.;;;;;;;;;;;;;
+;;;;;;;;;;;;;
+Wachstumsphase;"Dauer
+(Wochen)";Woche;"EC
+Min
+(mS/cm)";"EC
+Max
+(mS/cm)";"EC
+Ziel
+(mS/cm)";"ppm
+500-Skala
+Min";"ppm
+500-Skala
+Max";"ppm
+700-Skala
+Min";"ppm
+700-Skala
+Max";"ppm
+640-Skala
+Min";"ppm
+640-Skala
+Max";"pH
+Fenster
+Min";"pH
+Fenster
+Max"
+Einheit ?;;;mS/cm;mS/cm;mS/cm; 500; 500; 700; 700; 640; 640;pH;pH
+?? Keimling / S„mling;2;1?2;0,40;0,60;0,50;200;300;280;420;256;384;5,8;6,2
+?? Jungpflanze (Bewurzelung);2;3?4;0,60;  ;#WERT!;300;#WERT!;420;#WERT!;384;#WERT!;5,8;6,2
+?? Frhe Vegetation;2;5?6;1,00;1,40;1,20;500;700;700;980;640;896;5,8;6,2
+?? Volle Vegetation;2;7?8;1,40;1,80;1,60;700;900;980;1.260;896;1.152;5,8;6,2
+?? Stretch / Vorblte;1;9;1,60;2,00;1,80;800;1.000;1.120;1.400;1.024;1.280;5,8;6,2
+?? Frhe Blte;2;10?11;1,80;2,20;2,00;900;1.100;1.260;1.540;1.152;1.408;6,0;6,4
+?? Mittlere Blte;3;12?14;2,00;2,40;2,20;1.000;1.200;1.400;1.680;1.280;1.536;6,0;6,4
+?? Sp„te Blte;2;15?16;1,60;2,00;1,80;800;1.000;1.120;1.400;1.024;1.280;6,0;6,3
+??  Reifung / Pre-Flush;1;17;1,00;1,40;1,20;500;700;700;980;640;896;5,8;6,2
+?? Flush (nur Wasser);1;18;0,00;0,30;0,15;0;150;0;210;0;192;5,5;6,5
+;;;;;;;;;;;;;
+??  HYDROMAT ALERT-SCHWELLEN: EC > 2,5 mS/cm ? N„hrstoffbrand-Risiko hoch (Erfahrung aus frheren Runs: bis 3,6 mS/cm fhrte zu Blatt-Sch„den). Konservative Obergrenze fr Automatisierung: 2,2 mS/cm (? 1.100 ppm / 500er Skala).;;;;;;;;;;;;;
+??  EINHEITEN: 500-Skala = Hanna / Truncheon (USA, h„ufigste Hobby-Nutzung) | 700-Skala = Bluelab / Eutech (AU/EU professionell) | 640-Skala = Eutech-Standard | EC (mS/cm) ist die einzige physikalisch eindeutige Einheit.;;;;;;;;;;;;;
+??  pH-REGELLOGIK: Kein Fixwert! Drift innerhalb des Fensters ist gewollt (optimiert N„hrstoff-Sweep). Korrektur-Trigger: pH-Down bei > 6,3 (Veg) / > 6,4 (Blte). Korrektur-Zielwert: 5,8?5,9. Hysterese: mind. 15?20 min zwischen Korrektureingriffen. Details: ? pH_Regellogik.md;;;;;;;;;;;;;

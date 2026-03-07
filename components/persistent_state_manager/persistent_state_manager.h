@@ -254,6 +254,11 @@ public:
      */
     bool loadState(const char* key, bool default_value = false);
 
+    bool saveFloat(const char* key, float value);
+    float loadFloat(const char* key, float default_value = 0.0f);
+    bool saveInt32(const char* key, int32_t value);
+    int32_t loadInt32(const char* key, int32_t default_value = 0);
+
 private:
     // NVS preference handle for persistent storage
     ESPPreferenceObject pref_;

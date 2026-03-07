@@ -264,5 +264,51 @@ bool PersistentStateManager::loadState(const char* key, bool default_value) {
     }
 }
 
+bool PersistentStateManager::saveFloat(const char* key, float value) {
+    if (!key) return false;
+    auto pref = global_preferences->make_preference<float>(fnv1_hash(key), true);
+    if (pref.save(&value)) {
+        ESP_LOGD(TAG, "Float saved to NVS: %s = %.4f", key, value);
+        return true;
+    }
+    ESP_LOGE(TAG, "Failed to save float to NVS: %s", key);
+    return false;
+}
+
+float PersistentStateManager::loadFloat(const char* key, float default_value) {
+    if (!key) return default_value;
+    auto pref = global_preferences->make_preference<float>(fnv1_hash(key), true);
+    float loaded = default_value;
+    if (pref.load(&loaded)) {
+        ESP_LOGV(TAG, "Float loaded from NVS: %s = %.4f", key, loaded);
+        return loaded;
+    }
+    ESP_LOGV(TAG, "No float in NVS for key: %s (default: %.4f)", key, default_value);
+    return default_value;
+}
+
+bool PersistentStateManager::saveInt32(const char* key, int32_t value) {
+    if (!key) return false;
+    auto pref = global_preferences->make_preference<int32_t>(fnv1_hash(key), true);
+    if (pref.save(&value)) {
+        ESP_LOGD(TAG, "Int32 saved to NVS: %s = %d", key, value);
+        return true;
+    }
+    ESP_LOGE(TAG, "Failed to save int32 to NVS: %s", key);
+    return false;
+}
+
+int32_t PersistentStateManager::loadInt32(const char* key, int32_t default_value) {
+    if (!key) return default_value;
+    auto pref = global_preferences->make_preference<int32_t>(fnv1_hash(key), true);
+    int32_t loaded = default_value;
+    if (pref.load(&loaded)) {
+        ESP_LOGV(TAG, "Int32 loaded from NVS: %s = %d", key, loaded);
+        return loaded;
+    }
+    ESP_LOGV(TAG, "No int32 in NVS for key: %s (default: %d)", key, default_value);
+    return default_value;
+}
+
 } // namespace persistent_state_manager
 } // namespace esphome

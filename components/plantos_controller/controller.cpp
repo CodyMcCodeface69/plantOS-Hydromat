@@ -58,6 +58,10 @@ void PlantOSController::setup() {
         auto_feeding_enabled_ = psm_->loadState(NVS_KEY_AUTO_FEED_ENABLE, true);
         ESP_LOGI(TAG, "Auto-feeding: %s", auto_feeding_enabled_ ? "ENABLED" : "DISABLED");
 
+        // Load adaptive pH K-factor from NVS
+        ph_K_ = psm_->loadFloat(NVS_KEY_PH_K, 0.07f);
+        ESP_LOGI(TAG, "pH K-factor loaded from NVS: %.4f", ph_K_);
+
         // Initialize last feed date (will be loaded from NVS on first check)
         last_auto_feed_date_ = 0;
     } else {
@@ -1058,6 +1062,11 @@ void PlantOSController::handlePhCalculating() {
     if (ph_current_ >= target_min && ph_current_ <= target_max) {
         ESP_LOGI(TAG, "pH within target range - no correction needed");
 
+        // Update K-factor if acid was actually dosed in this cycle
+        if (ph_attempt_count_ > 0 && ph_cycle_total_ml_ > 0.1f) {
+            updatePhKFactor(ph_cycle_start_ph_, ph_current_, ph_cycle_total_ml_);
+        }
+
         // Record successful completion of pH correction operation
         recordOperationStep("pH_CORRECTION_SUCCESS");
 
@@ -1111,6 +1120,15 @@ void PlantOSController::handlePhCalculating() {
     ph_dose_ml_ = dose_ml;
     ph_dose_duration_ms_ = dose_ms;
     ph_attempt_count_++;
+
+    // Track cycle start pH for K-factor learning (only on first injection)
+    if (ph_attempt_count_ == 1) {
+        ph_cycle_start_ph_ = ph_current_;
+        ph_cycle_total_ml_ = 0.0f;
+        ph_cycle_water_filled_ = false;
+        ph_cycle_aborted_ = false;
+        ESP_LOGI(TAG, "pH correction cycle started: start_pH=%.2f", ph_cycle_start_ph_);
+    }
 
     ESP_LOGI(TAG, "pH correction needed: %.2f → %.2f (dose: %.1f mL = %.2f sec, attempt %d/%d)",
              ph_current_, target_max, dose_ml, dose_seconds, ph_attempt_count_, MAX_PH_ATTEMPTS);
@@ -1200,7 +1218,11 @@ void PlantOSController::handlePhInjecting() {
         // Injection complete - explicitly stop acid pump
         requestPump(ACID_PUMP, false);
 
-        ESP_LOGI(TAG, "Acid dosing complete: %.1f mL added - starting mixing phase", ph_dose_ml_);
+        // Accumulate total mL dosed in this correction cycle
+        ph_cycle_total_ml_ += ph_dose_ml_;
+        ESP_LOGI(TAG, "Acid dosing complete: %.1f mL added (cycle total: %.2f mL) - starting mixing phase",
+                 ph_dose_ml_, ph_cycle_total_ml_);
+
         transitionTo(ControllerState::PH_MIXING);
     }
 }
@@ -1786,6 +1808,10 @@ void PlantOSController::handleFeeding() {
             ph_current_ = 0.0f;
             ph_dose_ml_ = 0.0f;
             ph_dose_duration_ms_ = 0;
+            ph_cycle_start_ph_ = 0.0f;
+            ph_cycle_total_ml_ = 0.0f;
+            ph_cycle_water_filled_ = false;
+            ph_cycle_aborted_ = false;
 
             // Log event for crash recovery
             if (psm_) {
@@ -2111,6 +2137,10 @@ void PlantOSController::handleWaterFilling() {
                 ph_current_ = 0.0f;
                 ph_dose_ml_ = 0.0f;
                 ph_dose_duration_ms_ = 0;
+                ph_cycle_start_ph_ = 0.0f;
+                ph_cycle_total_ml_ = 0.0f;
+                ph_cycle_water_filled_ = false;
+                ph_cycle_aborted_ = false;
 
                 // Log event for crash recovery
                 if (psm_) {
@@ -2195,6 +2225,10 @@ void PlantOSController::handleWaterFilling() {
             ph_current_ = 0.0f;
             ph_dose_ml_ = 0.0f;
             ph_dose_duration_ms_ = 0;
+            ph_cycle_start_ph_ = 0.0f;
+            ph_cycle_total_ml_ = 0.0f;
+            ph_cycle_water_filled_ = false;
+            ph_cycle_aborted_ = false;
 
             // Log event for crash recovery
             if (psm_) {
@@ -2449,6 +2483,10 @@ void PlantOSController::handlePhProcessing() {
         ph_current_ = 0.0f;
         ph_dose_ml_ = 0.0f;
         ph_dose_duration_ms_ = 0;
+        ph_cycle_start_ph_ = 0.0f;
+        ph_cycle_total_ml_ = 0.0f;
+        ph_cycle_water_filled_ = false;
+        ph_cycle_aborted_ = false;
 
         // Log event for crash recovery
         if (psm_) {
@@ -2563,6 +2601,10 @@ void PlantOSController::startPhCorrection() {
     ph_readings_.clear();
     ph_current_ = 0.0f;
     ph_dose_duration_ms_ = 0;
+    ph_cycle_start_ph_ = 0.0f;
+    ph_cycle_total_ml_ = 0.0f;
+    ph_cycle_water_filled_ = false;
+    ph_cycle_aborted_ = false;
 
     // Initialize operation retry framework (max 3 retries for pH correction)
     initOperationRetry("PH_CORRECTION", 3);
@@ -2884,15 +2926,13 @@ uint32_t PlantOSController::getStateElapsed() const {
 }
 
 uint32_t PlantOSController::calculatePhMixingDuration() const {
-    // Linear formula based on tank volume:
-    // - 1.7L → 30 seconds (30,000 ms)
-    // - 70L → 120 seconds (120,000 ms)
+    // Linear formula based on tank volume (pH_Regellogik.md, 70L-optimized):
+    // - 1.7L → 30 seconds  (30,000 ms)
+    // - 70L  → 600 seconds (600,000 ms = 10 min)
     //
     // Formula: duration_ms = slope × volume_L + intercept
-    // Slope = (120000 - 30000) / (70 - 1.7) = 90000 / 68.3 ≈ 1317.35 ms/L
-    // Intercept = 30000 - (1317.35 × 1.7) ≈ 27760.5
-    //
-    // Final: duration_ms = 1317.35 × volume_L + 27760.5
+    // Slope = (600000 - 30000) / (70 - 1.7) = 570000 / 68.3 ≈ 8344.07 ms/L
+    // Intercept = 30000 - (8344.07 × 1.7) ≈ 15814.9
 
     float volume_L = 10.0f;  // Default fallback
     if (hal_) {
@@ -2900,17 +2940,17 @@ uint32_t PlantOSController::calculatePhMixingDuration() const {
     }
 
     // Apply linear formula
-    constexpr float SLOPE = 1317.35f;       // ms per liter
-    constexpr float INTERCEPT = 27760.5f;   // ms offset
+    constexpr float SLOPE = 8344.07f;       // ms per liter
+    constexpr float INTERCEPT = 15814.9f;   // ms offset
     float duration_ms = SLOPE * volume_L + INTERCEPT;
 
-    // Safety bounds: min 30s, max 120s
+    // Safety bounds: min 30s, max 600s (10 min)
     if (duration_ms < 30000.0f) {
         ESP_LOGW(TAG, "Calculated mixing duration too short (%.1f s), using minimum 30s", duration_ms / 1000.0f);
         duration_ms = 30000.0f;
-    } else if (duration_ms > 120000.0f) {
-        ESP_LOGW(TAG, "Calculated mixing duration too long (%.1f s), using maximum 120s", duration_ms / 1000.0f);
-        duration_ms = 120000.0f;
+    } else if (duration_ms > 600000.0f) {
+        ESP_LOGW(TAG, "Calculated mixing duration too long (%.1f s), using maximum 600s", duration_ms / 1000.0f);
+        duration_ms = 600000.0f;
     }
 
     uint32_t duration_ms_int = static_cast<uint32_t>(duration_ms);
@@ -3156,42 +3196,71 @@ uint8_t PlantOSController::getCurrentGrowDay() {
 // ============================================================================
 
 float PlantOSController::calculateAcidDoseML(float current_ph, float target_ph_max) {
-    // Calculate acid dose in milliliters based on pH offset
-    // Uses 0.5mL increments for precise control
-    // Formula: dose_ml = pH_offset * calibration_factor (per liter of tank volume)
+    // Adaptive K-factor formula (pH_Regellogik.md Section 4):
+    // dose_ml = (current_ph - PH_CORRECTION_TARGET) * tank_volume_L * ph_K_
+    //
+    // PH_CORRECTION_TARGET (5.85) is the biological target, not the trigger threshold.
+    // target_ph_max is the trigger threshold (from calendar), kept as parameter for callers.
 
-    if (current_ph <= target_ph_max) {
-        return 0.0f; // No correction needed
+    float ph_delta = current_ph - PH_CORRECTION_TARGET;
+    if (ph_delta <= 0.0f) {
+        return 0.0f;  // Already at or below target
     }
 
-    float ph_offset = current_ph - target_ph_max;
+    float tank_volume_L = hal_ ? hal_->getTankVolume() : 10.0f;
+    float dose_ml = ph_delta * tank_volume_L * ph_K_;
 
-    // Get tank volume from HAL
-    float tank_volume_liters = hal_ ? hal_->getTankVolume() : 10.0f;
+    // Clamp to [PH_MIN_DOSE_ML, PH_MAX_DOSE_ML]
+    dose_ml = std::max(PH_MIN_DOSE_ML, std::min(PH_MAX_DOSE_ML, dose_ml));
 
-    // Calibration factor: 0.5mL per 0.1 pH unit per 10 liters of water
-    // Example: pH 7.0 → 6.5 = 0.5 offset = 2.5mL for 10L tank
-    // This is a conservative starting point - adjust based on your acid concentration
-    float dose_ml_per_liter = ph_offset * 0.5f;  // 0.5mL per 0.1 pH per 10L
-    float dose_ml = dose_ml_per_liter * (tank_volume_liters / 10.0f);
-
-    // Round to nearest 0.5mL increment
-    dose_ml = roundf(dose_ml * 2.0f) / 2.0f;
-
-    // Ensure minimum dose of 0.5mL
-    if (dose_ml < 0.5f) {
-        dose_ml = 0.5f;
-    }
-
-    // Apply safety limit: max 5.0mL per dose
-    if (dose_ml > 5.0f) {
-        dose_ml = 5.0f;
-    }
-
-    ESP_LOGI(TAG, "Calculated acid dose: %.1f mL for %.2f pH offset (tank: %.1fL)",
-             dose_ml, ph_offset, tank_volume_liters);
+    ESP_LOGI(TAG, "Acid dose: %.3f pH_delta × %.1fL × K=%.4f = %.2f mL (clamped to [%.1f, %.1f])",
+             ph_delta, tank_volume_L, ph_K_, dose_ml, PH_MIN_DOSE_ML, PH_MAX_DOSE_ML);
 
     return dose_ml;
+}
+
+void PlantOSController::updatePhKFactor(float ph_before, float ph_after, float ml_total) {
+    float ph_delta = ph_before - ph_after;
+    float tank_volume_L = hal_ ? hal_->getTankVolume() : 10.0f;
+
+    // Guard conditions: only learn from clean, meaningful correction cycles
+    if (ph_delta <= 0.05f) {
+        ESP_LOGD(TAG, "K-factor update skipped: pH delta too small (%.3f < 0.05)", ph_delta);
+        return;
+    }
+    if (ml_total <= 0.1f) {
+        ESP_LOGD(TAG, "K-factor update skipped: ml dosed too small (%.2f < 0.1)", ml_total);
+        return;
+    }
+    if (ph_cycle_water_filled_) {
+        ESP_LOGD(TAG, "K-factor update skipped: water was added during cycle (dilution effect)");
+        return;
+    }
+    if (ph_cycle_aborted_) {
+        ESP_LOGD(TAG, "K-factor update skipped: cycle was aborted");
+        return;
+    }
+
+    // K_observed = mL / (pH_delta × volume_L)
+    float K_observed = ml_total / (ph_delta * tank_volume_L);
+
+    // Clamp to valid range
+    K_observed = std::max(PH_K_MIN_CLAMP, std::min(PH_K_MAX_CLAMP, K_observed));
+
+    // EMA smoothing: new_K = alpha * K_observed + (1 - alpha) * K_current
+    float K_new = PH_K_EMA_ALPHA * K_observed + (1.0f - PH_K_EMA_ALPHA) * ph_K_;
+
+    ESP_LOGI(TAG, "pH K-factor update: K_obs=%.4f → K_ema=%.4f (was %.4f) | "
+             "pH %.2f→%.2f (delta=%.3f), %.2f mL, %.1f L",
+             K_observed, K_new, ph_K_, ph_before, ph_after, ph_delta, ml_total, tank_volume_L);
+
+    ph_K_ = K_new;
+
+    // Persist to NVS
+    if (psm_) {
+        psm_->saveFloat(NVS_KEY_PH_K, ph_K_);
+        ESP_LOGD(TAG, "pH K-factor saved to NVS: %.4f", ph_K_);
+    }
 }
 
 float PlantOSController::calculateRobustPhAverage() {

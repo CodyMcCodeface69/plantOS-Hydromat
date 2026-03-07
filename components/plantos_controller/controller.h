@@ -466,6 +466,20 @@ private:
     uint32_t ph_mixing_duration_ms_{0};   // Calculated mixing duration based on tank volume
     static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
 
+    // Adaptive pH K-factor (pH_Regellogik.md Section 4)
+    float ph_K_{0.07f};                         // Current K-factor (EMA-smoothed)
+    static constexpr float PH_K_EMA_ALPHA = 0.20f;
+    static constexpr float PH_K_MIN_CLAMP = 0.01f;
+    static constexpr float PH_K_MAX_CLAMP = 0.50f;
+    static constexpr float PH_CORRECTION_TARGET = 5.85f;  // Biological target pH for injection
+    static constexpr float PH_MIN_DOSE_ML = 0.5f;
+    static constexpr float PH_MAX_DOSE_ML = 5.0f;
+    float ph_cycle_start_ph_{0.0f};             // pH before first injection in cycle
+    float ph_cycle_total_ml_{0.0f};             // Total mL dosed in correction cycle
+    bool ph_cycle_water_filled_{false};         // Guard: water fill happened during cycle
+    bool ph_cycle_aborted_{false};              // Guard: cycle was aborted
+    static constexpr const char* NVS_KEY_PH_K = "PhK";
+
     // ========================================================================
     // pH Calibration State - Enhanced with robust averaging
     // ========================================================================
@@ -676,6 +690,15 @@ private:
      * @return true if pH has stabilized
      */
     bool isPhStable();
+
+    /**
+     * Update adaptive pH K-factor after a completed correction cycle
+     * Uses EMA smoothing and saves result to NVS
+     * @param ph_before pH at start of cycle (before first injection)
+     * @param ph_after pH after final measurement
+     * @param ml_total Total mL of acid dosed in cycle
+     */
+    void updatePhKFactor(float ph_before, float ph_after, float ml_total);
 
     // ========================================================================
     // Constants

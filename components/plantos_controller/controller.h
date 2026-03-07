@@ -515,6 +515,8 @@ private:
     float ph_cycle_total_ml_{0.0f};             // Total mL dosed in correction cycle
     bool ph_cycle_water_filled_{false};         // Guard: water fill happened during cycle
     bool ph_cycle_aborted_{false};              // Guard: cycle was aborted
+    bool ph_post_fill_stabilize_{false};        // Use POST_FILL_STABILIZE_MS in PH_MEASURING (after water fill)
+    bool ph_post_feed_stabilize_{false};        // Use POST_FEED_STABILIZE_MS in PH_MEASURING (after EC feeding)
     static constexpr const char* NVS_KEY_PH_K = "PhK";
 
     // ========================================================================
@@ -750,6 +752,13 @@ private:
      */
     void updateEcKFactor(float ec_before, float ec_after, float ml_per_L_total);
 
+    /**
+     * Transition to PH_PROCESSING if auto_ph_correction_pending_, otherwise IDLE.
+     * Used by EC_PROCESSING when it exits without feeding (EC OK, EC unconfigured, etc.)
+     * Implements post-fill sequencing: water fill → EC check → pH correction
+     */
+    void transitionAfterEcSkipped();
+
     // ========================================================================
     // Constants
     // ========================================================================
@@ -759,7 +768,9 @@ private:
     // State timeouts (milliseconds)
     static constexpr uint32_t INIT_DURATION = 3000;           // 3 seconds boot
     static constexpr uint32_t ERROR_DURATION = 5000;          // 5 seconds error display
-    static constexpr uint32_t PH_MEASURING_DURATION = 30000;  // 30 seconds stabilization
+    static constexpr uint32_t PH_MEASURING_DURATION = 30000;  // 30 seconds stabilization (normal)
+    static constexpr uint32_t POST_FILL_STABILIZE_MS = 600000; // 10 min - pH stabilization after water fill
+    static constexpr uint32_t POST_FEED_STABILIZE_MS = 300000; // 5 min - pH stabilization after EC feeding
     // NOTE: PH_MIXING_DURATION is now calculated dynamically based on tank volume
     // See calculatePhMixingDuration() for linear formula (1.7L→30s, 70L→120s)
 

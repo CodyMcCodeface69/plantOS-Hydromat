@@ -920,7 +920,19 @@ void PlantOSController::handlePhMeasuring() {
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
         turnOffAllPumps();
-        ESP_LOGI(TAG, "pH measuring: All pumps OFF for 5-minute stabilization");
+
+        // Select stabilization duration based on context (Logikplan.md Phase 5)
+        uint32_t stabilize_ms = PH_MEASURING_DURATION;
+        if (ph_post_fill_stabilize_) {
+            stabilize_ms = POST_FILL_STABILIZE_MS;
+            ESP_LOGI(TAG, "pH measuring: All pumps OFF for 10-min stabilization (post water fill)");
+        } else if (ph_post_feed_stabilize_) {
+            stabilize_ms = POST_FEED_STABILIZE_MS;
+            ESP_LOGI(TAG, "pH measuring: All pumps OFF for 5-min stabilization (post EC feeding)");
+        } else {
+            ESP_LOGI(TAG, "pH measuring: All pumps OFF for %.0fs stabilization",
+                     stabilize_ms / 1000.0f);
+        }
         ph_readings_.clear(); // Reset readings buffer
 
         // Send temperature compensation before starting pH measurements
@@ -1037,10 +1049,19 @@ void PlantOSController::handlePhMeasuring() {
         }
     }
 
-    // Wait full 5 minutes before calculating
-    if (elapsed < PH_MEASURING_DURATION) {
+    // Wait for stabilization period (duration depends on context - see entry block above)
+    uint32_t measuring_duration = PH_MEASURING_DURATION;
+    if (ph_post_fill_stabilize_) {
+        measuring_duration = POST_FILL_STABILIZE_MS;
+    } else if (ph_post_feed_stabilize_) {
+        measuring_duration = POST_FEED_STABILIZE_MS;
+    }
+    if (elapsed < measuring_duration) {
         return;
     }
+    // Clear stabilization flags once measurement period is complete
+    ph_post_fill_stabilize_ = false;
+    ph_post_feed_stabilize_ = false;
 
     // Measurement period complete - calculate robust average
     if (ph_readings_.empty()) {
@@ -2101,15 +2122,17 @@ void PlantOSController::handleEcProcessing() {
 
     // Guard: EC sensor must have a valid reading
     if (!hal_->hasECValue()) {
-        ESP_LOGW(TAG, "[EC_PROCESSING] No EC reading available - returning to IDLE");
-        transitionTo(ControllerState::IDLE);
+        ESP_LOGW(TAG, "[EC_PROCESSING] No EC reading available - skipping EC check");
+        auto_ec_check_pending_ = false;
+        transitionAfterEcSkipped();
         return;
     }
 
     // Guard: CalendarManager required for EC targets
     if (!calendar_manager_) {
         ESP_LOGD(TAG, "[EC_PROCESSING] No calendar manager - skipping EC check");
-        transitionTo(ControllerState::IDLE);
+        auto_ec_check_pending_ = false;
+        transitionAfterEcSkipped();
         return;
     }
 
@@ -2119,7 +2142,8 @@ void PlantOSController::handleEcProcessing() {
     if (schedule.ec_target <= 0.0f) {
         ESP_LOGD(TAG, "[EC_PROCESSING] EC target not configured for day %d - skipping",
                  calendar_manager_->get_current_day());
-        transitionTo(ControllerState::IDLE);
+        auto_ec_check_pending_ = false;
+        transitionAfterEcSkipped();
         return;
     }
 
@@ -2131,7 +2155,8 @@ void PlantOSController::handleEcProcessing() {
             int64_t wait_s = EC_MIN_INTERVAL_S - elapsed_s;
             ESP_LOGI(TAG, "[EC_PROCESSING] 4h guard: %lld/%lld s elapsed - %lld s remaining",
                      elapsed_s, EC_MIN_INTERVAL_S, wait_s);
-            transitionTo(ControllerState::IDLE);
+            auto_ec_check_pending_ = false;
+            transitionAfterEcSkipped();
             return;
         }
     }
@@ -2148,7 +2173,8 @@ void PlantOSController::handleEcProcessing() {
         ESP_LOGW(TAG, "[EC_PROCESSING] EC over-concentration (%.3f > %.3f) - no feeding, add plain water",
                  ec_current, ec_max);
         status_logger_.updateAlertStatus("EC_HIGH", "EC over-concentration - add plain water or wait");
-        transitionTo(ControllerState::IDLE);
+        auto_ec_check_pending_ = false;
+        transitionAfterEcSkipped();
         return;
     }
 
@@ -2156,7 +2182,8 @@ void PlantOSController::handleEcProcessing() {
     if (ec_current >= ec_min) {
         ESP_LOGD(TAG, "[EC_PROCESSING] EC in range [%.2f-%.2f] - no feeding needed", ec_min, ec_max);
         status_logger_.resolveAlert("EC_HIGH");
-        transitionTo(ControllerState::IDLE);
+        auto_ec_check_pending_ = false;
+        transitionAfterEcSkipped();
         return;
     }
 
@@ -2393,7 +2420,7 @@ void PlantOSController::handleEcMeasuring() {
     }
 
     // Always check pH after EC feeding (nutrients shift pH)
-    ESP_LOGI(TAG, "[EC_MEASURING] EC cycle complete - triggering pH check");
+    ESP_LOGI(TAG, "[EC_MEASURING] EC cycle complete - triggering pH check (5-min stabilization)");
 
     // Reset pH state for clean correction cycle
     ph_attempt_count_ = 0;
@@ -2405,6 +2432,9 @@ void PlantOSController::handleEcMeasuring() {
     ph_cycle_total_ml_ = 0.0f;
     ph_cycle_water_filled_ = false;
     ph_cycle_aborted_ = false;
+
+    // Use extended stabilization: nutrients need time to distribute before accurate pH reading
+    ph_post_feed_stabilize_ = true;
 
     if (psm_) {
         psm_->clearEvent();
@@ -2491,32 +2521,19 @@ void PlantOSController::handleWaterFilling() {
             valve_command_sent = false;  // Reset for next fill cycle
             ESP_LOGI(TAG, "[WATER_FILLING] Fill complete");
 
-            // Check if auto pH correction should follow
-            if (auto_ph_correction_pending_) {
-                ESP_LOGI(TAG, "Auto pH correction pending - starting pH check");
-                auto_ph_correction_pending_ = false;
+            // Post-fill sequence (Steuerungslogik.md 10.2): always EC before pH after water fill
+            ESP_LOGI(TAG, "[WATER_FILLING] Post-fill: starting EC check → pH correction sequence");
+            auto_ec_check_pending_ = true;
+            auto_ph_correction_pending_ = true;
+            ph_post_fill_stabilize_ = true;  // Extended 10-min pH stabilization after fill
+            ec_cycle_water_filled_ = false;  // Reset EC cycle guard
+            ph_cycle_water_filled_ = false;  // Reset pH cycle guard
 
-                // Reset pH correction state
-                ph_attempt_count_ = 0;
-                ph_readings_.clear();
-                ph_current_ = 0.0f;
-                ph_dose_ml_ = 0.0f;
-                ph_dose_duration_ms_ = 0;
-                ph_cycle_start_ph_ = 0.0f;
-                ph_cycle_total_ml_ = 0.0f;
-                ph_cycle_water_filled_ = false;
-                ph_cycle_aborted_ = false;
+            // Reset EC cycle state for clean measurement
+            ec_attempt_count_ = 0;
+            ec_total_ml_per_L_ = 0.0f;
 
-                // Log event for crash recovery
-                if (psm_) {
-                    psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
-                }
-
-                transitionTo(ControllerState::PH_PROCESSING);
-            } else {
-                ESP_LOGI(TAG, "Returning to IDLE");
-                transitionTo(ControllerState::IDLE);
-            }
+            transitionTo(ControllerState::EC_PROCESSING);
             return;
         }
 
@@ -2579,32 +2596,19 @@ void PlantOSController::handleWaterFilling() {
         valve_command_sent = false;  // Reset for next fill cycle
         ESP_LOGI(TAG, "[WATER_FILLING] Timeout complete");
 
-        // Check if auto pH correction should follow
-        if (auto_ph_correction_pending_) {
-            ESP_LOGI(TAG, "Auto pH correction pending - starting pH check");
-            auto_ph_correction_pending_ = false;
+        // Post-fill sequence (Steuerungslogik.md 10.2): always EC before pH after water fill
+        ESP_LOGI(TAG, "[WATER_FILLING] Post-fill: starting EC check → pH correction sequence");
+        auto_ec_check_pending_ = true;
+        auto_ph_correction_pending_ = true;
+        ph_post_fill_stabilize_ = true;  // Extended 10-min pH stabilization after fill
+        ec_cycle_water_filled_ = false;  // Reset EC cycle guard
+        ph_cycle_water_filled_ = false;  // Reset pH cycle guard
 
-            // Reset pH correction state
-            ph_attempt_count_ = 0;
-            ph_readings_.clear();
-            ph_current_ = 0.0f;
-            ph_dose_ml_ = 0.0f;
-            ph_dose_duration_ms_ = 0;
-            ph_cycle_start_ph_ = 0.0f;
-            ph_cycle_total_ml_ = 0.0f;
-            ph_cycle_water_filled_ = false;
-            ph_cycle_aborted_ = false;
+        // Reset EC cycle state for clean measurement
+        ec_attempt_count_ = 0;
+        ec_total_ml_per_L_ = 0.0f;
 
-            // Log event for crash recovery
-            if (psm_) {
-                psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
-            }
-
-            transitionTo(ControllerState::PH_PROCESSING);
-        } else {
-            ESP_LOGI(TAG, "Returning to IDLE");
-            transitionTo(ControllerState::IDLE);
-        }
+        transitionTo(ControllerState::EC_PROCESSING);
         return;
     }
 }
@@ -3684,6 +3688,35 @@ void PlantOSController::updateEcKFactor(float ec_before, float ec_after, float m
     if (psm_) {
         psm_->saveFloat(NVS_KEY_EC_K, ec_K_feed_);
         ESP_LOGD(TAG, "EC K-factor saved to NVS: %.4f", ec_K_feed_);
+    }
+}
+
+void PlantOSController::transitionAfterEcSkipped() {
+    // Post-fill sequencing (Steuerungslogik.md 10.2): if auto pH correction is pending,
+    // transition to PH_PROCESSING; otherwise return to IDLE.
+    if (auto_ph_correction_pending_) {
+        ESP_LOGI(TAG, "[EC_PROCESSING] Auto pH correction pending - transitioning to pH check");
+        auto_ph_correction_pending_ = false;
+
+        // Reset pH state for clean correction cycle
+        ph_attempt_count_ = 0;
+        ph_readings_.clear();
+        ph_current_ = 0.0f;
+        ph_dose_ml_ = 0.0f;
+        ph_dose_duration_ms_ = 0;
+        ph_cycle_start_ph_ = 0.0f;
+        ph_cycle_total_ml_ = 0.0f;
+        ph_cycle_water_filled_ = false;
+        ph_cycle_aborted_ = false;
+
+        if (psm_) {
+            psm_->clearEvent();
+            psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+        }
+
+        transitionTo(ControllerState::PH_PROCESSING);
+    } else {
+        transitionTo(ControllerState::IDLE);
     }
 }
 

@@ -4,7 +4,7 @@
 
 **Location**: `/home/cody/plantOS-testlab/FSMINFO.md`
 **Component**: `components/plantos_controller/controller.cpp` and `controller.h`
-**Last Updated**: 2026-01-03
+**Last Updated**: 2026-03-08
 
 ---
 
@@ -471,7 +471,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | startPhCorrection()        | Must be in IDLE    | PH_MEASURING         | Manual pH correction (web UI button)<br>**Blocked in NIGHT state** |
 | startPhCalibration()       | Must be in IDLE    | PH_CALIBRATING       | 3-point sensor calibration (web UI) |
 | startFeeding()             | Must be in IDLE    | FEEDING              | Manual nutrient dosing (web UI button)<br>**Blocked in NIGHT state** |
-| startFillTank()            | Must be in IDLE    | WATER_FILLING        | Fill tank + auto pH correction<br>**Blocked in NIGHT state** |
+| startFillTank()            | Must be in IDLE    | WATER_FILLING        | Fill tank → EC check → pH correction (post-fill sequence)<br>**Blocked in NIGHT state** |
 | startEmptyTank()           | N/A (info only)    | IDLE (no change)     | Info message (use manual drain) |
 | startFeed()                | Must be in IDLE<br>Tank must be empty | FEED_FILLING         | Complete feed: Fill→Nutrients→pH<br>(safety check: both sensors OFF)<br>**Blocked in NIGHT state** |
 | startReservoirChange()     | Must be in IDLE    | IDLE (manual drain)  | Info message (requires manual empty)<br>**Blocked in NIGHT state** |
@@ -499,10 +499,10 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | IDLE               | No timeout                 | Continuous (automatic → NIGHT if night mode hours) |
 | NIGHT              | No timeout                 | Continuous (automatic → IDLE when hours end) |
 | ERROR              | 5 seconds                  | → INIT (automatic recovery) |
-| PH_MEASURING       | 5 minutes (300s)           | → PH_CALCULATING |
+| PH_MEASURING       | 30s (normal) / 5min (post EC feeding) / 10min (post water fill) | → PH_CALCULATING |
 | PH_INJECTING       | Calculated dose + 200ms    | → PH_MIXING |
 | PH_MIXING          | 2 minutes (120s)           | → PH_MEASURING (loop back to verify) |
-| WATER_FILLING      | 30s (fallback) or sensor   | → IDLE or PH_PROCESSING (if auto pH) |
+| WATER_FILLING      | 10min (fallback) or HIGH sensor | → EC_PROCESSING (post-fill sequence: EC → pH) |
 | WATER_EMPTYING     | 30s (fallback) or sensor   | → IDLE |
 | FEED_FILLING       | Calculated or sensor       | → FEEDING |
 

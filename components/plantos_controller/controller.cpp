@@ -76,6 +76,12 @@ void PlantOSController::setup() {
 
         // Initialize last feed date (will be loaded from NVS on first check)
         last_auto_feed_date_ = 0;
+
+        // Load calibration timestamps from NVS (Phase 7)
+        last_ph_calibration_ts_ = (int64_t)psm_->loadInt32(NVS_KEY_PH_CALIB_TS, 0);
+        last_ec_calibration_ts_ = (int64_t)psm_->loadInt32(NVS_KEY_EC_CALIB_TS, 0);
+        ESP_LOGI(TAG, "pH last calibrated: %lld s, EC last calibrated: %lld s",
+                 (long long)last_ph_calibration_ts_, (long long)last_ec_calibration_ts_);
     } else {
         ESP_LOGW(TAG, "PSM not configured - State persistence disabled");
     }
@@ -755,7 +761,17 @@ void PlantOSController::handleIdle() {
         return;
     }
 
-    // Future: Check for other scheduled tasks, sensor thresholds, etc.
+    // ========================================================================
+    // SENSOR HEALTH CHECKS - Periodic (Phase 7)
+    // Temperature alerts, plausibility checks, calibration reminders
+    // ========================================================================
+    if (now - last_sensor_health_check_time_ >= SENSOR_HEALTH_CHECK_INTERVAL_MS) {
+        last_sensor_health_check_time_ = now;
+        checkTemperatureAlerts();
+        checkSensorPlausibility();
+        checkWaterLevelPlausibility();
+        checkCalibrationReminders();
+    }
 }
 
 void PlantOSController::handleNight() {
@@ -1796,6 +1812,14 @@ void PlantOSController::handlePhCalibrating() {
             status_logger_.resolveAlert("CALIBRATION_FAILED_MID");
             status_logger_.resolveAlert("CALIBRATION_FAILED_LOW");
             status_logger_.resolveAlert("CALIBRATION_FAILED_HIGH");
+
+            // Save pH calibration timestamp for reminder tracking (Phase 7)
+            if (psm_ && hal_ && hal_->hasTime()) {
+                last_ph_calibration_ts_ = hal_->getCurrentTimestamp();
+                psm_->saveInt32(NVS_KEY_PH_CALIB_TS, (int32_t)last_ph_calibration_ts_);
+                ESP_LOGI(TAG, "pH calibration timestamp saved: %lld", (long long)last_ph_calibration_ts_);
+                status_logger_.clearAlert("PH_CALIBRATION_DUE");
+            }
 
             // Clear PSM event
             if (psm_) {
@@ -3950,6 +3974,183 @@ void PlantOSController::checkShellyHealth() {
             "Shelly Plus 4PM not responding to HTTP ping");
     } else {
         status_logger_.clearAlert("SHELLY_OFFLINE");
+    }
+}
+
+// ============================================================================
+// Sensor Health Checks (Phase 7)
+// ============================================================================
+
+void PlantOSController::checkTemperatureAlerts() {
+    if (!hal_ || !hal_->hasTemperature()) return;
+
+    float temp = hal_->readTemperature();
+
+    if (temp > 32.0f) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Water temp CRITICAL: %.1f\xC2\xB0""C (limit: >32\xC2\xB0""C)", temp);
+        status_logger_.updateAlertStatus("TEMP_CRITICAL", msg);
+        status_logger_.clearAlert("TEMP_HIGH");
+        status_logger_.clearAlert("TEMP_LOW");
+        ESP_LOGE(TAG, "[TEMP_ALERT] %s", msg);
+        temp_health_.recordFailure(hal_->getSystemTime());
+    } else if (temp > 28.0f) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Water temp high: %.1f\xC2\xB0""C (warn: >28\xC2\xB0""C)", temp);
+        status_logger_.updateAlertStatus("TEMP_HIGH", msg);
+        status_logger_.clearAlert("TEMP_CRITICAL");
+        status_logger_.clearAlert("TEMP_LOW");
+        ESP_LOGW(TAG, "[TEMP_ALERT] %s", msg);
+        temp_health_.recordFailure(hal_->getSystemTime());
+    } else if (temp < 15.0f) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Water temp low: %.1f\xC2\xB0""C (warn: <15\xC2\xB0""C)", temp);
+        status_logger_.updateAlertStatus("TEMP_LOW", msg);
+        status_logger_.clearAlert("TEMP_CRITICAL");
+        status_logger_.clearAlert("TEMP_HIGH");
+        ESP_LOGW(TAG, "[TEMP_ALERT] %s", msg);
+        temp_health_.recordFailure(hal_->getSystemTime());
+    } else {
+        status_logger_.clearAlert("TEMP_CRITICAL");
+        status_logger_.clearAlert("TEMP_HIGH");
+        status_logger_.clearAlert("TEMP_LOW");
+        if (!temp_health_.isOK()) {
+            ESP_LOGI(TAG, "[TEMP_ALERT] Temperature back in normal range: %.1f\xC2\xB0""C", temp);
+        }
+        temp_health_.recordSuccess();
+    }
+}
+
+void PlantOSController::checkSensorPlausibility() {
+    if (!hal_) return;
+
+    uint32_t now = hal_->getSystemTime();
+
+    // pH plausibility checks
+    if (hal_->hasPhValue()) {
+        float ph = hal_->readPH();
+
+        // Range check: valid pH 3.0–10.0
+        if (ph < 3.0f || ph > 10.0f) {
+            char msg[80];
+            snprintf(msg, sizeof(msg), "pH %.2f outside valid range [3.0-10.0] - sensor error?", ph);
+            status_logger_.updateAlertStatus("PH_PLAUSIBILITY", msg);
+            ph_health_.recordFailure(now);
+            ESP_LOGE(TAG, "[PLAUSIBILITY] %s", msg);
+        } else {
+            // Rate-of-change check: > 1.0 pH/min = likely sensor error
+            if (last_ph_plausibility_time_ > 0 && hal_->hasTime()) {
+                int64_t current_ts = hal_->getCurrentTimestamp();
+                int64_t dt_s = current_ts - last_ph_plausibility_time_;
+                // Only check if interval is sane (5s–120s)
+                if (dt_s >= 5 && dt_s <= 120) {
+                    float rate = std::abs(ph - last_ph_plausibility_value_) / (dt_s / 60.0f);
+                    if (rate > 1.0f) {
+                        char msg[100];
+                        snprintf(msg, sizeof(msg),
+                                 "pH change %.2f pH/min exceeds 1.0/min limit (%.2f→%.2f in %llds)",
+                                 rate, last_ph_plausibility_value_, ph, (long long)dt_s);
+                        status_logger_.updateAlertStatus("PH_PLAUSIBILITY", msg);
+                        ph_health_.recordFailure(now);
+                        ESP_LOGW(TAG, "[PLAUSIBILITY] %s", msg);
+                    } else {
+                        status_logger_.clearAlert("PH_PLAUSIBILITY");
+                        ph_health_.recordSuccess();
+                    }
+                }
+            } else {
+                status_logger_.clearAlert("PH_PLAUSIBILITY");
+                ph_health_.recordSuccess();
+            }
+
+            // Update tracking values
+            last_ph_plausibility_value_ = ph;
+            last_ph_plausibility_time_ = hal_->hasTime() ? hal_->getCurrentTimestamp()
+                                                         : (int64_t)(now / 1000);
+        }
+    }
+
+    // EC plausibility checks
+    if (hal_->hasECValue()) {
+        float ec = hal_->readEC();  // mS/cm
+
+        // Range check: 0–5.0 mS/cm
+        if (ec < 0.0f || ec > 5.0f) {
+            char msg[80];
+            snprintf(msg, sizeof(msg), "EC %.3f mS/cm outside valid range [0-5.0] - sensor error?", ec);
+            status_logger_.updateAlertStatus("EC_PLAUSIBILITY", msg);
+            ec_health_.recordFailure(now);
+            ESP_LOGE(TAG, "[PLAUSIBILITY] %s", msg);
+        } else {
+            // Jump check: > 1.0 mS/cm between consecutive 1-min checks = suspicious
+            if (last_ec_plausibility_value_ >= 0.0f) {
+                float jump = std::abs(ec - last_ec_plausibility_value_);
+                if (jump > 1.0f) {
+                    char msg[100];
+                    snprintf(msg, sizeof(msg),
+                             "EC jump %.3f mS/cm between checks (%.3f→%.3f) exceeds 1.0 mS/cm limit",
+                             jump, last_ec_plausibility_value_, ec);
+                    status_logger_.updateAlertStatus("EC_PLAUSIBILITY", msg);
+                    ec_health_.recordFailure(now);
+                    ESP_LOGW(TAG, "[PLAUSIBILITY] %s", msg);
+                } else {
+                    status_logger_.clearAlert("EC_PLAUSIBILITY");
+                    ec_health_.recordSuccess();
+                }
+            }
+            last_ec_plausibility_value_ = ec;
+        }
+    }
+}
+
+void PlantOSController::checkWaterLevelPlausibility() {
+    if (!hal_ || !hal_->hasWaterLevelSensors()) return;
+
+    bool high = hal_->readWaterLevelHigh();
+    bool empty = hal_->readWaterLevelEmpty();
+
+    // HIGH and EMPTY both active simultaneously is physically impossible
+    if (high && empty) {
+        status_logger_.updateAlertStatus("WATER_LEVEL_LOGIC_ERROR",
+            "Water level sensors contradictory: HIGH and EMPTY both active simultaneously");
+        ESP_LOGE(TAG, "[PLAUSIBILITY] Water level logic error: HIGH and EMPTY sensors both active");
+    } else {
+        status_logger_.clearAlert("WATER_LEVEL_LOGIC_ERROR");
+    }
+}
+
+void PlantOSController::checkCalibrationReminders() {
+    if (!hal_ || !hal_->hasTime()) return;
+
+    int64_t current_ts = hal_->getCurrentTimestamp();
+    if (current_ts <= 0) return;
+
+    // pH calibration reminder (every 14 days)
+    if (last_ph_calibration_ts_ > 0) {
+        int64_t elapsed_s = current_ts - last_ph_calibration_ts_;
+        if (elapsed_s >= PH_CALIB_INTERVAL_S) {
+            int64_t days = elapsed_s / 86400;
+            char msg[80];
+            snprintf(msg, sizeof(msg), "pH calibration overdue: %lld days since last calibration", (long long)days);
+            status_logger_.updateAlertStatus("PH_CALIBRATION_DUE", msg);
+            ESP_LOGW(TAG, "[CALIB_REMINDER] %s", msg);
+        } else {
+            status_logger_.clearAlert("PH_CALIBRATION_DUE");
+        }
+    }
+
+    // EC calibration reminder (every 30 days)
+    if (last_ec_calibration_ts_ > 0) {
+        int64_t elapsed_s = current_ts - last_ec_calibration_ts_;
+        if (elapsed_s >= EC_CALIB_INTERVAL_S) {
+            int64_t days = elapsed_s / 86400;
+            char msg[80];
+            snprintf(msg, sizeof(msg), "EC calibration overdue: %lld days since last calibration", (long long)days);
+            status_logger_.updateAlertStatus("EC_CALIBRATION_DUE", msg);
+            ESP_LOGW(TAG, "[CALIB_REMINDER] %s", msg);
+        } else {
+            status_logger_.clearAlert("EC_CALIBRATION_DUE");
+        }
     }
 }
 

@@ -954,6 +954,89 @@ private:
 
     SensorRetryState sensor_retry_state_;
 
+    // ========================================================================
+    // SENSOR HEALTH - 3-Tier Model (Phase 7)
+    // ========================================================================
+
+    /**
+     * SensorTier - Three-tier degradation model for ambient sensor health
+     *
+     * OK       → sensor reading is valid
+     * STOPPED  → first failure detected, operations suspended for this sensor
+     * RETRYING → retry attempts in progress (with 60s interval)
+     * FAILED   → max retries exhausted, alert remains until manual recovery
+     */
+    enum class SensorTier { OK, STOPPED, RETRYING, FAILED };
+
+    struct SensorHealth {
+        SensorTier tier{SensorTier::OK};
+        uint8_t retry_count{0};
+        uint8_t max_retries{3};
+        uint32_t last_retry_time{0};
+        static constexpr uint32_t RETRY_INTERVAL_MS = 60000;  // 60s between retries
+
+        void recordFailure(uint32_t now) {
+            last_retry_time = now;
+            if (tier == SensorTier::OK) {
+                tier = SensorTier::STOPPED;
+                retry_count = 1;
+            } else if (tier == SensorTier::STOPPED || tier == SensorTier::RETRYING) {
+                retry_count++;
+                tier = (retry_count >= max_retries) ? SensorTier::FAILED : SensorTier::RETRYING;
+            }
+            // FAILED stays FAILED until recordSuccess()
+        }
+
+        void recordSuccess() {
+            tier = SensorTier::OK;
+            retry_count = 0;
+            last_retry_time = 0;
+        }
+
+        bool canRetry(uint32_t now) const {
+            if (tier == SensorTier::FAILED) return false;
+            if (retry_count == 0) return true;
+            return (now - last_retry_time) >= RETRY_INTERVAL_MS;
+        }
+
+        bool isFailed() const { return tier == SensorTier::FAILED; }
+        bool isOK() const { return tier == SensorTier::OK; }
+
+        const char* tierName() const {
+            switch (tier) {
+                case SensorTier::OK:       return "OK";
+                case SensorTier::STOPPED:  return "STOPPED";
+                case SensorTier::RETRYING: return "RETRYING";
+                case SensorTier::FAILED:   return "FAILED";
+                default:                   return "UNKNOWN";
+            }
+        }
+    };
+
+    SensorHealth ph_health_;
+    SensorHealth ec_health_;
+    SensorHealth temp_health_;
+
+    // Sensor plausibility tracking (Phase 7)
+    float last_ph_plausibility_value_{0.0f};    // Previous pH for rate-of-change check
+    int64_t last_ph_plausibility_time_{0};       // Unix timestamp of last pH plausibility reading
+    float last_ec_plausibility_value_{-1.0f};    // Previous EC for jump detection (-1 = unset)
+
+    // Periodic sensor health check timer
+    uint32_t last_sensor_health_check_time_{0};
+    static constexpr uint32_t SENSOR_HEALTH_CHECK_INTERVAL_MS = 60000;  // 1 min
+
+    // ========================================================================
+    // CALIBRATION REMINDERS (Phase 7)
+    // ========================================================================
+
+    int64_t last_ph_calibration_ts_{0};   // Unix timestamp of last pH calibration
+    int64_t last_ec_calibration_ts_{0};   // Unix timestamp of last EC calibration
+    static constexpr int64_t PH_CALIB_INTERVAL_S = 1209600;   // 14 days
+    static constexpr int64_t EC_CALIB_INTERVAL_S = 2592000;   // 30 days
+    static constexpr const char* NVS_KEY_PH_CALIB_TS = "PhCalibTs";
+    static constexpr const char* NVS_KEY_EC_CALIB_TS = "EcCalibTs";
+
     // Compile-time feature flag for enhanced error handling
 #ifdef PLANTOS_ENHANCED_ERROR_HANDLING
     static constexpr bool ENHANCED_ERROR_HANDLING_ENABLED = true;
@@ -975,6 +1058,32 @@ private:
      * Called periodically from IDLE state (every 30 seconds)
      */
     void checkShellyHealth();
+
+    /**
+     * Check water temperature against safe thresholds and fire/clear alerts
+     * Thresholds: <15°C WARNING, >28°C WARNING, >32°C CRITICAL
+     */
+    void checkTemperatureAlerts();
+
+    /**
+     * Check pH and EC readings for out-of-range values and suspicious changes
+     * pH: valid range 3.0–10.0, rate-of-change limit 1.0 pH/min
+     * EC: valid range 0–5.0 mS/cm, jump limit 1.0 mS/cm between checks
+     */
+    void checkSensorPlausibility();
+
+    /**
+     * Check water level sensor states for logical contradictions
+     * HIGH=true + EMPTY=true simultaneously is physically impossible
+     */
+    void checkWaterLevelPlausibility();
+
+    /**
+     * Check if pH or EC calibration is overdue and fire reminder alerts
+     * pH: 14-day interval, EC: 30-day interval
+     * Only runs when NTP time is available
+     */
+    void checkCalibrationReminders();
 
     // Actuator IDs (must match SafetyGate configuration)
     static constexpr const char* ACID_PUMP = "AcidPump";

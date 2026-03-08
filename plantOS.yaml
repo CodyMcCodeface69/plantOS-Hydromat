@@ -896,6 +896,32 @@ button:
             ESP_LOGI("button", "Set to IDLE button pressed");
             id(unified_controller)->setToIdle();
 
+  # === 04_10-04_11 - Betriebsmodi (Phase 6) ===
+  - platform: template
+    name: "04_10_Toggle Vacation Mode (70% doses, 5 retries)"
+    on_press:
+      # Toggle vacation mode: conservative dosing (70%) for extended unattended operation
+      # Persisted to NVS across power cycles
+      then:
+        - lambda: |-
+            bool current = id(unified_controller)->isVacationModeEnabled();
+            id(unified_controller)->setVacationMode(!current);
+            ESP_LOGI("button", "Vacation mode toggled: %s → %s",
+                     current ? "ON" : "OFF", !current ? "ON" : "OFF");
+
+  - platform: template
+    name: "04_11_Toggle Auto-Fill (EMPTY → WATER_FILLING)"
+    on_press:
+      # Toggle automatic water fill when EMPTY sensor activates
+      # When enabled: IDLE + EMPTY sensor → starts WATER_FILLING → EC → pH sequence
+      # Persisted to NVS
+      then:
+        - lambda: |-
+            bool current = id(unified_controller)->isAutoFillEnabled();
+            id(unified_controller)->setAutoFillEnabled(!current);
+            ESP_LOGI("button", "Auto-fill toggled: %s → %s",
+                     current ? "ON" : "OFF", !current ? "ON" : "OFF");
+
   # === 05 - Logging & Cleanup ===
   - platform: template
     name: "05_01_Clear PSM Alerts"

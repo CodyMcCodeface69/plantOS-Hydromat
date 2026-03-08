@@ -238,6 +238,49 @@ public:
     void startEcCheck();
 
     /**
+     * Enable or disable vacation mode
+     * When active: doses reduced to 70%, retry limits increased to 5
+     * NVS-persistent across power cycles
+     * @param enabled true to enable vacation mode
+     */
+    void setVacationMode(bool enabled);
+
+    /**
+     * Check if vacation mode is active
+     * @return true if vacation mode is enabled
+     */
+    bool isVacationModeEnabled() const { return vacation_mode_; }
+
+    /**
+     * Enable or disable automatic water fill
+     * When enabled, fill triggers automatically when EMPTY sensor activates in IDLE state
+     * NVS-persistent
+     * @param enabled true to enable auto-fill
+     */
+    void setAutoFillEnabled(bool enabled);
+
+    /**
+     * Check if automatic water fill is enabled
+     * @return true if auto-fill is enabled
+     */
+    bool isAutoFillEnabled() const { return auto_fill_enabled_; }
+
+    /**
+     * Set global dose multiplier override (runtime, not persisted)
+     * Applied multiplicatively on top of vacation mode multiplier
+     * @param multiplier Scaling factor (1.0 = no override, 0.5 = 50%)
+     */
+    void setOverrideDoseMultiplier(float multiplier) {
+        override_dose_multiplier_ = std::max(0.1f, std::min(2.0f, multiplier));
+        ESP_LOGI("controller", "Override dose multiplier set to %.2f", override_dose_multiplier_);
+    }
+
+    /**
+     * Get current override dose multiplier
+     */
+    float getOverrideDoseMultiplier() const { return override_dose_multiplier_; }
+
+    /**
      * Enable or disable automatic feeding
      * When enabled, feeding triggers automatically once per day when water level reaches LOW
      * Conditions: IDLE state, not NIGHT/SHUTDOWN/PAUSE, sensors show LOW level (HIGH=OFF, LOW=OFF, EMPTY=ON)
@@ -464,6 +507,32 @@ private:
 
     /// NVS key for auto reservoir change day of week
     static constexpr const char* NVS_KEY_AUTO_RES_DAY = "AutoResDay";
+
+    // ========================================================================
+    // Auto-Fill State (Phase 6)
+    // ========================================================================
+
+    /// Enable/disable automatic water fill when EMPTY sensor triggers
+    bool auto_fill_enabled_{false};
+
+    /// NVS key for auto-fill enable/disable state
+    static constexpr const char* NVS_KEY_AUTO_FILL_ENABLE = "AutoFillEn";
+
+    // ========================================================================
+    // Vacation Mode (Phase 6)
+    // ========================================================================
+
+    bool vacation_mode_{false};
+
+    static constexpr float VACATION_DOSE_MULTIPLIER = 0.70f;  // 70% of normal dose
+    static constexpr uint8_t VACATION_MAX_RETRIES = 5;        // 5 retries vs. 3 normal
+    static constexpr const char* NVS_KEY_VACATION = "VacMode";
+
+    // ========================================================================
+    // Runtime Dose Override (Phase 6)
+    // ========================================================================
+
+    float override_dose_multiplier_{1.0f};  // Global dose scaling (1.0 = no override)
 
     // ========================================================================
     // EC Feeding State

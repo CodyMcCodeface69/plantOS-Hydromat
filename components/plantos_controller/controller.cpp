@@ -58,6 +58,14 @@ void PlantOSController::setup() {
         auto_feeding_enabled_ = psm_->loadState(NVS_KEY_AUTO_FEED_ENABLE, true);
         ESP_LOGI(TAG, "Auto-feeding: %s", auto_feeding_enabled_ ? "ENABLED" : "DISABLED");
 
+        // Load auto-fill state from NVS (default OFF - safer)
+        auto_fill_enabled_ = psm_->loadState(NVS_KEY_AUTO_FILL_ENABLE, false);
+        ESP_LOGI(TAG, "Auto-fill: %s", auto_fill_enabled_ ? "ENABLED" : "DISABLED");
+
+        // Load vacation mode from NVS
+        vacation_mode_ = psm_->loadState(NVS_KEY_VACATION, false);
+        ESP_LOGI(TAG, "Vacation mode: %s", vacation_mode_ ? "ENABLED (70%% doses, 5 retries)" : "DISABLED");
+
         // Load adaptive pH K-factor from NVS
         ph_K_ = psm_->loadFloat(NVS_KEY_PH_K, 0.07f);
         ESP_LOGI(TAG, "pH K-factor loaded from NVS: %.4f", ph_K_);
@@ -695,6 +703,27 @@ void PlantOSController::handleIdle() {
         // Start feeding sequence
         startFeed();
         return;
+    }
+
+    // ========================================================================
+    // AUTOMATIC WATER FILL CHECK - When EMPTY sensor triggers (Phase 6)
+    // ========================================================================
+    if (auto_fill_enabled_ && hal_ && hal_->hasWaterLevelSensors()) {
+        // Trigger when tank is empty (HIGH=OFF, LOW=OFF, EMPTY=ON)
+        // and not in night mode / not auto-feeding about to trigger
+        bool high = hal_->readWaterLevelHigh();
+        bool low = hal_->readWaterLevelLow();
+        bool empty = hal_->readWaterLevelEmpty();
+        bool tank_empty = (!high && !low && empty);
+
+        if (tank_empty && !(night_mode_enabled_ && isNightModeHours())) {
+            ESP_LOGI(TAG, "========================================");
+            ESP_LOGI(TAG, "AUTO-FILL TRIGGERED");
+            ESP_LOGI(TAG, "========================================");
+            ESP_LOGI(TAG, "[AUTO-FILL] EMPTY sensor active - starting water fill sequence");
+            startFillTank();
+            return;
+        }
     }
 
     // ========================================================================
@@ -2254,6 +2283,19 @@ void PlantOSController::handleEcCalculating() {
     ec_dose_B_ml_ = std::min((r_B / r_total) * total_ml_per_L * tank_volume_L, r_B * tank_volume_L);
     ec_dose_C_ml_ = std::min((r_C / r_total) * total_ml_per_L * tank_volume_L, r_C * tank_volume_L);
 
+    // Apply vacation mode and override multipliers (Phase 6)
+    float ec_effective_multiplier = override_dose_multiplier_;
+    if (vacation_mode_) {
+        ec_effective_multiplier *= VACATION_DOSE_MULTIPLIER;
+    }
+    if (ec_effective_multiplier != 1.0f) {
+        ec_dose_A_ml_ *= ec_effective_multiplier;
+        ec_dose_B_ml_ *= ec_effective_multiplier;
+        ec_dose_C_ml_ *= ec_effective_multiplier;
+        ESP_LOGI(TAG, "[EC_CALCULATING] Dose multiplier: %.2f (vacation=%s, override=%.2f)",
+                 ec_effective_multiplier, vacation_mode_ ? "ON" : "OFF", override_dose_multiplier_);
+    }
+
     // Accumulate mL/L for K-factor update after mixing
     float dosed_total_ml = ec_dose_A_ml_ + ec_dose_B_ml_ + ec_dose_C_ml_;
     ec_total_ml_per_L_ += (tank_volume_L > 0.0f) ? (dosed_total_ml / tank_volume_L) : 0.0f;
@@ -2976,7 +3018,7 @@ void PlantOSController::startPhCorrection() {
     ph_cycle_aborted_ = false;
 
     // Initialize operation retry framework (max 3 retries for pH correction)
-    initOperationRetry("PH_CORRECTION", 3);
+    initOperationRetry("PH_CORRECTION", vacation_mode_ ? VACATION_MAX_RETRIES : 3);
 
     // Log event for crash recovery persistence
     if (psm_) {
@@ -3599,6 +3641,19 @@ float PlantOSController::calculateAcidDoseML(float current_ph, float target_ph_m
     // Clamp to [PH_MIN_DOSE_ML, PH_MAX_DOSE_ML]
     dose_ml = std::max(PH_MIN_DOSE_ML, std::min(PH_MAX_DOSE_ML, dose_ml));
 
+    // Apply vacation mode and override multipliers (Phase 6)
+    float effective_multiplier = override_dose_multiplier_;
+    if (vacation_mode_) {
+        effective_multiplier *= VACATION_DOSE_MULTIPLIER;
+    }
+    if (effective_multiplier != 1.0f) {
+        float raw_dose = dose_ml;
+        dose_ml = std::max(PH_MIN_DOSE_ML, dose_ml * effective_multiplier);
+        ESP_LOGI(TAG, "Acid dose multiplier: %.2f (vacation=%s, override=%.2f) → %.2f mL → %.2f mL",
+                 effective_multiplier, vacation_mode_ ? "ON" : "OFF",
+                 override_dose_multiplier_, raw_dose, dose_ml);
+    }
+
     ESP_LOGI(TAG, "Acid dose: %.3f pH_delta × %.1fL × K=%.4f = %.2f mL (clamped to [%.1f, %.1f])",
              ph_delta, tank_volume_L, ph_K_, dose_ml, PH_MIN_DOSE_ML, PH_MAX_DOSE_ML);
 
@@ -3781,8 +3836,8 @@ bool PlantOSController::isPhStable() {
 }
 
 bool PlantOSController::isNightModeHours() const {
-    // Check if we're currently within night mode hours
-    // Requires time source to be configured and synchronized
+    // Check if we're currently within night mode hours.
+    // Priority: CalendarManager light schedule (if available) → YAML config fallback.
 
     if (!time_source_) {
         ESP_LOGW(TAG, "Time source not configured - cannot determine night mode hours");
@@ -3795,16 +3850,34 @@ bool PlantOSController::isNightModeHours() const {
         return false;
     }
 
-    uint8_t current_hour = now.hour;
+    // Phase 6: Use CalendarManager light schedule if available (minute resolution)
+    if (calendar_manager_) {
+        auto schedule = calendar_manager_->get_today_schedule();
+        // light_on_time / light_off_time are minutes from midnight (e.g., 360 = 06:00)
+        // Night = light is OFF = outside light_on…light_off window
+        if (schedule.light_on_time != schedule.light_off_time) {
+            int current_minutes = now.hour * 60 + now.minute;
+            bool light_is_on;
+            if (schedule.light_on_time < schedule.light_off_time) {
+                // Normal day schedule (e.g., 06:00–22:00)
+                light_is_on = (current_minutes >= schedule.light_on_time &&
+                               current_minutes < schedule.light_off_time);
+            } else {
+                // Light-on wraps midnight (e.g., 22:00–06:00)
+                light_is_on = (current_minutes >= schedule.light_on_time ||
+                               current_minutes < schedule.light_off_time);
+            }
+            return !light_is_on;  // Night = light off
+        }
+    }
 
-    // Handle wrapping case where start > end (e.g., 22:00 to 08:00)
+    // Fallback: YAML-configured hour-based night window
+    uint8_t current_hour = now.hour;
     if (night_mode_start_hour_ > night_mode_end_hour_) {
-        // Night mode spans midnight
-        // In night mode if: hour >= start OR hour < end
+        // Spans midnight (e.g., 22:00–08:00)
         return (current_hour >= night_mode_start_hour_) || (current_hour < night_mode_end_hour_);
     } else {
-        // Normal case: start < end (e.g., 01:00 to 06:00)
-        // In night mode if: hour >= start AND hour < end
+        // Same-day range (e.g., 01:00–06:00)
         return (current_hour >= night_mode_start_hour_) && (current_hour < night_mode_end_hour_);
     }
 }
@@ -4024,6 +4097,31 @@ int64_t PlantOSController::getCurrentDateTimestamp() {
     int64_t midnight_timestamp = days_since_epoch * 86400;
 
     return midnight_timestamp;
+}
+
+void PlantOSController::setVacationMode(bool enabled) {
+    vacation_mode_ = enabled;
+
+    if (psm_) {
+        psm_->saveState(NVS_KEY_VACATION, enabled);
+    }
+
+    if (enabled) {
+        ESP_LOGI(TAG, "Vacation mode ENABLED: doses=%.0f%%, retries=%d",
+                 VACATION_DOSE_MULTIPLIER * 100.0f, VACATION_MAX_RETRIES);
+    } else {
+        ESP_LOGI(TAG, "Vacation mode DISABLED: normal doses and retries restored");
+    }
+}
+
+void PlantOSController::setAutoFillEnabled(bool enabled) {
+    auto_fill_enabled_ = enabled;
+
+    if (psm_) {
+        psm_->saveState(NVS_KEY_AUTO_FILL_ENABLE, enabled);
+    }
+
+    ESP_LOGI(TAG, "Auto-fill %s", enabled ? "ENABLED" : "DISABLED");
 }
 
 void PlantOSController::setAutoFeedingEnabled(bool enabled) {

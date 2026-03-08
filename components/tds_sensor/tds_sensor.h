@@ -17,8 +17,9 @@ namespace tds_sensor {
  * Signal chain:
  *   ADC voltage → buffer → median filter → temp compensation → polynomial → EC (uS/cm)
  *
- * KS0429 polynomial (without *0.5 TDS factor):
- *   EC (uS/cm) = 133.42*V^3 - 255.86*V^2 + 857.39*V
+ * KS0429 conversion pipeline (explicit steps):
+ *   tds_ppm  = (133.42*V^3 - 255.86*V^2 + 857.39*V) * 0.5   // ppm 500-scale
+ *   ec_uS_cm = tds_ppm * 2.0                                  // µS/cm (canonical internal unit)
  *
  * Temperature compensation:
  *   compensatedV = voltage / (1.0 + 0.02 * (temperature - 25.0))

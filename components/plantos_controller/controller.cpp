@@ -73,7 +73,7 @@ void PlantOSController::setup() {
         ESP_LOGI(TAG, "pH K-factor loaded from NVS: %.4f", ph_K_);
 
         // Load adaptive EC K-factor from NVS
-        ec_K_feed_ = psm_->loadFloat(NVS_KEY_EC_K, 0.15f);
+        ec_K_feed_ = psm_->loadFloat(NVS_KEY_EC_K, 0.00015f);
         ESP_LOGI(TAG, "EC K-factor loaded from NVS: %.4f", ec_K_feed_);
 
         // Initialize last feed date (will be loaded from NVS on first check)
@@ -543,7 +543,7 @@ void PlantOSController::handleInit() {
             ESP_LOGW(TAG, "  pH        : NOT AVAILABLE");
         }
         if (hal_->hasECValue()) {
-            ESP_LOGI(TAG, "  EC        : %.3f mS/cm", hal_->readEC());
+            ESP_LOGI(TAG, "  EC        : %.1f uS/cm (%.3f mS/cm)", hal_->readEC(), hal_->readEC() / 1000.0f);
         } else {
             ESP_LOGW(TAG, "  EC        : NOT AVAILABLE");
         }
@@ -2286,16 +2286,16 @@ void PlantOSController::handleEcProcessing() {
         }
     }
 
-    float ec_current = hal_->readEC();  // mS/cm
+    float ec_current = hal_->readEC();  // µS/cm
     float ec_min = schedule.ec_target - schedule.ec_tolerance;
     float ec_max = schedule.ec_target + schedule.ec_tolerance * 1.5f;
 
-    ESP_LOGI(TAG, "[EC_PROCESSING] EC=%.3f mS/cm, target=%.2f±%.2f (min=%.2f, max=%.2f)",
+    ESP_LOGI(TAG, "[EC_PROCESSING] EC=%.1f uS/cm, target=%.0f±%.0f (min=%.0f, max=%.0f)",
              ec_current, schedule.ec_target, schedule.ec_tolerance, ec_min, ec_max);
 
     // Over-concentration: wait for natural evaporation to lower EC
     if (ec_current > ec_max) {
-        ESP_LOGW(TAG, "[EC_PROCESSING] EC over-concentration (%.3f > %.3f) - no feeding, add plain water",
+        ESP_LOGW(TAG, "[EC_PROCESSING] EC over-concentration (%.1f > %.1f uS/cm) - no feeding, add plain water",
                  ec_current, ec_max);
         status_logger_.updateAlertStatus("EC_HIGH", "EC over-concentration - add plain water or wait");
         auto_ec_check_pending_ = false;
@@ -2343,7 +2343,7 @@ void PlantOSController::handleEcCalculating() {
     auto schedule = calendar_manager_->get_today_schedule();
     float delta_ec = schedule.ec_target - ec_current;
 
-    if (delta_ec <= 0.01f) {
+    if (delta_ec <= 10.0f) {  // 0.01 mS/cm = 10 µS/cm
         ESP_LOGI(TAG, "[EC_CALCULATING] EC already at or above target - no dosing needed");
         if (psm_) psm_->clearEvent();
         transitionTo(ControllerState::IDLE);
@@ -2396,7 +2396,7 @@ void PlantOSController::handleEcCalculating() {
     float dosed_total_ml = ec_dose_A_ml_ + ec_dose_B_ml_ + ec_dose_C_ml_;
     ec_total_ml_per_L_ += (tank_volume_L > 0.0f) ? (dosed_total_ml / tank_volume_L) : 0.0f;
 
-    ESP_LOGI(TAG, "[EC_CALCULATING] EC delta=%.3f mS/cm, K=%.4f, total=%.3f mL/L",
+    ESP_LOGI(TAG, "[EC_CALCULATING] EC delta=%.1f uS/cm, K=%.6f, total=%.3f mL/L",
              delta_ec, ec_K_feed_, total_ml_per_L);
     ESP_LOGI(TAG, "[EC_CALCULATING] Doses: A=%.2f mL, B=%.2f mL, C=%.2f mL (tank %.1fL)",
              ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_, tank_volume_L);
@@ -2519,7 +2519,7 @@ void PlantOSController::handleEcMeasuring() {
     }
 
     float ec_after = hal_->readEC();
-    ESP_LOGI(TAG, "[EC_MEASURING] EC after feeding: %.3f mS/cm (pre-cycle: %.3f mS/cm, delta: %.3f)",
+    ESP_LOGI(TAG, "[EC_MEASURING] EC after feeding: %.1f uS/cm (pre-cycle: %.1f, delta: %.1f)",
              ec_after, ec_pre_feeding_, ec_after - ec_pre_feeding_);
 
     // Update adaptive K-factor based on observed EC response
@@ -2545,13 +2545,13 @@ void PlantOSController::handleEcMeasuring() {
         status_logger_.resolveAlert("EC_HIGH");
         status_logger_.resolveAlert("EC_LOW");
     } else if (max_attempts_reached) {
-        ESP_LOGW(TAG, "[EC_MEASURING] Max attempts (%d) reached - EC still %.3f mS/cm",
+        ESP_LOGW(TAG, "[EC_MEASURING] Max attempts (%d) reached - EC still %.1f uS/cm",
                  MAX_EC_ATTEMPTS, ec_after);
         status_logger_.updateAlertStatus("EC_LOW",
             "EC below target after max feeding attempts - check nutrient supply");
     } else {
         // EC still low - retry with recalculated dose
-        ESP_LOGI(TAG, "[EC_MEASURING] EC still low (%.3f < %.3f) - retry %d/%d",
+        ESP_LOGI(TAG, "[EC_MEASURING] EC still low (%.1f < %.1f uS/cm) - retry %d/%d",
                  ec_after, ec_min, ec_attempt_count_, MAX_EC_ATTEMPTS);
         transitionTo(ControllerState::EC_CALCULATING);
         return;
@@ -3466,6 +3466,12 @@ void PlantOSController::handleEcCalibrating() {
 
         case ECCalibStep::COMPLETE:
             ec_calib_step_ = ECCalibStep::IDLE;
+            // Persist calibration timestamp so the 30-day reminder can track it
+            if (psm_ && hal_->hasTime()) {
+                last_ec_calibration_ts_ = hal_->getCurrentTimestamp();
+                psm_->saveInt32(NVS_KEY_EC_CALIB_TS, (int32_t)last_ec_calibration_ts_);
+                ESP_LOGI(TAG, "EC calibration timestamp saved: %lld", (long long)last_ec_calibration_ts_);
+            }
             ESP_LOGI(TAG, "EC calibration complete - returning to IDLE");
             transitionTo(ControllerState::IDLE);
             break;
@@ -4011,8 +4017,8 @@ void PlantOSController::updateEcKFactor(float ec_before, float ec_after, float m
     float ec_delta = ec_after - ec_before;
 
     // Guard: need a meaningful positive EC rise
-    if (ec_delta < 0.05f) {
-        ESP_LOGD(TAG, "EC K-factor update skipped: delta too small (%.3f mS/cm < 0.05)", ec_delta);
+    if (ec_delta < 50.0f) {  // 0.05 mS/cm = 50 µS/cm
+        ESP_LOGD(TAG, "EC K-factor update skipped: delta too small (%.1f uS/cm < 50)", ec_delta);
         return;
     }
     if (ml_per_L_total < 0.01f) {
@@ -4024,7 +4030,7 @@ void PlantOSController::updateEcKFactor(float ec_before, float ec_after, float m
         return;
     }
 
-    // K_observed = dose / EC_rise (mL/L per mS/cm)
+    // K_observed = dose / EC_rise (mL/L per µS/cm)
     float K_observed = ml_per_L_total / ec_delta;
 
     // Clamp to valid range before EMA
@@ -4036,8 +4042,8 @@ void PlantOSController::updateEcKFactor(float ec_before, float ec_after, float m
     // Final clamp
     K_new = std::max(EC_K_MIN_CLAMP, std::min(EC_K_MAX_CLAMP, K_new));
 
-    ESP_LOGI(TAG, "EC K-factor update: K_obs=%.4f → K_ema=%.4f (was %.4f) | "
-             "EC %.3f→%.3f mS/cm (delta=%.3f), %.4f mL/L",
+    ESP_LOGI(TAG, "EC K-factor update: K_obs=%.6f → K_ema=%.6f (was %.6f) | "
+             "EC %.1f→%.1f uS/cm (delta=%.1f), %.4f mL/L",
              K_observed, K_new, ec_K_feed_, ec_before, ec_after, ec_delta, ml_per_L_total);
 
     ec_K_feed_ = K_new;
@@ -4351,23 +4357,23 @@ void PlantOSController::checkSensorPlausibility() {
 
     // EC plausibility checks
     if (hal_->hasECValue()) {
-        float ec = hal_->readEC();  // mS/cm
+        float ec = hal_->readEC();  // µS/cm
 
-        // Range check: 0–5.0 mS/cm
-        if (ec < 0.0f || ec > 5.0f) {
+        // Range check: 0–5000 µS/cm
+        if (ec < 0.0f || ec > 5000.0f) {
             char msg[80];
-            snprintf(msg, sizeof(msg), "EC %.3f mS/cm outside valid range [0-5.0] - sensor error?", ec);
+            snprintf(msg, sizeof(msg), "EC %.1f uS/cm outside valid range [0-5000] - sensor error?", ec);
             status_logger_.updateAlertStatus("EC_PLAUSIBILITY", msg);
             ec_health_.recordFailure(now);
             ESP_LOGE(TAG, "[PLAUSIBILITY] %s", msg);
         } else {
-            // Jump check: > 1.0 mS/cm between consecutive 1-min checks = suspicious
+            // Jump check: > 1000 µS/cm between consecutive 1-min checks = suspicious
             if (last_ec_plausibility_value_ >= 0.0f) {
                 float jump = std::abs(ec - last_ec_plausibility_value_);
-                if (jump > 1.0f) {
+                if (jump > 1000.0f) {
                     char msg[100];
                     snprintf(msg, sizeof(msg),
-                             "EC jump %.3f mS/cm between checks (%.3f→%.3f) exceeds 1.0 mS/cm limit",
+                             "EC jump %.1f uS/cm between checks (%.1f→%.1f) exceeds 1000 uS/cm limit",
                              jump, last_ec_plausibility_value_, ec);
                     status_logger_.updateAlertStatus("EC_PLAUSIBILITY", msg);
                     ec_health_.recordFailure(now);

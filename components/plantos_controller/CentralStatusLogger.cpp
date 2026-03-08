@@ -455,7 +455,7 @@ void CentralStatusLogger::logStatus() {
         ESP_LOGW(TAG, "  Water Temp: N/A");
     }
     if (ecAvailable) {
-        ESP_LOGI(TAG, "  EC: %.0f uS/cm (TDS: %.0f ppm)", ecValue, ecValue * 0.5f);
+        ESP_LOGI(TAG, "  EC: %.0f uS/cm / %.3f mS/cm (TDS: %.0f ppm)", ecValue, ecValue / 1000.0f, ecValue * 0.5f);
     } else {
         ESP_LOGW(TAG, "  EC: N/A");
     }

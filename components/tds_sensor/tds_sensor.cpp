@@ -44,8 +44,8 @@ void TDSSensor::setup() {
 }
 
 void TDSSensor::set_calibration_factor(float factor) {
-    // Clamp to valid range
-    factor = std::max(0.1f, std::min(5.0f, factor));
+    // Clamp to valid range (matches EC_Sensor_Calibration.md §5)
+    factor = std::max(0.5f, std::min(2.0f, factor));
     calibration_factor_ = factor;
     if (save_calibration_factor_()) {
         ESP_LOGI(TAG, "EC calibration factor saved: %.4f", calibration_factor_);
@@ -69,7 +69,7 @@ bool TDSSensor::load_calibration_factor_() {
         return false;
     }
     // Sanity check loaded value
-    if (loaded < 0.1f || loaded > 5.0f) {
+    if (loaded < 0.5f || loaded > 2.0f) {
         ESP_LOGW(TAG, "NVS calibration factor %.4f out of range, using 1.0", loaded);
         return false;
     }
@@ -187,11 +187,15 @@ float TDSSensor::apply_temperature_compensation(float voltage, float temperature
 }
 
 float TDSSensor::voltage_to_ec(float voltage) {
-    // KS0429 polynomial: EC (uS/cm) = 133.42*V^3 - 255.86*V^2 + 857.39*V
-    // This is the standard TDS polynomial WITHOUT the *0.5 TDS conversion factor
+    // KS0429 polynomial, explicit two-step pipeline:
+    //   Step 1: ppm (500-scale) = (133.42*V^3 - 255.86*V^2 + 857.39*V) * 0.5
+    //   Step 2: µS/cm = ppm * 2.0  (canonical internal unit)
+    // Net math is identical to the original single-step formula; steps are
+    // separated here to make the pipeline traceable to reference material.
     float v2 = voltage * voltage;
     float v3 = v2 * voltage;
-    return 133.42f * v3 - 255.86f * v2 + 857.39f * voltage;
+    float tds_ppm = (133.42f * v3 - 255.86f * v2 + 857.39f * voltage) * 0.5f;  // ppm 500-scale
+    return tds_ppm * 2.0f;  // ppm → µS/cm
 }
 
 }  // namespace tds_sensor

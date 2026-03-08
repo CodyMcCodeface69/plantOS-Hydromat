@@ -575,11 +575,11 @@ private:
     // ========================================================================
 
     // EC Adaptive K-factor (EC_Feeding_Logik.md Section 6)
-    float ec_K_feed_{0.15f};                        // Current EC K-factor (EMA-smoothed), mL/L per mS/cm
+    float ec_K_feed_{0.00015f};                     // Current EC K-factor (EMA-smoothed), mL/L per µS/cm
     static constexpr float EC_K_EMA_ALPHA = 0.20f;
-    static constexpr float EC_K_MIN_CLAMP = 0.02f;
-    static constexpr float EC_K_MAX_CLAMP = 0.50f;
-    float ec_pre_feeding_{0.0f};                    // EC value before feeding cycle started (mS/cm)
+    static constexpr float EC_K_MIN_CLAMP = 0.00002f;  // 0.02 mL/L per mS/cm → per µS/cm
+    static constexpr float EC_K_MAX_CLAMP = 0.00050f;  // 0.50 mL/L per mS/cm → per µS/cm
+    float ec_pre_feeding_{0.0f};                    // EC value before feeding cycle started (µS/cm)
     float ec_total_ml_per_L_{0.0f};                 // Total mL/L dosed in current EC cycle (accumulated)
     uint8_t ec_attempt_count_{0};                   // Number of EC correction attempts in current cycle
     static constexpr uint8_t MAX_EC_ATTEMPTS = 3;
@@ -590,7 +590,7 @@ private:
     float ec_dose_C_ml_{0.0f};                      // Calculated dose for NutrientPumpC (mL)
     bool ec_cycle_water_filled_{false};             // Guard: water fill happened during EC cycle
     bool auto_ec_check_pending_{false};             // Flag: trigger EC check after WATER_FILLING
-    static constexpr const char* NVS_KEY_EC_K = "EcK";
+    static constexpr const char* NVS_KEY_EC_K = "EcKv2";  // v2: unit changed to µS/cm, invalidates stale mS/cm values
 
     // Periodic EC monitoring timer (IDLE → EC_PROCESSING)
     uint32_t last_ec_check_time_{0};               // millis() when last EC check was triggered
@@ -880,8 +880,8 @@ private:
 
     /**
      * Update adaptive EC K-factor after a completed feeding cycle
-     * @param ec_before EC at start of cycle (mS/cm)
-     * @param ec_after EC after final measurement (mS/cm)
+     * @param ec_before EC at start of cycle (µS/cm)
+     * @param ec_after EC after final measurement (µS/cm)
      * @param ml_per_L_total Total mL/L of nutrients dosed across all attempts
      */
     void updateEcKFactor(float ec_before, float ec_after, float ml_per_L_total);
@@ -1133,7 +1133,7 @@ private:
     /**
      * Check pH and EC readings for out-of-range values and suspicious changes
      * pH: valid range 3.0–10.0, rate-of-change limit 1.0 pH/min
-     * EC: valid range 0–5.0 mS/cm, jump limit 1.0 mS/cm between checks
+     * EC: valid range 0–5000 µS/cm, jump limit 1000 µS/cm between checks
      */
     void checkSensorPlausibility();
 

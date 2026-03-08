@@ -25,8 +25,8 @@ struct DailySchedule {
     float nutrient_C_ml_per_liter;      // Nutrient C concentration (mL per liter of tank volume)
     uint16_t light_on_time;             // Light ON time (minutes since midnight, e.g., 960 = 16:00)
     uint16_t light_off_time;            // Light OFF time (minutes since midnight, e.g., 480 = 08:00)
-    float ec_target;                    // Target EC in mS/cm (e.g., 1.20); 0.0 = EC feeding disabled
-    float ec_tolerance;                 // Tolerance band in mS/cm (e.g., 0.20)
+    float ec_target;                    // Target EC in µS/cm (internal; JSON stores mS/cm, converted on parse); 0.0 = EC feeding disabled
+    float ec_tolerance;                 // Tolerance band in µS/cm (internal; JSON stores mS/cm, converted on parse)
     // Derived: ec_min_trigger = ec_target - ec_tolerance
     //          ec_max_alarm   = ec_target + ec_tolerance * 1.5
 

@@ -35,6 +35,10 @@ class RealTimeClock;
 }
 }
 
+namespace alert_service {
+class AlertService;
+}
+
 namespace plantos_controller {
 
 /**
@@ -137,6 +141,14 @@ public:
      */
     void setTimeSource(esphome::time::RealTimeClock* time_source) {
         time_source_ = time_source;
+    }
+
+    /**
+     * Set Alert Service
+     * OPTIONAL - Used for dispatching alerts to configured backends (log, Telegram, etc.)
+     */
+    void setAlertService(alert_service::AlertService* service) {
+        alert_service_ = service;
     }
 
     /**
@@ -407,6 +419,7 @@ private:
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_{nullptr};
     esphome::calendar_manager::CalendarManager* calendar_manager_{nullptr};
     esphome::time::RealTimeClock* time_source_{nullptr};
+    alert_service::AlertService* alert_service_{nullptr};
 
     // Grow cycle configuration
     int64_t grow_start_timestamp_{0};  // Unix timestamp of day 1 (0 = not configured)
@@ -434,6 +447,9 @@ private:
     // Boot recovery: State to restore after INIT completes (if PSM had persisted state)
     ControllerState boot_restore_state_{ControllerState::IDLE};
     bool boot_restore_pending_{false};
+
+    // Guards one-time boot actions (sensor check, cooldown init, reboot alert)
+    bool boot_alert_sent_{false};
 
     // ========================================================================
     // Periodic pH Monitoring State

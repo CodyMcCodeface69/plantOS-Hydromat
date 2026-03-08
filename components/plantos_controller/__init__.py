@@ -32,6 +32,9 @@ CalendarManager = calendar_manager_ns.class_('CalendarManager')
 time_ns = cg.esphome_ns.namespace('time')
 RealTimeClock = time_ns.class_('RealTimeClock')
 
+alert_service_ns = cg.global_ns.namespace('alert_service')
+AlertService = alert_service_ns.class_('AlertService')
+
 # Configuration keys
 CONF_HAL = 'hal'
 CONF_SAFETY_GATE = 'safety_gate'
@@ -48,6 +51,7 @@ CONF_NIGHT_MODE_ENABLED = 'night_mode_enabled'
 CONF_NIGHT_MODE_START_HOUR = 'night_mode_start_hour'
 CONF_NIGHT_MODE_END_HOUR = 'night_mode_end_hour'
 CONF_ENHANCED_ERROR_HANDLING = 'enhanced_error_handling'
+CONF_ALERT_SERVICE = 'alert_service'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -67,6 +71,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_NIGHT_MODE_START_HOUR, default=22): cv.int_range(min=0, max=23),
     cv.Optional(CONF_NIGHT_MODE_END_HOUR, default=8): cv.int_range(min=0, max=23),
     cv.Optional(CONF_ENHANCED_ERROR_HANDLING, default=False): cv.boolean,
+    cv.Optional(CONF_ALERT_SERVICE): cv.use_id(AlertService),
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -133,3 +138,8 @@ async def to_code(config):
     # Enable enhanced error handling compile flag if configured
     if config[CONF_ENHANCED_ERROR_HANDLING]:
         cg.add_define("PLANTOS_ENHANCED_ERROR_HANDLING")
+
+    # Inject AlertService dependency (optional)
+    if CONF_ALERT_SERVICE in config:
+        alert_svc = await cg.get_variable(config[CONF_ALERT_SERVICE])
+        cg.add(var.setAlertService(alert_svc))

@@ -224,7 +224,7 @@ external_components:
     components: [sensor_dummy, sensor_filter, ezo_ph_uart,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
                  i2c_scanner, time_dummy, wdt_manager, plantos_hal,
-                 plantos_controller, tds_sensor]
+                 plantos_controller, tds_sensor, alert_service]
   # ADC fix for ESP32-C6 (oneshot API - built-in ADC doesn't compile on C6)
   # Ref: https://github.com/esphome/issues/issues/5363
   - source:
@@ -1496,6 +1496,9 @@ plantos_hal:
 #
 # Architecture: Controller → SafetyGate → HAL → Hardware
 ################################################################################
+alert_service:
+  id: alerts
+
 plantos_controller:
   id: unified_controller
   hal: hal                       # Hardware abstraction layer
@@ -1504,6 +1507,7 @@ plantos_controller:
   ph_sensor: ezo_ph_uart_component  # pH sensor for calibration control
   calendar: plant_calendar       # Calendar manager for grow schedule and nutrient dosing
   time_source: sntp_time         # NTP time source for automatic day calculation
+  alert_service: alerts          # Alert dispatching (log backend; future: Telegram, HA)
 
   # Grow Cycle Configuration
   # grow_start_date: Date when grow cycle day 1 started (YYYY-MM-DD format)

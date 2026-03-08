@@ -5,6 +5,7 @@
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 #include "esphome/components/calendar_manager/CalendarManager.h"
 #include "esphome/components/time/real_time_clock.h"
+#include "esphome/components/alert_service/alert_service.h"
 #include <algorithm> // for std::sort, std::min, std::max
 
 /*
@@ -497,6 +498,12 @@ void PlantOSController::handleInit() {
                         ESP_LOGW(TAG, "RECOVERY: Interrupted operation found: %s (status: %d, age: %lld sec)",
                                  eventID.c_str(), event.status, psm_->getEventAge());
                         ESP_LOGW(TAG, "Operation was likely interrupted by power loss - check if recovery needed");
+                        if (alert_service_) {
+                            alert_service_->alert(alert_service::AlertLevel::WARNING,
+                                "Operation interrupted",
+                                "Operation '" + eventID + "' was interrupted by power loss (age: " +
+                                std::to_string(psm_->getEventAge()) + "s) — verify system state");
+                        }
                     }
                 } else {
                     ESP_LOGD(TAG, "PSM event is empty (cleared) - no restoration needed");
@@ -504,6 +511,56 @@ void PlantOSController::handleInit() {
             } else {
                 ESP_LOGI(TAG, "No PSM event found - clean boot");
             }
+        }
+    }
+
+    // ========================================================================
+    // ONE-TIME BOOT ACTIONS (Phase 8 - Enhanced Reboot Recovery)
+    // Runs once during INIT, regardless of elapsed time.
+    // Cooldowns, sensor check, reboot alert.
+    // ========================================================================
+    if (!boot_alert_sent_) {
+        boot_alert_sent_ = true;
+        uint32_t now = hal_->getSystemTime();
+
+        // Set EC check cooldown to prevent immediate re-feeding after reboot
+        // (pH cooldown is already set in setup(), EC cooldown defaults to 0)
+        last_ec_check_time_ = now;
+        last_sensor_health_check_time_ = now;
+        ESP_LOGI(TAG, "BOOT: Cooldowns initialized (EC check delayed by %u min)",
+                 EC_CHECK_INTERVAL_MS / 60000);
+
+        // Boot sensor check - log all available sensor readings
+        ESP_LOGI(TAG, "BOOT SENSOR CHECK:");
+        if (hal_->hasPhValue()) {
+            ESP_LOGI(TAG, "  pH        : %.2f", hal_->readPH());
+        } else {
+            ESP_LOGW(TAG, "  pH        : NOT AVAILABLE");
+        }
+        if (hal_->hasECValue()) {
+            ESP_LOGI(TAG, "  EC        : %.3f mS/cm", hal_->readEC());
+        } else {
+            ESP_LOGW(TAG, "  EC        : NOT AVAILABLE");
+        }
+        if (hal_->hasTemperature()) {
+            ESP_LOGI(TAG, "  Temp      : %.1f\xC2\xB0""C", hal_->readTemperature());
+        } else {
+            ESP_LOGW(TAG, "  Temp      : NOT AVAILABLE");
+        }
+        if (hal_->hasWaterLevelSensors()) {
+            ESP_LOGI(TAG, "  WaterLevel: HIGH=%s LOW=%s EMPTY=%s",
+                     hal_->readWaterLevelHigh() ? "ON" : "off",
+                     hal_->readWaterLevelLow()  ? "ON" : "off",
+                     hal_->readWaterLevelEmpty() ? "ON" : "off");
+        } else {
+            ESP_LOGW(TAG, "  WaterLevel: NOT CONFIGURED");
+        }
+
+        // Reboot notification via AlertService
+        if (alert_service_) {
+            alert_service_->alert(alert_service::AlertLevel::INFO,
+                "System rebooted",
+                "PlantOS controller boot complete — all subsystems initializing");
         }
     }
 
@@ -516,9 +573,19 @@ void PlantOSController::handleInit() {
 
             if (boot_restore_state_ == ControllerState::SHUTDOWN) {
                 ESP_LOGW(TAG, "RECOVERY: Restoring SHUTDOWN state from power loss");
+                if (alert_service_) {
+                    alert_service_->alert(alert_service::AlertLevel::WARNING,
+                        "State restored: SHUTDOWN",
+                        "System was in SHUTDOWN before power loss — resuming SHUTDOWN");
+                }
                 transitionTo(ControllerState::SHUTDOWN);
             } else if (boot_restore_state_ == ControllerState::PAUSE) {
                 ESP_LOGW(TAG, "RECOVERY: Restoring PAUSE state from power loss");
+                if (alert_service_) {
+                    alert_service_->alert(alert_service::AlertLevel::WARNING,
+                        "State restored: PAUSE",
+                        "System was in PAUSE before power loss — resuming PAUSE");
+                }
                 transitionTo(ControllerState::PAUSE);
             } else {
                 // Default to IDLE

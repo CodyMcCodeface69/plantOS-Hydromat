@@ -442,6 +442,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | PH_INJECTING       | - Turn ON AcidPump (duration: calculated dose in mL → seconds)<br>- Turn ON AirPump (optional, for mixing during injection) |
 | PH_MIXING          | - Turn OFF AcidPump<br>- Keep AirPump ON (2 minutes mixing) |
 | PH_CALIBRATING     | - None (sensor calibration only, no actuators) |
+| EC_CALIBRATING     | - None (sensor calibration only, no actuators) |
 | FEEDING            | - Turn ON NutrientPumpA (duration from calendar: dose_A_ml)<br>- Turn ON NutrientPumpB (duration from calendar: dose_B_ml)<br>- Turn ON NutrientPumpC (duration from calendar: dose_C_ml)<br>  (sequential: A → B → C) |
 | WATER_FILLING      | - Turn ON WaterValve (max 30s, or until HIGH sensor) |
 | WATER_EMPTYING     | - Turn ON WastewaterPump (max 30s, or until LOW sensor OFF) |
@@ -470,6 +471,9 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 |---------------------------|--------------------|----------------------|-------------|
 | startPhCorrection()        | Must be in IDLE    | PH_MEASURING         | Manual pH correction (web UI button)<br>**Blocked in NIGHT state** |
 | startPhCalibration()       | Must be in IDLE    | PH_CALIBRATING       | 3-point sensor calibration (web UI) |
+| startEcCalibration()       | Must be in IDLE<br>EC sensor must have value | EC_CALIBRATING | Single-point EC calibration (1413 uS/cm, web UI) |
+| setEcCalibrationTarget(x)  | Any state          | (no transition)      | Set target uS/cm for EC calibration (default: 1413) |
+| resetEcCalibration()       | Any state          | (no transition)      | Reset EC factor to 1.0 (factory default) |
 | startFeeding()             | Must be in IDLE    | FEEDING              | Manual nutrient dosing (web UI button)<br>**Blocked in NIGHT state** |
 | startFillTank()            | Must be in IDLE    | WATER_FILLING        | Fill tank → EC check → pH correction (post-fill sequence)<br>**Blocked in NIGHT state** |
 | startEmptyTank()           | N/A (info only)    | IDLE (no change)     | Info message (use manual drain) |
@@ -505,6 +509,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | WATER_FILLING      | 10min (fallback) or HIGH sensor | → EC_PROCESSING (post-fill sequence: EC → pH) |
 | WATER_EMPTYING     | 30s (fallback) or sensor   | → IDLE |
 | FEED_FILLING       | Calculated or sensor       | → FEEDING |
+| EC_CALIBRATING     | ~2.5 min nominal (30s+30s+30s+30s + readings) | → IDLE on COMPLETE, → ERROR on failure |
 
 ---
 

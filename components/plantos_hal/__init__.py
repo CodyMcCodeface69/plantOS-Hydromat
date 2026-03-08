@@ -30,6 +30,7 @@ CONF_PH_SENSOR = 'ph_sensor'
 CONF_PH_SENSOR_COMPONENT = 'ph_sensor_component'
 CONF_TEMPERATURE_SENSOR = 'temperature_sensor'
 CONF_EC_SENSOR = 'ec_sensor'
+CONF_TDS_SENSOR_COMPONENT = 'tds_sensor_component'
 CONF_WATER_LEVEL_HIGH_SENSOR = 'water_level_high_sensor'
 CONF_WATER_LEVEL_LOW_SENSOR = 'water_level_low_sensor'
 CONF_WATER_LEVEL_EMPTY_SENSOR = 'water_level_empty_sensor'
@@ -79,6 +80,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_PH_SENSOR_COMPONENT): cv.use_id(cg.PollingComponent),  # EZO pH UART component
     cv.Optional(CONF_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_EC_SENSOR): cv.use_id(sensor.Sensor),
+    cv.Optional(CONF_TDS_SENSOR_COMPONENT): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_WATER_LEVEL_HIGH_SENSOR): cv.use_id(binary_sensor.BinarySensor),
     cv.Optional(CONF_WATER_LEVEL_LOW_SENSOR): cv.use_id(binary_sensor.BinarySensor),
     cv.Optional(CONF_WATER_LEVEL_EMPTY_SENSOR): cv.use_id(binary_sensor.BinarySensor),
@@ -153,6 +155,11 @@ async def to_code(config):
     if CONF_EC_SENSOR in config:
         ec_sensor = await cg.get_variable(config[CONF_EC_SENSOR])
         cg.add(var.set_ec_sensor(ec_sensor))
+
+    # Inject TDS sensor component for EC calibration (optional)
+    if CONF_TDS_SENSOR_COMPONENT in config:
+        tds = await cg.get_variable(config[CONF_TDS_SENSOR_COMPONENT])
+        cg.add(var.set_tds_sensor_component(tds))
 
     # Inject water level sensor dependencies (optional)
     if CONF_WATER_LEVEL_HIGH_SENSOR in config:

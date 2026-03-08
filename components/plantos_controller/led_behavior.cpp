@@ -45,7 +45,8 @@ enum class ControllerState {
     EC_CALCULATING,
     EC_FEEDING,
     EC_MIXING,
-    EC_MEASURING
+    EC_MEASURING,
+    EC_CALIBRATING
 };
 
 LedBehaviorSystem::LedBehaviorSystem()
@@ -206,6 +207,11 @@ void LedBehaviorSystem::transitionToBehavior(ControllerState newState) {
         case ControllerState::EC_MEASURING:
             newBehavior = std::make_unique<YellowPulseBehavior>();
             ESP_LOGI(TAG, "LED: Yellow Pulse (EC Measuring)");
+            break;
+
+        case ControllerState::EC_CALIBRATING:
+            newBehavior = std::make_unique<YellowFastBlinkBehavior>();
+            ESP_LOGI(TAG, "LED: Yellow Fast Blink (EC Calibrating)");
             break;
 
         default:

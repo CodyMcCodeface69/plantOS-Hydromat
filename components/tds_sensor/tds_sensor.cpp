@@ -1,5 +1,6 @@
 #include "tds_sensor.h"
 #include "esphome/core/log.h"
+#include "esphome/core/application.h"
 
 namespace tds_sensor {
 
@@ -9,6 +10,16 @@ void TDSSensor::setup() {
     if (!sensor_source_) {
         ESP_LOGE(TAG, "ADC sensor source not configured!");
         return;
+    }
+
+    // Load calibration factor from NVS
+    calib_pref_ = esphome::global_preferences->make_preference<float>(
+        esphome::fnv1_hash(NVS_KEY_EC_CALIB));
+    if (!load_calibration_factor_()) {
+        calibration_factor_ = 1.0f;
+        ESP_LOGI(TAG, "No saved calibration factor - using 1.0 (uncalibrated)");
+    } else {
+        ESP_LOGI(TAG, "Loaded EC calibration factor: %.4f", calibration_factor_);
     }
 
     // Subscribe to ADC sensor callbacks for voltage buffering
@@ -30,6 +41,44 @@ void TDSSensor::setup() {
     } else {
         ESP_LOGI(TAG, "Temperature compensation using default %.1f°C", default_temperature_);
     }
+}
+
+void TDSSensor::set_calibration_factor(float factor) {
+    // Clamp to valid range
+    factor = std::max(0.1f, std::min(5.0f, factor));
+    calibration_factor_ = factor;
+    if (save_calibration_factor_()) {
+        ESP_LOGI(TAG, "EC calibration factor saved: %.4f", calibration_factor_);
+    } else {
+        ESP_LOGE(TAG, "Failed to save EC calibration factor to NVS");
+    }
+}
+
+void TDSSensor::reset_calibration_factor() {
+    calibration_factor_ = 1.0f;
+    if (save_calibration_factor_()) {
+        ESP_LOGI(TAG, "EC calibration factor reset to 1.0");
+    } else {
+        ESP_LOGE(TAG, "Failed to reset EC calibration factor in NVS");
+    }
+}
+
+bool TDSSensor::load_calibration_factor_() {
+    float loaded = 1.0f;
+    if (!calib_pref_.load(&loaded)) {
+        return false;
+    }
+    // Sanity check loaded value
+    if (loaded < 0.1f || loaded > 5.0f) {
+        ESP_LOGW(TAG, "NVS calibration factor %.4f out of range, using 1.0", loaded);
+        return false;
+    }
+    calibration_factor_ = loaded;
+    return true;
+}
+
+bool TDSSensor::save_calibration_factor_() {
+    return calib_pref_.save(&calibration_factor_);
 }
 
 void TDSSensor::loop() {
@@ -96,14 +145,15 @@ void TDSSensor::update() {
     // Apply temperature compensation
     float compensated_v = apply_temperature_compensation(median_v, temperature);
 
-    // Convert to EC
-    float ec = voltage_to_ec(compensated_v);
+    // Convert to EC and apply calibration factor
+    float ec_raw = voltage_to_ec(compensated_v);
+    float ec = ec_raw * calibration_factor_;
 
     // Clamp to valid range (0-5000 uS/cm)
     ec = std::max(0.0f, std::min(ec, 5000.0f));
 
-    ESP_LOGI(TAG, "EC: %.1f uS/cm (TDS: %.0f ppm) | median_v=%.3fV, comp_v=%.3fV, temp=%.1f°C, samples=%zu",
-             ec, ec * 0.5f, median_v, compensated_v, temperature, voltage_buffer_.size());
+    ESP_LOGI(TAG, "EC: %.1f uS/cm (TDS: %.0f ppm) | median_v=%.3fV, comp_v=%.3fV, temp=%.1f°C, samples=%zu, calib=%.4f",
+             ec, ec * 0.5f, median_v, compensated_v, temperature, voltage_buffer_.size(), calibration_factor_);
 
     // Publish and clear buffer
     publish_state(ec);

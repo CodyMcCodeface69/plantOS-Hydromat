@@ -9,6 +9,7 @@
 #include "esphome/components/http_request/http_request.h"
 #include "esphome/core/time.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
+#include "esphome/components/tds_sensor/tds_sensor.h"
 
 namespace plantos_hal {
 
@@ -47,6 +48,11 @@ void ESPHomeHAL::set_temperature_sensor(esphome::sensor::Sensor* temperature_sen
 void ESPHomeHAL::set_ec_sensor(esphome::sensor::Sensor* ec_sensor) {
     ec_sensor_ = ec_sensor;
     ESP_LOGI(TAG, "EC sensor configured");
+}
+
+void ESPHomeHAL::set_tds_sensor_component(tds_sensor::TDSSensor* tds) {
+    tds_sensor_component_ = tds;
+    ESP_LOGI(TAG, "TDS sensor component configured for EC calibration");
 }
 
 void ESPHomeHAL::set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor) {
@@ -957,6 +963,31 @@ void ESPHomeHAL::onECChange(std::function<void(float)> callback) {
     });
 
     ESP_LOGD(TAG, "EC change callback registered");
+}
+
+bool ESPHomeHAL::setECCalibrationFactor(float factor) {
+    if (!tds_sensor_component_) {
+        ESP_LOGW(TAG, "Cannot set EC calibration factor - TDS sensor component not configured");
+        return false;
+    }
+    tds_sensor_component_->set_calibration_factor(factor);
+    return true;
+}
+
+float ESPHomeHAL::getECCalibrationFactor() const {
+    if (!tds_sensor_component_) {
+        return 1.0f;
+    }
+    return tds_sensor_component_->get_calibration_factor();
+}
+
+bool ESPHomeHAL::resetECCalibrationFactor() {
+    if (!tds_sensor_component_) {
+        ESP_LOGW(TAG, "Cannot reset EC calibration factor - TDS sensor component not configured");
+        return false;
+    }
+    tds_sensor_component_->reset_calibration_factor();
+    return true;
 }
 
 // ============================================================================

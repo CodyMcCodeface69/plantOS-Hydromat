@@ -7,6 +7,7 @@
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/alert_service/alert_service.h"
 #include <algorithm> // for std::sort, std::min, std::max
+#include <cmath>    // for std::sqrt
 
 /*
 ╔════════════════════════════════════════════════════════════════════════════════════════╗
@@ -376,6 +377,10 @@ void PlantOSController::loop() {
 
         case ControllerState::EC_MEASURING:
             handleEcMeasuring();
+            break;
+
+        case ControllerState::EC_CALIBRATING:
+            handleEcCalibrating();
             break;
     }
 
@@ -3295,6 +3300,211 @@ void PlantOSController::startEcCheck() {
     transitionTo(ControllerState::EC_PROCESSING);
 }
 
+void PlantOSController::startEcCalibration() {
+    if (current_state_ != ControllerState::IDLE) {
+        ESP_LOGW(TAG, "Cannot start EC calibration - system not in IDLE state (state: %s)",
+                 getStateAsString().c_str());
+        return;
+    }
+
+    if (!hal_->hasECValue()) {
+        ESP_LOGE(TAG, "Cannot start EC calibration - no EC sensor reading available");
+        status_logger_.updateAlertStatus("EC_CALIB_ERROR", "EC sensor not available for calibration");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Starting EC single-point calibration (target: %.1f uS/cm)", ec_calib_target_);
+    ec_calib_step_ = ECCalibStep::RINSE_PROMPT;
+    ec_calib_step_start_time_ = hal_->getSystemTime();
+    ec_calib_readings_.clear();
+    ec_calib_last_reading_time_ = 0;
+    transitionTo(ControllerState::EC_CALIBRATING);
+}
+
+void PlantOSController::resetEcCalibration() {
+    if (hal_->resetECCalibrationFactor()) {
+        ESP_LOGI(TAG, "EC calibration factor reset to 1.0 (factory default)");
+    } else {
+        ESP_LOGW(TAG, "EC calibration reset failed - TDS sensor not configured in HAL");
+    }
+}
+
+void PlantOSController::handleEcCalibrating() {
+    uint32_t now = hal_->getSystemTime();
+    uint32_t step_elapsed = now - ec_calib_step_start_time_;
+
+    switch (ec_calib_step_) {
+        case ECCalibStep::RINSE_PROMPT:
+            if (step_elapsed < 100) {
+                ESP_LOGI(TAG, "================================================");
+                ESP_LOGI(TAG, "EC CALIBRATION - STEP 1 of 4");
+                ESP_LOGI(TAG, "Remove EC probe from tank");
+                ESP_LOGI(TAG, "Rinse probe with distilled water");
+                ESP_LOGI(TAG, "Waiting 30 seconds...");
+                ESP_LOGI(TAG, "================================================");
+            }
+            if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
+                ec_calib_step_ = ECCalibStep::DIP_PROMPT;
+                ec_calib_step_start_time_ = now;
+            }
+            break;
+
+        case ECCalibStep::DIP_PROMPT:
+            if (step_elapsed < 100) {
+                ESP_LOGI(TAG, "================================================");
+                ESP_LOGI(TAG, "EC CALIBRATION - STEP 2 of 4");
+                ESP_LOGI(TAG, "Dip probe into %.1f uS/cm calibration solution", ec_calib_target_);
+                ESP_LOGI(TAG, "Waiting 30 seconds for probe to equilibrate...");
+                ESP_LOGI(TAG, "================================================");
+                ec_calib_readings_.clear();
+            }
+            if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
+                ec_calib_step_ = ECCalibStep::STABILIZING;
+                ec_calib_step_start_time_ = now;
+                ec_calib_last_reading_time_ = 0;
+                ESP_LOGI(TAG, "EC CALIBRATION - STEP 3 of 4");
+                ESP_LOGI(TAG, "Collecting readings for stability check...");
+                ESP_LOGI(TAG, "Need %zu readings at 1s intervals", EC_CALIB_MIN_READINGS);
+            }
+            break;
+
+        case ECCalibStep::STABILIZING: {
+            // Collect one reading per second
+            if (now - ec_calib_last_reading_time_ >= EC_CALIB_READING_INTERVAL) {
+                ec_calib_last_reading_time_ = now;
+                float reading = hal_->readEC();
+
+                if (reading <= 0.0f) {
+                    ESP_LOGW(TAG, "[EC_CALIB] Zero/negative EC reading - probe disconnected?");
+                } else {
+                    ec_calib_readings_.push_back(reading);
+                    size_t n = ec_calib_readings_.size();
+                    if (n % 10 == 0) {
+                        ESP_LOGI(TAG, "EC calib: %zu/%zu readings collected (latest: %.1f uS/cm)",
+                                 n, EC_CALIB_MIN_READINGS, reading);
+                    }
+                }
+            }
+
+            // Check if we have enough readings
+            if (ec_calib_readings_.size() >= EC_CALIB_MIN_READINGS) {
+                if (checkEcCalibrationStability()) {
+                    ec_calib_step_ = ECCalibStep::CALCULATING;
+                    ec_calib_step_start_time_ = now;
+                } else {
+                    // Discard oldest 10 readings and keep collecting
+                    ESP_LOGW(TAG, "[EC_CALIB] Readings unstable - discarding oldest 10, continuing...");
+                    if (ec_calib_readings_.size() > 10) {
+                        ec_calib_readings_.erase(ec_calib_readings_.begin(),
+                                                  ec_calib_readings_.begin() + 10);
+                    }
+                }
+            }
+            break;
+        }
+
+        case ECCalibStep::CALCULATING: {
+            // Calculate mean of collected readings
+            float sum = 0.0f;
+            for (float r : ec_calib_readings_) sum += r;
+            float mean = sum / ec_calib_readings_.size();
+
+            if (mean <= 0.0f) {
+                ESP_LOGE(TAG, "[EC_CALIB] Mean EC is zero - wiring fault?");
+                status_logger_.updateAlertStatus("EC_CALIB_ERROR",
+                    "EC measured as 0 uS/cm - check probe wiring");
+                transitionTo(ControllerState::ERROR);
+                ec_calib_step_ = ECCalibStep::IDLE;
+                return;
+            }
+
+            float factor = ec_calib_target_ / mean;
+            ESP_LOGI(TAG, "EC calibration: measured=%.1f uS/cm, target=%.1f uS/cm",
+                     mean, ec_calib_target_);
+            ESP_LOGI(TAG, "EC calibration factor: %.4f", factor);
+
+            if (factor < EC_CALIB_FACTOR_MIN || factor > EC_CALIB_FACTOR_MAX) {
+                ESP_LOGE(TAG, "[EC_CALIB] Factor %.4f out of valid range [%.1f-%.1f]",
+                         factor, EC_CALIB_FACTOR_MIN, EC_CALIB_FACTOR_MAX);
+                status_logger_.updateAlertStatus("EC_CALIB_ERROR",
+                    "Calibration factor out of range - wrong solution or probe fault?");
+                transitionTo(ControllerState::ERROR);
+                ec_calib_step_ = ECCalibStep::IDLE;
+                return;
+            }
+
+            if (!hal_->setECCalibrationFactor(factor)) {
+                ESP_LOGE(TAG, "[EC_CALIB] Failed to save calibration factor via HAL");
+                status_logger_.updateAlertStatus("EC_CALIB_ERROR",
+                    "Failed to persist calibration factor - TDS sensor not wired to HAL");
+                transitionTo(ControllerState::ERROR);
+                ec_calib_step_ = ECCalibStep::IDLE;
+                return;
+            }
+
+            ESP_LOGI(TAG, "EC calibration factor %.4f saved successfully", factor);
+            ec_calib_step_ = ECCalibStep::STORE_PROMPT;
+            ec_calib_step_start_time_ = now;
+            break;
+        }
+
+        case ECCalibStep::STORE_PROMPT:
+            if (step_elapsed < 100) {
+                ESP_LOGI(TAG, "================================================");
+                ESP_LOGI(TAG, "EC CALIBRATION - STEP 4 of 4");
+                ESP_LOGI(TAG, "Remove probe from calibration solution");
+                ESP_LOGI(TAG, "Rinse with distilled water");
+                ESP_LOGI(TAG, "Return probe to tank or store dry");
+                ESP_LOGI(TAG, "Calibration factor: %.4f", hal_->getECCalibrationFactor());
+                ESP_LOGI(TAG, "System returns to IDLE in 30 seconds...");
+                ESP_LOGI(TAG, "================================================");
+            }
+            if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
+                ec_calib_step_ = ECCalibStep::COMPLETE;
+            }
+            break;
+
+        case ECCalibStep::COMPLETE:
+            ec_calib_step_ = ECCalibStep::IDLE;
+            ESP_LOGI(TAG, "EC calibration complete - returning to IDLE");
+            transitionTo(ControllerState::IDLE);
+            break;
+
+        case ECCalibStep::IDLE:
+            // Should not happen in this state
+            transitionTo(ControllerState::IDLE);
+            break;
+    }
+}
+
+bool PlantOSController::checkEcCalibrationStability() {
+    if (ec_calib_readings_.size() < EC_CALIB_MIN_READINGS) return false;
+
+    float sum = 0.0f;
+    for (float r : ec_calib_readings_) sum += r;
+    float mean = sum / ec_calib_readings_.size();
+
+    if (mean <= 0.0f) return false;
+
+    float sum_sq = 0.0f;
+    for (float r : ec_calib_readings_) {
+        float diff = r - mean;
+        sum_sq += diff * diff;
+    }
+    float variance = sum_sq / ec_calib_readings_.size();
+    float std_dev = std::sqrt(variance);
+    float cv = std_dev / mean;
+
+    ESP_LOGI(TAG, "EC stability check: mean=%.1f, std=%.1f, CV=%.3f (threshold: %.2f)",
+             mean, std_dev, cv, EC_CALIB_VARIANCE_THRESHOLD);
+
+    if (cv < EC_CALIB_VARIANCE_THRESHOLD) {
+        ESP_LOGI(TAG, "EC readings STABLE - proceeding to calculate factor");
+        return true;
+    }
+    return false;
+}
+
 void PlantOSController::startReservoirChange() {
     if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
         ESP_LOGW(TAG, "Cannot start Reservoir Change - system busy");
@@ -3387,11 +3597,12 @@ std::string PlantOSController::getStateAsString() const {
         "INIT", "IDLE", "NIGHT", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
         "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING",
-        "EC_PROCESSING", "EC_CALCULATING", "EC_FEEDING", "EC_MIXING", "EC_MEASURING"
+        "EC_PROCESSING", "EC_CALCULATING", "EC_FEEDING", "EC_MIXING", "EC_MEASURING",
+        "EC_CALIBRATING"
     };
 
     int state_index = static_cast<int>(current_state_);
-    if (state_index >= 0 && state_index < 21) {
+    if (state_index >= 0 && state_index < 22) {
         return std::string(state_names[state_index]);
     }
 
@@ -3412,7 +3623,8 @@ void PlantOSController::transitionTo(ControllerState newState) {
         "INIT", "IDLE", "NIGHT", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
         "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING",
-        "EC_PROCESSING", "EC_CALCULATING", "EC_FEEDING", "EC_MIXING", "EC_MEASURING"
+        "EC_PROCESSING", "EC_CALCULATING", "EC_FEEDING", "EC_MIXING", "EC_MEASURING",
+        "EC_CALIBRATING"
     };
 
     const char* oldStateName = state_names[static_cast<int>(current_state_)];

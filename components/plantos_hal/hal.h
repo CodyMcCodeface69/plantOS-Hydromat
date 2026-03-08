@@ -36,6 +36,10 @@ class ActuatorSafetyGate;
 }
 }  // namespace esphome
 
+namespace tds_sensor {
+class TDSSensor;
+}  // namespace tds_sensor
+
 namespace plantos_hal {
 
 /**
@@ -415,6 +419,25 @@ public:
     virtual void onECChange(std::function<void(float)> callback) = 0;
 
     /**
+     * Set EC sensor calibration factor (NVS-persisted scaling multiplier)
+     * @param factor Calibration factor (0.1–5.0)
+     * @return true if saved successfully
+     */
+    virtual bool setECCalibrationFactor(float factor) = 0;
+
+    /**
+     * Get current EC sensor calibration factor
+     * @return Current calibration factor (1.0 = uncalibrated)
+     */
+    virtual float getECCalibrationFactor() const = 0;
+
+    /**
+     * Reset EC sensor calibration factor to 1.0 (factory default)
+     * @return true if reset successfully
+     */
+    virtual bool resetECCalibrationFactor() = 0;
+
+    /**
      * Send temperature compensation to pH sensor
      * @param temperature Temperature in degrees Celsius
      * @return true if compensation was successfully sent
@@ -576,6 +599,7 @@ public:
     void set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_empty_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_ec_sensor(esphome::sensor::Sensor* ec_sensor);
+    void set_tds_sensor_component(tds_sensor::TDSSensor* tds);
     void set_time_source(esphome::time::RealTimeClock* time_source);
 
     // Actuator output setters (Phase 2: Hardware Control)
@@ -656,6 +680,9 @@ public:
     float readEC() override;
     bool hasECValue() const override;
     void onECChange(std::function<void(float)> callback) override;
+    bool setECCalibrationFactor(float factor) override;
+    float getECCalibrationFactor() const override;
+    bool resetECCalibrationFactor() override;
 
     void setSystemLED(float r, float g, float b, float brightness = 1.0f) override;
     void turnOffLED() override;
@@ -691,6 +718,7 @@ private:
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
     esphome::sensor::Sensor* ec_sensor_{nullptr};
+    tds_sensor::TDSSensor* tds_sensor_component_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_high_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_low_sensor_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_empty_sensor_{nullptr};

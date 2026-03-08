@@ -2,6 +2,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/core/preferences.h"
 #include <vector>
 #include <algorithm>
 
@@ -35,6 +36,13 @@ public:
     void set_temperature_sensor(esphome::sensor::Sensor* temp) { temperature_sensor_ = temp; }
     void set_sample_count(int count) { sample_count_ = count; }
     void set_default_temperature(float temp) { default_temperature_ = temp; }
+
+    // Calibration factor (NVS-persisted scaling multiplier)
+    void set_calibration_factor(float factor);
+    float get_calibration_factor() const { return calibration_factor_; }
+    void reset_calibration_factor();
+
+    static constexpr const char* NVS_KEY_EC_CALIB = "ECCalibFactor";
 
 protected:
     /**
@@ -82,6 +90,12 @@ private:
     bool log_buffer_full_{false};
     bool log_nan_skipped_{false};
     bool log_overvoltage_skipped_{false};
+
+    // Calibration factor (NVS-persisted)
+    float calibration_factor_{1.0f};
+    esphome::ESPPreferenceObject calib_pref_;
+    bool load_calibration_factor_();
+    bool save_calibration_factor_();
 };
 
 }  // namespace tds_sensor

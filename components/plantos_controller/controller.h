@@ -68,7 +68,8 @@ enum class ControllerState {
     EC_CALCULATING,    // Calculate nutrient doses from EC delta (Yellow Fast Blink)
     EC_FEEDING,        // Sequential nutrient pump A → B → C (Orange Pulse)
     EC_MIXING,         // Air pump mixing after EC nutrient dosing (Blue Pulse)
-    EC_MEASURING       // Re-measure EC, update K-factor (Yellow Pulse)
+    EC_MEASURING,      // Re-measure EC, update K-factor (Yellow Pulse)
+    EC_CALIBRATING     // EC single-point calibration (Yellow Fast Blink)
 };
 
 /**
@@ -248,6 +249,25 @@ public:
      * Transitions to EC_PROCESSING state which decides whether feeding is needed
      */
     void startEcCheck();
+
+    /**
+     * Start EC single-point calibration sequence
+     * Transitions to EC_CALIBRATING state
+     * Uses standard 1413 uS/cm calibration solution
+     */
+    void startEcCalibration();
+
+    /**
+     * Set the target EC value for calibration (uS/cm)
+     * Default: 1413.0 (standard calibration solution)
+     */
+    void setEcCalibrationTarget(float target_us_cm) { ec_calib_target_ = target_us_cm; }
+
+    /**
+     * Reset EC calibration factor to 1.0 (factory default)
+     * Calls HAL to reset and persist the factor
+     */
+    void resetEcCalibration();
 
     /**
      * Enable or disable vacation mode
@@ -639,6 +659,33 @@ private:
     uint32_t calib_step_start_time_{0};          // Time when calibration step started
     static constexpr uint32_t CALIB_PROMPT_DURATION = 10000;  // 10 seconds to show prompt
 
+    // ========================================================================
+    // EC Calibration State - Single-point with standard 1413 uS/cm solution
+    // ========================================================================
+
+    enum class ECCalibStep {
+        IDLE,
+        RINSE_PROMPT,    // 30s: instruct user to rinse probe
+        DIP_PROMPT,      // 30s: instruct user to dip in calibration solution
+        STABILIZING,     // Collect ≥30 readings at 1s; check CV < 5%
+        CALCULATING,     // Compute factor, validate 0.5–2.0, save via HAL
+        STORE_PROMPT,    // 30s: instruct user to return probe or store dry
+        COMPLETE         // Transition to IDLE
+    };
+
+    ECCalibStep ec_calib_step_{ECCalibStep::IDLE};
+    uint32_t ec_calib_step_start_time_{0};
+    float ec_calib_target_{1413.0f};
+    std::vector<float> ec_calib_readings_;
+    uint32_t ec_calib_last_reading_time_{0};
+
+    static constexpr uint32_t EC_CALIB_PROMPT_DURATION   = 30000;  // 30s
+    static constexpr uint32_t EC_CALIB_READING_INTERVAL  = 1000;   // 1s
+    static constexpr size_t   EC_CALIB_MIN_READINGS       = 30;
+    static constexpr float    EC_CALIB_VARIANCE_THRESHOLD = 0.05f; // 5% CV
+    static constexpr float    EC_CALIB_FACTOR_MIN         = 0.5f;
+    static constexpr float    EC_CALIB_FACTOR_MAX         = 2.0f;
+
     // Robust averaging for calibration stability check
     static constexpr size_t CALIB_READINGS_PER_BATCH = 20;  // 20 readings per batch
     static constexpr size_t CALIB_TOTAL_BATCHES = 5;        // 5 batches total
@@ -684,6 +731,8 @@ private:
     void handleEcFeeding();
     void handleEcMixing();
     void handleEcMeasuring();
+    void handleEcCalibrating();
+    bool checkEcCalibrationStability();
 
     // Helper methods for calibration
     void resetCalibrationBatch();

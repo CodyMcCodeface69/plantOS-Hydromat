@@ -1083,6 +1083,21 @@ button:
         - lambda: |-
             id(ezo_ph_uart_component)->query_calibration_status();
 
+  # === 07_20 - EC Calibration ===
+  - platform: template
+    name: "07_20_Start EC Calibration"
+    on_press:
+      then:
+        - lambda: |-
+            id(unified_controller)->setEcCalibrationTarget(id(ec_calibration_target).state);
+            id(unified_controller)->startEcCalibration();
+
+  - platform: template
+    name: "07_21_Reset EC Calibration (factor=1.0)"
+    on_press:
+      then:
+        - lambda: id(unified_controller)->resetEcCalibration();
+
   # === 12 - Actuator Timed Tests ===
   - platform: template
     name: "12_01_Test Magnetic Valve (3s)"
@@ -1426,6 +1441,7 @@ plantos_hal:
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO3 (WTR_TEMP)
   ec_sensor: ec_sensor                   # TDS/EC sensor (KS0429 via ADC on GPIO0)
+  tds_sensor_component: ec_sensor        # TDS sensor component for EC calibration factor (NVS)
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO17 (WTR_HI)
   water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO23 (WTR_LO - auto-feed trigger level)
   water_level_empty_sensor: water_level_empty_sensor  # XKC-Y23-V capacitive sensor on GPIO22 (WTR_Empty - minimum safe level)
@@ -2574,6 +2590,19 @@ switch:
 # WARNING: Use only for hardware testing and calibration!
 ################################################################################
 number:
+  # === EC Calibration Target ===
+  - platform: template
+    name: "07_20_EC Calibration Target (uS/cm)"
+    id: ec_calibration_target
+    min_value: 100
+    max_value: 5000
+    step: 1
+    initial_value: 1413
+    restore_value: false
+    optimistic: true
+    set_action:
+      - lambda: id(unified_controller)->setEcCalibrationTarget(x);
+
   # === Night Mode Time Configuration ===
   - platform: template
     id: night_start_hour

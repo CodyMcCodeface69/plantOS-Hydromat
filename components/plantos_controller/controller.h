@@ -678,6 +678,7 @@ private:
     float ec_calib_target_{1413.0f};
     std::vector<float> ec_calib_readings_;
     uint32_t ec_calib_last_reading_time_{0};
+    bool ec_calib_prompt_shown_{false};
 
     static constexpr uint32_t EC_CALIB_PROMPT_DURATION   = 30000;  // 30s
     static constexpr uint32_t EC_CALIB_READING_INTERVAL  = 1000;   // 1s

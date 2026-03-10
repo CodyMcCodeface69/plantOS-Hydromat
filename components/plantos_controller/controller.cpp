@@ -3318,6 +3318,7 @@ void PlantOSController::startEcCalibration() {
     ec_calib_step_start_time_ = hal_->getSystemTime();
     ec_calib_readings_.clear();
     ec_calib_last_reading_time_ = 0;
+    ec_calib_prompt_shown_ = false;
     transitionTo(ControllerState::EC_CALIBRATING);
 }
 
@@ -3335,27 +3336,30 @@ void PlantOSController::handleEcCalibrating() {
 
     switch (ec_calib_step_) {
         case ECCalibStep::RINSE_PROMPT:
-            if (step_elapsed < 100) {
-                ESP_LOGI(TAG, "================================================");
-                ESP_LOGI(TAG, "EC CALIBRATION - STEP 1 of 4");
-                ESP_LOGI(TAG, "Remove EC probe from tank");
-                ESP_LOGI(TAG, "Rinse probe with distilled water");
-                ESP_LOGI(TAG, "Waiting 30 seconds...");
-                ESP_LOGI(TAG, "================================================");
+            if (!ec_calib_prompt_shown_) {
+                ec_calib_prompt_shown_ = true;
+                ESP_LOGW(TAG, "================================================");
+                ESP_LOGW(TAG, "EC CALIBRATION - STEP 1 of 4");
+                ESP_LOGW(TAG, "Remove EC probe from tank");
+                ESP_LOGW(TAG, "Rinse probe with distilled water");
+                ESP_LOGW(TAG, "Waiting 30 seconds...");
+                ESP_LOGW(TAG, "================================================");
             }
             if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
                 ec_calib_step_ = ECCalibStep::DIP_PROMPT;
                 ec_calib_step_start_time_ = now;
+                ec_calib_prompt_shown_ = false;
             }
             break;
 
         case ECCalibStep::DIP_PROMPT:
-            if (step_elapsed < 100) {
-                ESP_LOGI(TAG, "================================================");
-                ESP_LOGI(TAG, "EC CALIBRATION - STEP 2 of 4");
-                ESP_LOGI(TAG, "Dip probe into %.1f uS/cm calibration solution", ec_calib_target_);
-                ESP_LOGI(TAG, "Waiting 30 seconds for probe to equilibrate...");
-                ESP_LOGI(TAG, "================================================");
+            if (!ec_calib_prompt_shown_) {
+                ec_calib_prompt_shown_ = true;
+                ESP_LOGW(TAG, "================================================");
+                ESP_LOGW(TAG, "EC CALIBRATION - STEP 2 of 4");
+                ESP_LOGW(TAG, "Dip probe into %.1f uS/cm calibration solution", ec_calib_target_);
+                ESP_LOGW(TAG, "Waiting 30 seconds for probe to equilibrate...");
+                ESP_LOGW(TAG, "================================================");
                 ec_calib_readings_.clear();
             }
             if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
@@ -3445,19 +3449,21 @@ void PlantOSController::handleEcCalibrating() {
             ESP_LOGI(TAG, "EC calibration factor %.4f saved successfully", factor);
             ec_calib_step_ = ECCalibStep::STORE_PROMPT;
             ec_calib_step_start_time_ = now;
+            ec_calib_prompt_shown_ = false;
             break;
         }
 
         case ECCalibStep::STORE_PROMPT:
-            if (step_elapsed < 100) {
-                ESP_LOGI(TAG, "================================================");
-                ESP_LOGI(TAG, "EC CALIBRATION - STEP 4 of 4");
-                ESP_LOGI(TAG, "Remove probe from calibration solution");
-                ESP_LOGI(TAG, "Rinse with distilled water");
-                ESP_LOGI(TAG, "Return probe to tank or store dry");
-                ESP_LOGI(TAG, "Calibration factor: %.4f", hal_->getECCalibrationFactor());
-                ESP_LOGI(TAG, "System returns to IDLE in 30 seconds...");
-                ESP_LOGI(TAG, "================================================");
+            if (!ec_calib_prompt_shown_) {
+                ec_calib_prompt_shown_ = true;
+                ESP_LOGW(TAG, "================================================");
+                ESP_LOGW(TAG, "EC CALIBRATION - STEP 4 of 4");
+                ESP_LOGW(TAG, "Remove probe from calibration solution");
+                ESP_LOGW(TAG, "Rinse with distilled water");
+                ESP_LOGW(TAG, "Return probe to tank or store dry");
+                ESP_LOGW(TAG, "Calibration factor: %.4f", hal_->getECCalibrationFactor());
+                ESP_LOGW(TAG, "System returns to IDLE in 30 seconds...");
+                ESP_LOGW(TAG, "================================================");
             }
             if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
                 ec_calib_step_ = ECCalibStep::COMPLETE;

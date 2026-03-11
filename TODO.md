@@ -199,13 +199,13 @@ This document tracks tasks organized into three phases:
 
 ### MVP Success Criteria
 
-- [ ] All 7 actuators respond to web UI
-- [ ] pH correction runs end-to-end automatically
+- ✅ All 7 actuators respond to web UI
+- ✅ pH correction runs end-to-end automatically
 - [ ] Feeding runs on schedule with all 3 nutrient pumps
-- [ ] Water fill/empty aborts safely on level sensors
-- [ ] Temperature compensation works
-- [ ] PSM recovers after power loss
-- [ ] SafetyGate enforces duration limits
+- ✅ Water fill/empty aborts safely on level sensors
+- ✅ Temperature compensation works
+- ✅ PSM recovers after power loss
+- ✅ SafetyGate enforces duration limits
 - [ ] 24-hour unattended operation successful
 - [ ] pH stays within 5.5-6.5 for 48 hours
 
@@ -221,7 +221,7 @@ This document tracks tasks organized into three phases:
 **Status**: Not started (waiting for MVP completion)
 
 ### P2-1: Complete 120-Day Schedule
-**Status**: Open
+**Status**: ✅
 **Priority**: P3
 **Effort**: 4-8 hours
 
@@ -239,7 +239,7 @@ Create full 120-day grow cycle JSON schedule with:
 ---
 
 ### P2-2: Automated Triggers
-**Status**: Open
+**Status**: ✅
 **Priority**: P3
 **Effort**: 8-12 hours
 
@@ -258,7 +258,7 @@ Create full 120-day grow cycle JSON schedule with:
 ---
 
 ### P2-3: Light Control Integration
-**Status**: Open
+**Status**: ✅
 **Priority**: P3
 **Effort**: 4-6 hours
 
@@ -275,7 +275,7 @@ Create full 120-day grow cycle JSON schedule with:
 ---
 
 ### P2-4: Air Pump Schedule Control
-**Status**: Open
+**Status**: ✅
 **Priority**: P3
 **Effort**: 2-4 hours
 
@@ -326,7 +326,7 @@ Create full 120-day grow cycle JSON schedule with:
 ---
 
 ### P2-7: TDS/EC Sensor Integration
-**Status**: Open
+**Status**: ✅
 **Priority**: P4
 **Effort**: 6-10 hours
 

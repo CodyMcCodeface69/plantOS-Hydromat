@@ -173,7 +173,10 @@ web_server:
   # local: true  # Embed all JS/CSS locally for offline operation
 
 # API for Home Assistant integration and external service calls
+# reboot_timeout: 0s disables the "no API client connected" reboot behavior
+# (web UI uses HTTP on port 80, not the ESPHome API)
 api:
+  reboot_timeout: 0s
 
 ################################################################################
 # HTTP Request Component - For Online Connectivity Check
@@ -2502,6 +2505,27 @@ switch:
       - logger.set_level:
           level: WARN
           tag: esp32.preferences
+
+  - platform: template
+    name: "11_13_Verbose: TDS Sensor"
+    id: verbose_tds_sensor
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:bug-outline"
+    turn_on_action:
+      - logger.log:
+          format: "Enabling verbose logging for: tds_sensor"
+          level: INFO
+      - logger.set_level:
+          level: VERBOSE
+          tag: tds_sensor
+    turn_off_action:
+      - logger.log:
+          format: "Disabling verbose logging for: tds_sensor"
+          level: INFO
+      - logger.set_level:
+          level: WARN
+          tag: tds_sensor
 
   ################################################################################
   # === 12 - DIRECT GPIO CONTROL (HARDWARE TESTING ONLY) ===

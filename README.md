@@ -1,144 +1,115 @@
-# plantOS
+# plantOS — Hydromat Mk.1
 
-ESPHome-based firmware for ESP32-C6 microcontrollers, implementing a plant monitoring and control system with custom sensor integration and LED visual feedback.
-Hydro branch is the specific firmware for Hydromat Mk. 1 Digital Autonomous Nutrient Keeper.
+ESPHome firmware for the **Hydromat Mk.1**, an ESP32-C6 based autonomous hydroponic controller. Manages pH correction, nutrient dosing, water levels, lighting, and aeration — fully automated, with a web UI for manual control.
 
 ## Features
 
-- 🌱 Modular sensor architecture with custom ESPHome components
-- 💡 Finite state machine controller with RGB LED status indicators
-- 🔄 Real-time monitoring via web interface and OTA updates
-- 🛠️ Reproducible development environment using Nix flakes
+- **Autonomous pH correction** — EZO pH UART sensor, timed acid dosing, air pump mixing
+- **Nutrient dosing** — 3-pump feeding schedule (A/B/C nutrients), clock-triggered
+- **Water management** — Fill and drain with 3-point capacitive level sensing (HIGH/LOW/EMPTY)
+- **Shelly integration** — HTTP API control of grow lights and air pump (on/off patterns, sequences)
+- **TDS/EC monitoring** — Conductivity tracking with temperature compensation
+- **3-layer HAL architecture** — Controller → SafetyGate → Hardware abstraction
+- **15-state FSM** — Full system lifecycle with LED visual feedback per state
+- **Crash recovery** — NVS persistent state survives power loss
+- **Web UI** — Real-time sensor data, manual overrides, maintenance mode
+- **OTA updates** — Flash over WiFi, no USB needed after initial flash
+- **Reproducible builds** — Nix flakes dev environment
 
 ## Hardware
 
-- **MCU**: ESP32-C6-DevKitC-1 ([Product Page](https://www.espressif.com/en/products/socs/esp32-c6) | [User Guide](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c6/esp32-c6-devkitc-1/))
-- **Built-in LED**: WS2812 RGB on GPIO 8
-- **Framework**: ESP-IDF via ESPHome
+| Component | Part | Interface |
+|-----------|------|-----------|
+| MCU | ESP32-C6-DevKitC-1 | — |
+| pH sensor | Atlas Scientific EZO (UART) | GPIO20/21 |
+| Temperature | DS18B20 waterproof probe | GPIO23 (1-Wire) |
+| TDS/EC sensor | Analog TDS probe | GPIO0 (ADC) |
+| Water level | 3x XKC-Y23-V capacitive | GPIO9/10/11 |
+| Acid pump | Peristaltic pump | GPIO19 |
+| Nutrient pumps | 3x peristaltic (A/B/C) | GPIO20/21/22 |
+| Water valve | Solenoid | GPIO18 |
+| Grow light + air pump | Shelly smart plug | HTTP API |
+| Status LED | WS2812 RGB (built-in) | GPIO8 |
 
-See `plantOS.yaml` for complete hardware configuration details.
+See `PINOUT.md` for full wiring details and `plantOS.yaml` for ESPHome configuration.
+
+## Custom Components
+
+| Component | Purpose |
+|-----------|---------|
+| `plantos_controller` | 15-state FSM orchestrating all system behavior + LED feedback |
+| `plantos_hal` | Hardware abstraction layer (wraps ESPHome components) |
+| `actuator_safety_gate` | Centralized actuator validation: debouncing, duration limits, soft-start/stop |
+| `persistent_state_manager` | Critical event logging to NVS for power-loss recovery |
+| `ezo_ph_uart` | Atlas Scientific EZO pH sensor driver over UART |
+| `sensor_filter` | Sliding window averaging with outlier rejection |
+| `calendar_manager` | 120-day grow cycle schedule |
+| `wdt_manager` | Hardware watchdog with 10s timeout |
+| `i2c_scanner` | I2C bus diagnostics and device validation |
+| `sensor_dummy` | Simulated sensor for development/testing |
+| `dummy_actuator_trigger` | SafetyGate test sequences |
+| `psm_checker` | PSM crash recovery testing |
 
 ## Quick Start
 
 ### Prerequisites
 
-- **Nix** (recommended): [Install Nix](https://nixos.org/download.html)
-- **direnv** (optional but recommended): [Install direnv](https://direnv.net/docs/installation.html)
+- **Nix** (recommended): [nixos.org/download](https://nixos.org/download.html)
+- **direnv** (optional): [direnv.net](https://direnv.net/docs/installation.html)
 
 ### Setup
 
 ```bash
-# Clone and enter directory
-cd plantOS
+# Clone the repo
+git clone https://github.com/CodyMcCodeface69/plantOS-Hydromat.git
+cd plantOS-Hydromat
 
-# Allow direnv (if using direnv)
+# Enter dev environment (direnv or manual)
 direnv allow
+# or: nix develop
 
-# Or manually enter Nix development shell
-nix develop
-
-# Create secrets file from template
+# Configure secrets
 cp secrets.example.yaml secrets.yaml
-# Edit secrets.yaml with your WiFi credentials
+# Edit secrets.yaml with your WiFi credentials and network settings
 
 # Build and flash
 task run
 ```
 
-## Development Environment
-
-The project uses **Nix flakes** for reproducible builds with all dependencies included:
-- ESPHome
-- Python 3
-- ESP-IDF toolchain
-- Task runner
-
-**Nix Resources:**
-- [Nix Downloads](https://nixos.org/download.html)
-- [Nix Flakes](https://nixos.wiki/wiki/Flakes)
-- [direnv + Nix](https://direnv.net/docs/hook.html)
-
-## Common Commands
-
-All commands managed via [Task](https://taskfile.dev/):
+## Commands
 
 | Command | Description |
 |---------|-------------|
 | `task build` | Compile firmware |
 | `task flash` | Upload to MCU |
-| `task run` | Build, flash, and attach to logs |
-| `task clean` | Clean build cache |
+| `task run` | Build, flash, and stream logs |
+| `task snoop` | Attach to logs only (no flash) |
+| `task clean` | Clear build cache |
 
-See `Taskfile.yml` for implementation details.
-
-## Project Structure
+## Architecture
 
 ```
-plantOS/
-├── plantOS.yaml           # Main ESPHome config (hardware, components, integrations)
-├── secrets.yaml          # WiFi credentials (gitignored)
-├── secrets.example.yaml  # Template for secrets
-├── components/           # Custom ESPHome components
-│   ├── sensor_dummy/    # Demo polling sensor
-│   └── controller/      # FSM-based LED controller
-├── flake.nix            # Nix development environment
-├── Taskfile.yml         # Task automation
-└── CLAUDE.md            # Detailed architecture documentation
+Unified Controller (FSM, 15 states)
+        │
+        ▼
+Actuator Safety Gate (debounce, duration limits, soft-start)
+        │
+        ▼
+HAL — Hardware Abstraction Layer
+  ├── GPIO pumps/valves
+  ├── EZO pH sensor (UART)
+  ├── DS18B20 temperature (1-Wire)
+  ├── TDS sensor (ADC)
+  ├── Water level sensors (binary)
+  ├── WS2812 RGB LED
+  └── Shelly HTTP API (lights, air pump)
 ```
 
-**For detailed architecture**, component specifications, and development patterns, see [`CLAUDE.md`](CLAUDE.md).
-
-## Custom Components
-
-### sensor_dummy
-Polling sensor that cycles values 0-100. See `components/sensor_dummy/` for implementation.
-
-### controller
-Finite state machine with LED feedback (init → calibration → ready → error states). See `components/controller/` for implementation details.
-
-Usage examples in `plantOS.yaml`.
-
-## Essential Documentation Links
-
-### ESPHome
-- [Homepage](https://esphome.io/)
-- [Getting Started (CLI)](https://esphome.io/guides/getting_started_command_line.html)
-- [Custom Components Guide](https://esphome.io/custom/custom_component.html)
-- [API Reference](https://esphome.io/api/)
-- [Configuration Types](https://esphome.io/guides/configuration-types.html)
-
-### ESP32-C6
-- [ESP32-C6 Datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-c6_datasheet_en.pdf)
-- [ESP32-C6 Technical Reference Manual](https://www.espressif.com/sites/default/files/documentation/esp32-c6_technical_reference_manual_en.pdf)
-- [DevKitC-1 User Guide](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c6/esp32-c6-devkitc-1/)
-- [DevKitC-1 Schematics](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c6/esp32-c6-devkitc-1/user_guide.html#hardware-reference)
-
-### ESP-IDF Framework
-- [ESP-IDF Documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/)
-- [ESP-IDF API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/api-reference/index.html)
-
-### Development Tools
-- [Task (Taskfile)](https://taskfile.dev/)
-- [Nix Package Manager](https://nixos.org/manual/nix/stable/)
-- [Nix Flakes Reference](https://nixos.wiki/wiki/Flakes)
-- [direnv Documentation](https://direnv.net/)
-
-### Components & Libraries
-- [WS2812 Addressable LEDs](https://cdn-shop.adafruit.com/datasheets/WS2812.pdf)
-- [ESPHome Light Component](https://esphome.io/components/light/index.html)
-- [ESPHome Sensor Component](https://esphome.io/components/sensor/index.html)
-
-## Development Workflow
-
-1. **Modify hardware/components**: Edit `plantOS.yaml`
-2. **Create custom components**: Add to `components/` directory (see ESPHome custom components guide)
-3. **Test changes**: `task run` to build, flash, and monitor logs
-4. **Access web interface**: Navigate to device IP (shown in logs) on port 80
-5. **Debug**: Monitor serial output and ESPHome logs
+For full architecture details, FSM state diagram, and component API docs see [`CLAUDE.md`](CLAUDE.md).
 
 ## Troubleshooting
 
-- **Build failures**: Run `task clean` to clear cache
-- **Flash issues**: Check USB serial port permissions
-- **WiFi connection**: Verify credentials in `secrets.yaml`
-- **Nix environment**: Ensure `direnv allow` or manually `nix develop`
+- **Build fails**: `task clean` then retry
+- **WiFi not connecting**: Check `secrets.yaml`, or connect to `PlantOS-Fallback` AP and go to `http://192.168.4.1`
+- **pH not reading**: Wait 5min after boot for sensor warmup; check UART wiring on GPIO20/21
+- **Actuator not activating**: Check SafetyGate logs — maintenance mode may be on, or duration limit hit

@@ -49,6 +49,10 @@ class EZOPHComponent : public PollingComponent, public i2c::I2CDevice {
   float get_last_reading() const { return this->last_ph_value_; }
   bool send_temperature_compensation(float temperature);
 
+  // Communication mode switching (web UI backup buttons)
+  // Sends "Baud,9600" over I2C → EZO self-resets in UART mode at 9600 baud.
+  void switch_to_uart_mode();
+
  protected:
   // I2C communication helpers
   bool send_command_(const char *cmd);

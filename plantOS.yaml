@@ -7,6 +7,8 @@
 
 esphome:
   name: plantos
+  includes:
+    - ezo_switch_helper.h   # ESP-IDF UART helper for EZO mode switching (UART→I2C button)
   on_boot:
     # Configure actuator safety gate max durations (in seconds) on boot
     # Each actuator has a safety timeout to prevent accidents
@@ -1079,6 +1081,34 @@ button:
         - logger.log: "Querying EZO pH calibration status (Cal,?)"
         - lambda: |-
             id(ezo_ph_component)->query_calibration_status();
+
+  # === 07_10 - Switch EZO pH to I2C mode (UART → I2C) ===
+  # Use this when the EZO sensor is currently in UART mode and needs to be switched to I2C.
+  # Sends "I2C,97" (0x61) via UART on GPIO18/19 — EZO self-resets in I2C mode at address 0x61.
+  # After pressing: power-cycle or wait ~2s for the sensor to restart, then pH readings resume.
+  - platform: template
+    name: "07_10_EZO: Switch to I2C mode (UART→I2C)"
+    on_press:
+      then:
+        - logger.log:
+            format: "Sending I2C,97 via UART (GPIO18 TX) to switch EZO pH to I2C mode at 0x61"
+            level: WARN
+        - lambda: |-
+            ezo_send_uart_cmd("I2C,97\r");
+
+  # === 07_11 - Switch EZO pH to UART mode (I2C → UART) ===
+  # Use this when the EZO sensor is currently in I2C mode and needs to be switched back to UART.
+  # Sends "Baud,9600" over I2C — EZO self-resets in UART mode at 9600 baud.
+  # After pressing: reconfigure firmware to use ezo_ph_uart before flashing.
+  - platform: template
+    name: "07_11_EZO: Switch to UART mode (I2C→UART)"
+    on_press:
+      then:
+        - logger.log:
+            format: "Sending Baud,9600 via I2C to switch EZO pH to UART mode at 9600 baud"
+            level: WARN
+        - lambda: |-
+            id(ezo_ph_component)->switch_to_uart_mode();
 
   # === 07_20 - EC Calibration ===
   - platform: template

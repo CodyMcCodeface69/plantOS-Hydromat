@@ -259,6 +259,16 @@ bool EZOPHComponent::send_temperature_compensation(float temperature) {
   return this->check_response_code_(response);
 }
 
+void EZOPHComponent::switch_to_uart_mode() {
+  // Sends "Baud,9600" over I2C. EZO immediately self-resets in UART mode.
+  // No response is expected — the sensor stops responding on I2C after this.
+  ESP_LOGW(TAG, "Switching EZO pH to UART mode (Baud,9600) — sensor will reset");
+  this->send_command_("Baud,9600");
+  this->sensor_ready_ = false;
+  this->update_state_ = UpdateState::IDLE;
+  ESP_LOGW(TAG, "EZO pH is now in UART mode at 9600 baud. Reconfigure firmware to use UART.");
+}
+
 // ============================================================================
 // Advanced features
 // ============================================================================

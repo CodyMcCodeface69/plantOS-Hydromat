@@ -25,8 +25,8 @@ class Switch;
 namespace output {
 class FloatOutput;
 }
-namespace ezo_ph_uart {
-class EZOPHUARTComponent;
+namespace ezo_ph {
+class EZOPHComponent;
 }
 namespace http_request {
 class HttpRequestComponent;
@@ -593,7 +593,7 @@ public:
     // Dependency injection (called from Python __init__.py)
     void set_led(esphome::light::LightState* led);
     void set_ph_sensor(esphome::sensor::Sensor* ph_sensor);
-    void set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component);
+    void set_ph_sensor_component(esphome::ezo_ph::EZOPHComponent* ph_sensor_component);
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
     void set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor);
@@ -715,7 +715,7 @@ private:
     bool led_is_on_{false};
 
     esphome::sensor::Sensor* ph_sensor_{nullptr};
-    esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_{nullptr};
+    esphome::ezo_ph::EZOPHComponent* ph_sensor_component_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
     esphome::sensor::Sensor* ec_sensor_{nullptr};
     tds_sensor::TDSSensor* tds_sensor_component_{nullptr};

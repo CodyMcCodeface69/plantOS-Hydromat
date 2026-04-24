@@ -30,7 +30,10 @@
       "Bash(git show:*)",
       "WebFetch(domain:esphome.io)",
       "WebFetch(domain:www.waveshare.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git config *)",
+      "Bash(~/.nix-profile/bin/task build:*)",
+      "Bash(/nix/store/lqi7vlg43b7zaixlz33p0n15jb7v22kk-go-task-3.43.3/bin/task build:*)"
     ],
     "deny": [],
     "ask": []

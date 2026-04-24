@@ -2,7 +2,7 @@
 #include "esphome/components/plantos_hal/hal.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
-#include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
+#include "esphome/components/ezo_ph/ezo_ph.h"
 #include "esphome/components/calendar_manager/CalendarManager.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/alert_service/alert_service.h"
@@ -173,7 +173,7 @@ void PlantOSController::loop() {
 
             uartDevices.push_back(UARTDeviceInfo(
                 "EZO pH Sensor",
-                "TX=GPIO4, RX=GPIO5",
+                "SDA=GPIO19, SCL=GPIO18 (i2c_bus_ezo)",
                 isReady,
                 true,  // critical
                 status
@@ -1121,7 +1121,7 @@ void PlantOSController::handlePhMeasuring() {
                         "pH sensor not responding after " + std::to_string(sensor_retry_state_.consecutive_failures) + " attempts",
                         "Sensor has no value: hasPhValue() returned false for " +
                             std::to_string(sensor_retry_state_.consecutive_failures) + " consecutive readings",
-                        "Check sensor wiring (UART TX=GPIO20, RX=GPIO21), verify sensor power (5V), try sensor calibration from web UI",
+                        "Check sensor wiring (I2C SDA=GPIO19, SCL=GPIO18), verify sensor power (5V), try sensor calibration from web UI",
                         "pH measurement phase, " + std::to_string(ph_readings_.size()) +
                             " readings collected before failure",
                         "Aborting to IDLE. System will retry pH correction on next cycle.",
@@ -1189,7 +1189,7 @@ void PlantOSController::handlePhMeasuring() {
             "NO_PH_READINGS",
             "No pH readings collected during 5-minute measurement phase",
             "Sensor returned no values: hasPhValue() was false for entire measurement period",
-            "Check pH sensor UART connection (TX=GPIO20, RX=GPIO21), verify sensor power (5V), try sensor calibration from web UI",
+            "Check pH sensor I2C connection (SDA=GPIO19, SCL=GPIO18), verify sensor power (5V), try sensor calibration from web UI",
             "pH correction aborted during measurement phase after 5 minutes",
             "System will return to IDLE and can retry on next cycle",
             0
@@ -1457,14 +1457,14 @@ void PlantOSController::handlePhCalibrating() {
     // Check if sensor hardware is actually connected and responding
     if (!ph_sensor_->is_sensor_ready()) {
         ESP_LOGE(TAG, "pH sensor hardware not responding - calibration aborted");
-        ESP_LOGE(TAG, "Check UART connection and power to sensor");
+        ESP_LOGE(TAG, "Check I2C connection (SDA=GPIO19, SCL=GPIO18) and power to sensor");
 
         // Set comprehensive alert before ERROR transition
         status_logger_.updateAlertWithContext(
             "PH_SENSOR_HARDWARE_FAILURE",
             "pH sensor hardware not responding",
             "Sensor readiness check failed: is_sensor_ready() returned false",
-            "Check UART connection (TX=GPIO20, RX=GPIO21), verify sensor power (5V), inspect sensor LED status",
+            "Check I2C connection (SDA=GPIO19, SCL=GPIO18), verify sensor power (5V), inspect sensor LED status",
             "Calibration aborted during initialization",
             "Fix hardware connection and retry calibration from web UI",
             0
@@ -3139,7 +3139,7 @@ void PlantOSController::startPhCalibration() {
     // Check if sensor hardware is actually connected and responding
     if (!ph_sensor_->is_sensor_ready()) {
         ESP_LOGE(TAG, "Cannot start pH calibration - sensor hardware not responding");
-        ESP_LOGE(TAG, "Check UART connection (TX=GPIO4, RX=GPIO5) and power to sensor");
+        ESP_LOGE(TAG, "Check I2C connection (SDA=GPIO19, SCL=GPIO18) and power to sensor");
         ESP_LOGE(TAG, "Verify sensor shows up in Central Status Logger");
         return;
     }

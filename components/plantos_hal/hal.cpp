@@ -5,7 +5,7 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/output/float_output.h"
 #include "esphome/components/switch/switch.h"
-#include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
+#include "esphome/components/ezo_ph/ezo_ph.h"
 #include "esphome/components/http_request/http_request.h"
 #include "esphome/core/time.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
@@ -35,7 +35,7 @@ void ESPHomeHAL::set_ph_sensor(esphome::sensor::Sensor* ph_sensor) {
     ESP_LOGI(TAG, "pH sensor configured");
 }
 
-void ESPHomeHAL::set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component) {
+void ESPHomeHAL::set_ph_sensor_component(esphome::ezo_ph::EZOPHComponent* ph_sensor_component) {
     ph_sensor_component_ = ph_sensor_component;
     ESP_LOGI(TAG, "pH sensor component configured for calibration and direct readings");
 }
@@ -816,14 +816,17 @@ bool ESPHomeHAL::startPhCalibration(float calibrationPoint, int calibrationStep)
         return false;
     }
 
-    // Call appropriate calibration method based on step
+    // Call appropriate calibration method based on step (void methods — fire-and-forget)
     switch (calibrationStep) {
         case 0:  // Mid-point calibration
-            return ph_sensor_component_->calibrate_mid(calibrationPoint);
+            ph_sensor_component_->calibrate_mid(calibrationPoint);
+            return true;
         case 1:  // Low-point calibration
-            return ph_sensor_component_->calibrate_low(calibrationPoint);
+            ph_sensor_component_->calibrate_low(calibrationPoint);
+            return true;
         case 2:  // High-point calibration
-            return ph_sensor_component_->calibrate_high(calibrationPoint);
+            ph_sensor_component_->calibrate_high(calibrationPoint);
+            return true;
         default:
             ESP_LOGE(TAG, "Invalid calibration step: %d", calibrationStep);
             return false;

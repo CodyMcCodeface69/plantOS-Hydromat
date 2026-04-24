@@ -23,8 +23,8 @@ ActuatorSafetyGate = actuator_safety_gate_ns.class_('ActuatorSafetyGate')
 persistent_state_manager_ns = cg.esphome_ns.namespace('persistent_state_manager')
 PersistentStateManager = persistent_state_manager_ns.class_('PersistentStateManager')
 
-ezo_ph_uart_ns = cg.esphome_ns.namespace('ezo_ph_uart')
-EZOPHUARTComponent = ezo_ph_uart_ns.class_('EZOPHUARTComponent')
+ezo_ph_ns = cg.esphome_ns.namespace('ezo_ph')
+EZOPHComponent = ezo_ph_ns.class_('EZOPHComponent')
 
 calendar_manager_ns = cg.esphome_ns.namespace('calendar_manager')
 CalendarManager = calendar_manager_ns.class_('CalendarManager')
@@ -59,7 +59,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_HAL): cv.use_id(HAL),
     cv.Required(CONF_SAFETY_GATE): cv.use_id(ActuatorSafetyGate),
     cv.Optional(CONF_PERSISTENCE): cv.use_id(PersistentStateManager),
-    cv.Optional(CONF_PH_SENSOR): cv.use_id(EZOPHUARTComponent),
+    cv.Optional(CONF_PH_SENSOR): cv.use_id(EZOPHComponent),
     cv.Optional(CONF_CALENDAR): cv.use_id(CalendarManager),
     cv.Optional(CONF_TIME_SOURCE): cv.use_id(RealTimeClock),
     cv.Optional(CONF_GROW_START_DATE): cv.string,

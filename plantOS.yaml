@@ -63,7 +63,7 @@ logger:
     light: INFO            # Suppress LED brightness/color debug messages
     sensor: INFO           # Suppress sensor state updates (toggle via 11_01)
     text_sensor: INFO      # Suppress text sensor state updates (toggle via 11_02)
-    ezo_ph_uart: DEBUG      # Suppress EZO pH UART debug logs (toggle via 11_03)
+    ezo_ph: DEBUG           # Suppress EZO pH I2C debug logs (toggle via 11_03)
     sensor_filter: WARN    # Suppress sensor filter buffer logs (toggle via 11_04)
     dallas.temp.sensor: INFO  # Suppress Dallas temp sensor logs (toggle via 11_05)
     plantos_controller: INFO  # Suppress controller PSM check logs (toggle via 11_06)
@@ -224,7 +224,7 @@ external_components:
   # Points to local custom components directory
   # ESPHome will compile and link C++ code from here alongside generated code
   - source: components
-    components: [sensor_dummy, sensor_filter, ezo_ph_uart,
+    components: [sensor_dummy, sensor_filter, ezo_ph,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
                  i2c_scanner, time_dummy, wdt_manager, plantos_hal,
                  plantos_controller, tds_sensor, alert_service]
@@ -237,24 +237,18 @@ external_components:
     components: [adc]
     refresh: 0s
 
-# I²C Bus - SDA: GPIO20, SCL: GPIO21 (BME280 - air temp sensor)
-# Requires 4.7kΩ external pull-ups to 3.3V
+# I²C Buses - Requires 4.7kΩ external pull-ups to 3.3V on each bus
 i2c:
-  id: i2c_bus
-  sda: GPIO20  # Serial Data Line
-  scl: GPIO21  # Serial Clock Line
-  scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
-  frequency: 100kHz  # Standard mode - change to 400kHz for fast mode if needed
-
-# UART for EZO pH sensor - TX: GPIO18, RX: GPIO19, 9600 baud
-uart:
-  id: uart_bus
-  tx_pin: GPIO18  # ESP32-C6 TX -> EZO RX
-  rx_pin: GPIO19  # ESP32-C6 RX <- EZO TX
-  baud_rate: 9600  # Standard baud rate for EZO carrier boards
-  data_bits: 8
-  parity: NONE
-  stop_bits: 1
+  - id: i2c_bus
+    sda: GPIO20  # BME280 air temperature sensor
+    scl: GPIO21
+    scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
+    frequency: 100kHz
+  - id: i2c_bus_ezo
+    sda: GPIO19  # EZO pH sensor (GPIO18/19 freed after UART removal)
+    scl: GPIO18
+    scan: false
+    frequency: 100kHz
 
 # I²C Scanner - validates critical devices at boot and periodically
 i2c_scanner:
@@ -1084,7 +1078,7 @@ button:
       then:
         - logger.log: "Querying EZO pH calibration status (Cal,?)"
         - lambda: |-
-            id(ezo_ph_uart_component)->query_calibration_status();
+            id(ezo_ph_component)->query_calibration_status();
 
   # === 07_20 - EC Calibration ===
   - platform: template
@@ -1441,7 +1435,7 @@ plantos_hal:
   id: hal
   system_led: system_led
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
-  ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
+  ph_sensor_component: ezo_ph_component  # EZO pH I2C component for calibration and direct readings
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO3 (WTR_TEMP)
   ec_sensor: ec_sensor                   # TDS/EC sensor (KS0429 via ADC on GPIO0)
   tds_sensor_component: ec_sensor        # TDS sensor component for EC calibration factor (NVS)
@@ -1523,7 +1517,7 @@ plantos_controller:
   hal: hal                       # Hardware abstraction layer
   safety_gate: actuator_safety   # Actuator control with safety enforcement
   persistence: psm               # Persistent state manager for crash recovery
-  ph_sensor: ezo_ph_uart_component  # pH sensor for calibration control
+  ph_sensor: ezo_ph_component  # pH sensor for calibration control
   calendar: plant_calendar       # Calendar manager for grow schedule and nutrient dosing
   time_source: sntp_time         # NTP time source for automatic day calculation
   alert_service: alerts          # Alert dispatching (log backend; future: Telegram, HA)
@@ -1564,17 +1558,17 @@ actuator_safety_gate:
   hal: hal  # Phase 2: Inject HAL dependency for hardware control
 
 ################################################################################
-# EZO pH Sensor Component via UART (Atlas Scientific)
+# EZO pH Sensor Component via I2C (Atlas Scientific)
 #
-# Production pH sensor using UART communication with EZO Carrier pH Click board.
-# This is the native communication mode for the MikroElektronika EZO carrier board.
+# Production pH sensor using I2C communication with Atlas Scientific EZO circuit.
+# Default I2C address: 0x61.
 #
 # Hardware Requirements:
-# - MikroElektronika EZO Carrier pH Click board
-# - Atlas Scientific EZO pH Circuit (installed on carrier)
+# - Atlas Scientific EZO pH Circuit
 # - pH probe (included with EZO kit)
-# - UART connection to ESP32-C6 (TX=GPIO4, RX=GPIO5)
-# - 3.3V or 5V power supply (carrier has voltage regulator)
+# - I2C connection to ESP32-C6 (SDA=GPIO19, SCL=GPIO18 via i2c_bus_ezo)
+# - 4.7kΩ pull-up resistors on SDA/SCL to 3.3V
+# - 3.3V or 5V power supply
 #
 # Calibration:
 # - Use ESPHome API services to calibrate (see api section)
@@ -1587,16 +1581,15 @@ actuator_safety_gate:
 # - Links to a temperature sensor for improved accuracy
 # - Improves accuracy from ±0.1 pH to ±0.02 pH
 #
-# UART Protocol Details:
-# - Baud Rate: 9600 (EZO UART mode)
-# - ASCII text commands terminated with \r (carriage return)
-# - 300ms response delay required after each command
+# I2C Protocol Details:
+# - ASCII text commands written to I2C address
+# - 300ms response delay required after each command (handled internally)
 ################################################################################
-ezo_ph_uart:
-  id: ezo_ph_uart_component
-  uart_id: uart_bus
-  update_interval: 5s  # Read pH every 5 seconds (faster readings for better calibration stability detection)
-  verbose: false  # Disable verbose UART logging by default (enabled dynamically during calibration)
+ezo_ph:
+  id: ezo_ph_component
+  i2c_id: i2c_bus_ezo
+  address: 0x61
+  update_interval: 5s  # Read pH every 5 seconds
   # pH sensor configuration
   ph:
     name: "00_05_Nutrient Solution pH"
@@ -1610,14 +1603,13 @@ ezo_ph_uart:
       # Lambda filter for range validation and outlier rejection
       - lambda: |-
           if (x < 0.0 || x > 14.0) {
-            ESP_LOGW("ezo_ph_uart", "pH value out of typical range: %.2f", x);
+            ESP_LOGW("ezo_ph", "pH value out of typical range: %.2f", x);
             return {};  // Reject outliers
           }
           return x;
 
-  # Optional: Temperature compensation for improved accuracy
-  # Uncomment and link to your temperature sensor when available
-  # temperature_compensation: water_temp_sensor
+  # Temperature compensation: links to DS18B20 for improved accuracy
+  temperature_compensation: water_temperature
 
 ################################################################################
 # Persistent State Manager - NVS-Based Critical Event Logging
@@ -2127,25 +2119,8 @@ switch:
           }
 
   # === pH Sensor Control ===
-  - platform: template
-    name: "07_03_Enable Continuous pH Reading"
-    id: continuous_ph_reading_switch
-    optimistic: true
-    turn_on_action:
-      # Enable continuous reading mode (C,1)
-      # Sensor outputs pH every second automatically
-      # WARNING: This interferes with normal polling operation
-      then:
-        - lambda: |-
-            ESP_LOGI("switch", "Enabling continuous pH reading mode");
-            id(ezo_ph_uart_component)->enable_continuous_reading();
-    turn_off_action:
-      # Disable continuous reading mode (C,0)
-      # Returns sensor to command mode (default)
-      then:
-        - lambda: |-
-            ESP_LOGI("switch", "Disabling continuous pH reading mode");
-            id(ezo_ph_uart_component)->disable_continuous_reading();
+  # NOTE: "Enable Continuous pH Reading" switch removed — not applicable to I2C mode.
+  # The ezo_ph I2C component polls via update_interval (5s). No continuous mode toggle needed.
 
   # === Night Mode Configuration ===
 
@@ -2277,18 +2252,18 @@ switch:
     icon: "mdi:bug-outline"
     turn_on_action:
       - logger.log:
-          format: "Enabling verbose logging for: ezo_ph_uart"
+          format: "Enabling verbose logging for: ezo_ph"
           level: INFO
       - logger.set_level:
           level: VERBOSE
-          tag: ezo_ph_uart
+          tag: ezo_ph
     turn_off_action:
       - logger.log:
-          format: "Disabling verbose logging for: ezo_ph_uart"
+          format: "Disabling verbose logging for: ezo_ph"
           level: INFO
       - logger.set_level:
           level: WARN
-          tag: ezo_ph_uart
+          tag: ezo_ph
 
   - platform: template
     name: "11_04_Verbose: Sensor Filter"

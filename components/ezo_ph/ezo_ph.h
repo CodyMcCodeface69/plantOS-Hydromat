@@ -37,6 +37,11 @@ class EZOPHComponent : public PollingComponent, public i2c::I2CDevice {
   void calibrate_clear();
   void query_calibration_status();
 
+  // Diagnostic methods (blocking — called on demand from web UI only)
+  void request_device_info();
+  void request_status();
+  void force_setup_retry();
+
   // Advanced features
   void set_led(bool enable);
   void enter_sleep_mode();
@@ -82,6 +87,10 @@ class EZOPHComponent : public PollingComponent, public i2c::I2CDevice {
   UpdateState update_state_{UpdateState::IDLE};
   uint32_t response_wait_start_{0};
 
+  // Setup retry (replaces mark_failed — auto-recovers after hardware becomes available)
+  uint32_t next_setup_retry_ms_{0};
+  uint8_t setup_retry_count_{0};
+
   // Stability detection
   static constexpr size_t STABILITY_BUFFER_SIZE = 10;
   float stability_buffer_[STABILITY_BUFFER_SIZE];
@@ -90,6 +99,7 @@ class EZOPHComponent : public PollingComponent, public i2c::I2CDevice {
 
   // Timing constants
   static constexpr uint32_t RESPONSE_DELAY_MS = 300;  // Critical: 300ms delay for EZO processing
+  static constexpr uint32_t SETUP_RETRY_INTERVAL_MS = 15000;  // Retry failed setup every 15s
   static constexpr uint8_t RESPONSE_BUFFER_SIZE = 32;
   static constexpr uint8_t MAX_ERRORS = 5;
 

@@ -10,17 +10,21 @@ namespace ezo_ph {
 static const char *const TAG = "ezo_ph";
 
 void EZOPHComponent::setup() {
-  ESP_LOGI(TAG, "Setting up EZO pH sensor...");
+  ESP_LOGI(TAG, "Setting up EZO pH sensor (address 0x%02X)...", this->address_);
 
   // Initialize stability buffer
   memset(this->stability_buffer_, 0, sizeof(this->stability_buffer_));
   this->stability_index_ = 0;
   this->stability_count_ = 0;
+  this->update_state_ = UpdateState::IDLE;
 
   // Test I2C communication with device info command
   if (!this->send_command_("i")) {
-    ESP_LOGE(TAG, "Failed to send device info command");
-    this->mark_failed();
+    ESP_LOGE(TAG, "Failed to reach EZO pH at 0x%02X — will retry in %u ms "
+                  "(check wiring, pull-ups 4.7kΩ to 3.3V, and I2C address)",
+             this->address_, SETUP_RETRY_INTERVAL_MS);
+    this->sensor_ready_ = false;
+    this->next_setup_retry_ms_ = millis() + SETUP_RETRY_INTERVAL_MS;
     return;
   }
 
@@ -30,7 +34,7 @@ void EZOPHComponent::setup() {
   if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
     ESP_LOGI(TAG, "EZO pH device info: %s", response);
   } else {
-    ESP_LOGW(TAG, "Failed to read device info");
+    ESP_LOGW(TAG, "No response to 'i' command (device may be initializing)");
   }
 
   // Lock I2C protocol to prevent accidental switch to UART
@@ -38,7 +42,7 @@ void EZOPHComponent::setup() {
     this->wait_blocking_();
     if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
       if (this->check_response_code_(response)) {
-        ESP_LOGD(TAG, "I2C protocol locked");
+        ESP_LOGI(TAG, "I2C protocol locked (Plock,1 confirmed)");
       }
     }
   }
@@ -57,8 +61,8 @@ void EZOPHComponent::setup() {
 
   this->sensor_ready_ = true;
   this->error_count_ = 0;
-  this->update_state_ = UpdateState::IDLE;
-  ESP_LOGI(TAG, "EZO pH sensor setup complete");
+  this->next_setup_retry_ms_ = 0;
+  ESP_LOGI(TAG, "EZO pH sensor ready at I2C 0x%02X", this->address_);
 }
 
 void EZOPHComponent::update() {
@@ -86,6 +90,15 @@ void EZOPHComponent::update() {
 }
 
 void EZOPHComponent::loop() {
+  // Auto-retry setup if it failed at boot or after too many errors
+  if (!this->sensor_ready_ && this->next_setup_retry_ms_ != 0 &&
+      millis() >= this->next_setup_retry_ms_) {
+    this->next_setup_retry_ms_ = 0;
+    ESP_LOGI(TAG, "Retrying EZO pH setup (attempt %u)...", ++this->setup_retry_count_);
+    this->setup();
+    return;
+  }
+
   if (this->update_state_ == UpdateState::IDLE) return;
 
   if (millis() - this->response_wait_start_ < RESPONSE_DELAY_MS) return;
@@ -150,10 +163,12 @@ void EZOPHComponent::start_ph_read_() {
 }
 
 void EZOPHComponent::handle_error_(const char *msg) {
-  ESP_LOGW(TAG, "%s", msg);
+  ESP_LOGW(TAG, "%s (error %u/%u)", msg, this->error_count_ + 1, MAX_ERRORS);
   if (++this->error_count_ > MAX_ERRORS) {
-    ESP_LOGE(TAG, "Too many errors - sensor marked not ready");
+    ESP_LOGE(TAG, "Too many consecutive errors — marking not ready, will retry in %u ms",
+             SETUP_RETRY_INTERVAL_MS);
     this->sensor_ready_ = false;
+    this->next_setup_retry_ms_ = millis() + SETUP_RETRY_INTERVAL_MS;
   }
 }
 
@@ -270,6 +285,48 @@ void EZOPHComponent::switch_to_uart_mode() {
 }
 
 // ============================================================================
+// Diagnostic methods (blocking — called on demand from web UI buttons only)
+// ============================================================================
+
+void EZOPHComponent::request_device_info() {
+  ESP_LOGI(TAG, "Requesting device info...");
+  if (!this->send_command_("i")) {
+    ESP_LOGE(TAG, "Failed to send 'i' command");
+    return;
+  }
+  this->wait_blocking_();
+  char response[RESPONSE_BUFFER_SIZE];
+  if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+    ESP_LOGI(TAG, "Device info: %s", response);
+  } else {
+    ESP_LOGW(TAG, "No response to 'i' command (device not responding)");
+  }
+}
+
+void EZOPHComponent::request_status() {
+  ESP_LOGI(TAG, "Requesting device status...");
+  if (!this->send_command_("Status")) {
+    ESP_LOGE(TAG, "Failed to send 'Status' command");
+    return;
+  }
+  this->wait_blocking_();
+  char response[RESPONSE_BUFFER_SIZE];
+  if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+    ESP_LOGI(TAG, "Device status: %s", response);  // e.g. ?Status,P,5.038 (P=power restored)
+  } else {
+    ESP_LOGW(TAG, "No response to 'Status' command");
+  }
+}
+
+void EZOPHComponent::force_setup_retry() {
+  ESP_LOGI(TAG, "Forcing immediate setup retry...");
+  this->sensor_ready_ = false;
+  this->update_state_ = UpdateState::IDLE;
+  this->error_count_ = 0;
+  this->next_setup_retry_ms_ = millis() + 500;
+}
+
+// ============================================================================
 // Advanced features
 // ============================================================================
 
@@ -307,7 +364,9 @@ bool EZOPHComponent::send_command_(const char *cmd) {
   ESP_LOGV(TAG, "Sending command: %s", cmd);
   auto err = this->write(reinterpret_cast<const uint8_t *>(cmd), strlen(cmd));
   if (err != i2c::ERROR_OK) {
-    ESP_LOGW(TAG, "I2C write error: %d", err);
+    ESP_LOGW(TAG, "I2C write error %d on cmd '%s' (addr 0x%02X) — "
+                  "check pull-ups (4.7kΩ to 3.3V required) and wiring",
+             err, cmd, this->address_);
     return false;
   }
   return true;
@@ -317,7 +376,7 @@ bool EZOPHComponent::read_response_(char *buffer, size_t len) {
   memset(buffer, 0, len);
   auto err = this->read(reinterpret_cast<uint8_t *>(buffer), len - 1);
   if (err != i2c::ERROR_OK) {
-    ESP_LOGV(TAG, "I2C read error: %d", err);
+    ESP_LOGW(TAG, "I2C read error %d (addr 0x%02X)", err, this->address_);
     return false;
   }
   size_t actual_len = strlen(buffer);

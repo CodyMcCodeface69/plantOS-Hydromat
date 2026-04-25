@@ -247,45 +247,37 @@ i2c:
     scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
     frequency: 100kHz
   - id: i2c_bus_ezo
-    sda: GPIO18  # EZO pH sensor — TX-Pad on carrier board = SDA in I2C mode
-    scl: GPIO19  # RX-Pad on carrier board = SCL in I2C mode
+    sda: GPIO19  # EZO pH sensor — RX-pad on carrier board
+    scl: GPIO18  # TX-pad on carrier board
     scan: true   # TEMPORARY: confirm EZO is visible at 0x61 on boot — set back to false once confirmed
     frequency: 100kHz
 
 # I²C Scanner - validates critical devices at boot and periodically
 i2c_scanner:
-  id: my_i2c_scanner
-  i2c_id: i2c_bus
+  - id: my_i2c_scanner
+    i2c_id: i2c_bus
+    scan_on_boot: true
+    scan_interval: 60s
+    verbose: false
+    status_logger: unified_controller
+    critical_devices:
+      - address: 0x76
+        name: "BME280 Air Sensor"
 
-  # Scan once at boot to validate hardware setup
-  scan_on_boot: true
+  - id: i2c_scanner_ezo
+    i2c_id: i2c_bus_ezo
+    scan_on_boot: true
+    scan_interval: 30s
+    verbose: true
+    critical_devices:
+      # 0x61 = 97 decimal — programmed via 07_10 button ("I2C,97")
+      # 0x63 = 99 decimal — Atlas Scientific EZO pH factory default
+      # Only one will be found; the other will warn. Check logs to see which address responds.
+      - address: 0x61
+        name: "EZO pH (custom addr 0x61)"
+      - address: 0x63
+        name: "EZO pH (factory default 0x63)"
 
-  # Periodic scanning (0s = disabled, only boot-time scan)
-  # Set to 30s, 60s, etc. to detect hot-plug events or hardware failures
-  scan_interval: 60s
-
-  # Verbose mode: Enable detailed I²C scan logging to serial
-  # true (default): Log detailed scan results every scan_interval
-  # false: Silent mode - only report to central status logger
-  verbose: false
-
-  # Link to central status logger for system status reports
-  status_logger: unified_controller
-
-  # Define critical devices for your PlantOS system
-  # Uncomment and modify based on your hardware configuration
-  critical_devices:
-    - address: 0x61
-      name: "EZO pH Sensor"
-    - address: 0x76
-      name: "BME280 Sensor"  # Non-critical: Shows yellow warning if missing
-    # Add other critical devices as needed
-    # - address: 0x48
-    #   name: "ADS1115 ADC"
-    # - address: 0x20
-    #   name: "MCP23017 GPIO Expander"
-    # - address: 0x68
-    #   name: "DS3231 RTC"
 
 ################################################################################
 # Visual Feedback: WS2812 RGB LED
@@ -1110,6 +1102,36 @@ button:
         - lambda: |-
             id(ezo_ph_component)->switch_to_uart_mode();
 
+  # === 07_12 - EZO Device Info ===
+  # Sends "i" command to EZO and logs firmware version/circuit type.
+  # Use to confirm I2C comms are working after hardware changes.
+  - platform: template
+    name: "07_12_EZO: Device Info"
+    id: btn_ezo_device_info
+    on_press:
+      then:
+        - lambda: id(ezo_ph_component)->request_device_info();
+
+  # === 07_13 - EZO Status ===
+  # Sends "Status" command — logs supply voltage and restart reason.
+  # e.g. ?Status,P,5.038 (P=power restored, 5.038V supply)
+  - platform: template
+    name: "07_13_EZO: Status"
+    id: btn_ezo_status
+    on_press:
+      then:
+        - lambda: id(ezo_ph_component)->request_status();
+
+  # === 07_14 - EZO Force Reconnect ===
+  # Clears sensor_ready_ and schedules setup retry in 500ms.
+  # Use after hardware changes (pull-ups added, connector reseated) without rebooting.
+  - platform: template
+    name: "07_14_EZO: Force Reconnect"
+    id: btn_ezo_force_reconnect
+    on_press:
+      then:
+        - lambda: id(ezo_ph_component)->force_setup_retry();
+
   # === 07_20 - EC Calibration ===
   - platform: template
     name: "07_20_Start EC Calibration"
@@ -1618,6 +1640,8 @@ actuator_safety_gate:
 ezo_ph:
   id: ezo_ph_component
   i2c_id: i2c_bus_ezo
+  # Address: 0x61 (97) was set via button 07_10 ("I2C,97" over UART).
+  # Factory default is 0x63 (99). If boot scan shows 0x63, change this to 0x63.
   address: 0x61
   update_interval: 5s  # Read pH every 5 seconds
   # pH sensor configuration

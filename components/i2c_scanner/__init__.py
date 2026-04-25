@@ -33,6 +33,8 @@ import esphome.config_validation as cv
 from esphome.components import i2c
 from esphome.const import CONF_ID
 
+MULTI_CONF = True
+
 # Create a C++ namespace for the i2c_scanner component
 i2c_scanner_ns = cg.esphome_ns.namespace('i2c_scanner')
 

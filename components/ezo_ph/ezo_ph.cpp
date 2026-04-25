@@ -302,10 +302,10 @@ bool EZOPHComponent::is_stable() {
 // ============================================================================
 
 bool EZOPHComponent::send_command_(const char *cmd) {
-  char cmd_with_cr[RESPONSE_BUFFER_SIZE];
-  snprintf(cmd_with_cr, sizeof(cmd_with_cr), "%s\r", cmd);
+  // I2C mode: NO carriage return — Atlas Scientific EZO I2C protocol sends raw ASCII bytes only.
+  // (UART mode used \r, I2C does not)
   ESP_LOGV(TAG, "Sending command: %s", cmd);
-  auto err = this->write(reinterpret_cast<const uint8_t *>(cmd_with_cr), strlen(cmd_with_cr));
+  auto err = this->write(reinterpret_cast<const uint8_t *>(cmd), strlen(cmd));
   if (err != i2c::ERROR_OK) {
     ESP_LOGW(TAG, "I2C write error: %d", err);
     return false;

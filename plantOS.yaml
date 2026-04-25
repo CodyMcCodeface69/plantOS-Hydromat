@@ -247,9 +247,9 @@ i2c:
     scan: false  # Disable ESPHome's automatic scan (we use our custom scanner)
     frequency: 100kHz
   - id: i2c_bus_ezo
-    sda: GPIO19  # EZO pH sensor (GPIO18/19 freed after UART removal)
-    scl: GPIO18
-    scan: false
+    sda: GPIO18  # EZO pH sensor — TX-Pad on carrier board = SDA in I2C mode
+    scl: GPIO19  # RX-Pad on carrier board = SCL in I2C mode
+    scan: true   # TEMPORARY: confirm EZO is visible at 0x61 on boot — set back to false once confirmed
     frequency: 100kHz
 
 # I²C Scanner - validates critical devices at boot and periodically

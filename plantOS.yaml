@@ -2253,7 +2253,7 @@ switch:
           format: "Disabling verbose logging for: ezo_ph_uart"
           level: INFO
       - logger.set_level:
-          level: WARN
+          level: DEBUG
           tag: ezo_ph_uart
 
   - platform: template

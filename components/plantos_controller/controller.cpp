@@ -172,7 +172,7 @@ void PlantOSController::loop() {
 
             uartDevices.push_back(UARTDeviceInfo(
                 "EZO pH Sensor",
-                "SDA=GPIO19, SCL=GPIO18 (i2c_bus_ezo)",
+                "TX=GPIO18, RX=GPIO19 (uart_bus)",
                 isReady,
                 true,  // critical
                 status
@@ -1120,7 +1120,7 @@ void PlantOSController::handlePhMeasuring() {
                         "pH sensor not responding after " + std::to_string(sensor_retry_state_.consecutive_failures) + " attempts",
                         "Sensor has no value: hasPhValue() returned false for " +
                             std::to_string(sensor_retry_state_.consecutive_failures) + " consecutive readings",
-                        "Check sensor wiring (I2C SDA=GPIO19, SCL=GPIO18), verify sensor power (5V), try sensor calibration from web UI",
+                        "Check sensor wiring (UART TX=GPIO18, RX=GPIO19), verify sensor power (5V), try sensor calibration from web UI",
                         "pH measurement phase, " + std::to_string(ph_readings_.size()) +
                             " readings collected before failure",
                         "Aborting to IDLE. System will retry pH correction on next cycle.",
@@ -1188,7 +1188,7 @@ void PlantOSController::handlePhMeasuring() {
             "NO_PH_READINGS",
             "No pH readings collected during 5-minute measurement phase",
             "Sensor returned no values: hasPhValue() was false for entire measurement period",
-            "Check pH sensor I2C connection (SDA=GPIO19, SCL=GPIO18), verify sensor power (5V), try sensor calibration from web UI",
+            "Check pH sensor UART connection (TX=GPIO18, RX=GPIO19), verify sensor power (5V), try sensor calibration from web UI",
             "pH correction aborted during measurement phase after 5 minutes",
             "System will return to IDLE and can retry on next cycle",
             0

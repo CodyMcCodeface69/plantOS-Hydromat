@@ -1061,7 +1061,7 @@ button:
       then:
         - logger.log: "Querying EZO pH calibration status (Cal,?)"
         - lambda: |-
-            id(ezo_ph_uart_component)->query_calibration_status();
+            id(hal)->queryPhCalibrationStatus();
 
   # === 07_10 - EZO Continuous Reading Mode ===
   # === 07_20 - EC Calibration ===

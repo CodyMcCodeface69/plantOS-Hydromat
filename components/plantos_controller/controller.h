@@ -24,9 +24,6 @@ class PersistentStateManager;
 
 // Forward declaration - full definition in .cpp file to avoid circular dependencies
 namespace esphome {
-namespace ezo_ph {
-class EZOPHComponent;
-}
 namespace calendar_manager {
 class CalendarManager;
 }
@@ -118,14 +115,6 @@ public:
      */
     void setPersistenceManager(esphome::persistent_state_manager::PersistentStateManager* psm) {
         psm_ = psm;
-    }
-
-    /**
-     * Set pH Sensor Component
-     * OPTIONAL - Used for direct pH sensor calibration control
-     */
-    void setPhSensor(esphome::ezo_ph::EZOPHComponent* ph_sensor) {
-        ph_sensor_ = ph_sensor;
     }
 
     /**
@@ -436,7 +425,6 @@ private:
     plantos_hal::HAL* hal_{nullptr};
     esphome::actuator_safety_gate::ActuatorSafetyGate* safety_gate_{nullptr};
     esphome::persistent_state_manager::PersistentStateManager* psm_{nullptr};
-    esphome::ezo_ph::EZOPHComponent* ph_sensor_{nullptr};
     esphome::calendar_manager::CalendarManager* calendar_manager_{nullptr};
     esphome::time::RealTimeClock* time_source_{nullptr};
     alert_service::AlertService* alert_service_{nullptr};

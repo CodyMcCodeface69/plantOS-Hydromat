@@ -2,7 +2,6 @@
 #include "esphome/components/plantos_hal/hal.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
-#include "esphome/components/ezo_ph/ezo_ph.h"
 #include "esphome/components/calendar_manager/CalendarManager.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/alert_service/alert_service.h"
@@ -156,12 +155,12 @@ void PlantOSController::loop() {
         }
 
         // Update UART hardware status (EZO pH sensor)
-        if (ph_sensor_) {
+        if (hal_) {
             std::vector<UARTDeviceInfo> uartDevices;
             std::string status = "";
 
             // Check if sensor is ready
-            bool isReady = ph_sensor_->is_sensor_ready();
+            bool isReady = hal_->isPhSensorReady();
 
             // Add calibration status if available
             // Note: Calibration query would require async call, so we just show ready status
@@ -1448,32 +1447,30 @@ void PlantOSController::handlePhCalibrating() {
     // 3-point calibration sequence: Mid (7.00) → Low (4.00) → High (10.01)
     // Each point waits for stable readings before proceeding
 
-    if (!ph_sensor_ || !hal_) {
-        ESP_LOGE(TAG, "pH sensor or HAL not configured - cannot calibrate");
+    if (!hal_) {
+        ESP_LOGE(TAG, "HAL not configured - cannot calibrate");
         transitionTo(ControllerState::ERROR);
         return;
     }
 
     // Check if sensor hardware is actually connected and responding
-    if (!ph_sensor_->is_sensor_ready()) {
+    if (!hal_->isPhSensorReady()) {
         ESP_LOGE(TAG, "pH sensor hardware not responding - calibration aborted");
-        ESP_LOGE(TAG, "Check I2C connection (SDA=GPIO19, SCL=GPIO18) and power to sensor");
+        ESP_LOGE(TAG, "Check UART connection (TX=GPIO18, RX=GPIO19) and power to sensor");
 
         // Set comprehensive alert before ERROR transition
         status_logger_.updateAlertWithContext(
             "PH_SENSOR_HARDWARE_FAILURE",
             "pH sensor hardware not responding",
-            "Sensor readiness check failed: is_sensor_ready() returned false",
-            "Check I2C connection (SDA=GPIO19, SCL=GPIO18), verify sensor power (5V), inspect sensor LED status",
+            "Sensor readiness check failed: isPhSensorReady() returned false",
+            "Check UART connection (TX=GPIO18, RX=GPIO19), verify sensor power (5V), inspect sensor LED status",
             "Calibration aborted during initialization",
             "Fix hardware connection and retry calibration from web UI",
             0
         );
 
         // Ensure verbose mode is off even on error
-        if (ph_sensor_) {
-            ph_sensor_->set_verbose(false);
-        }
+        hal_->setPhVerbose(false);
         transitionTo(ControllerState::ERROR);
         return;
     }
@@ -1592,9 +1589,7 @@ void PlantOSController::handlePhCalibrating() {
                 );
 
                 // Ensure verbose mode is off even on error
-                if (ph_sensor_) {
-                    ph_sensor_->set_verbose(false);
-                }
+                hal_->setPhVerbose(false);
                 transitionTo(ControllerState::ERROR);
                 return;
             } else {
@@ -1715,9 +1710,7 @@ void PlantOSController::handlePhCalibrating() {
                 );
 
                 // Ensure verbose mode is off even on error
-                if (ph_sensor_) {
-                    ph_sensor_->set_verbose(false);
-                }
+                hal_->setPhVerbose(false);
                 transitionTo(ControllerState::ERROR);
                 return;
             } else {
@@ -1838,9 +1831,7 @@ void PlantOSController::handlePhCalibrating() {
                 );
 
                 // Ensure verbose mode is off even on error
-                if (ph_sensor_) {
-                    ph_sensor_->set_verbose(false);
-                }
+                hal_->setPhVerbose(false);
                 transitionTo(ControllerState::ERROR);
                 return;
             } else {
@@ -1872,13 +1863,11 @@ void PlantOSController::handlePhCalibrating() {
             ESP_LOGI(TAG, "");
 
             // Disable verbose mode - calibration complete
-            if (ph_sensor_) {
-                ph_sensor_->set_verbose(false);
-                ESP_LOGI(TAG, "Verbose mode DISABLED - returning to normal operation");
-            }
+            hal_->setPhVerbose(false);
+            ESP_LOGI(TAG, "Verbose mode DISABLED - returning to normal operation");
 
             // Query calibration status to verify
-            ph_sensor_->query_calibration_status();
+            hal_->queryPhCalibrationStatus();
 
             // Clear any calibration failure alerts from previous attempts
             status_logger_.resolveAlert("CALIBRATION_FAILED_MID");
@@ -3131,15 +3120,10 @@ void PlantOSController::startPhCalibration() {
         return;
     }
 
-    if (!ph_sensor_) {
-        ESP_LOGE(TAG, "Cannot start pH calibration - pH sensor component not configured");
-        return;
-    }
-
     // Check if sensor hardware is actually connected and responding
-    if (!ph_sensor_->is_sensor_ready()) {
+    if (!hal_->isPhSensorReady()) {
         ESP_LOGE(TAG, "Cannot start pH calibration - sensor hardware not responding");
-        ESP_LOGE(TAG, "Check I2C connection (SDA=GPIO19, SCL=GPIO18) and power to sensor");
+        ESP_LOGE(TAG, "Check UART connection (TX=GPIO18, RX=GPIO19) and power to sensor");
         ESP_LOGE(TAG, "Verify sensor shows up in Central Status Logger");
         return;
     }
@@ -3151,10 +3135,8 @@ void PlantOSController::startPhCalibration() {
     ESP_LOGI(TAG, "Follow the prompts to insert probe into each solution");
 
     // Enable verbose mode for detailed UART logging during calibration
-    if (ph_sensor_) {
-        ph_sensor_->set_verbose(true);
-        ESP_LOGI(TAG, "Verbose mode ENABLED for calibration sequence");
-    }
+    hal_->setPhVerbose(true);
+    ESP_LOGI(TAG, "Verbose mode ENABLED for calibration sequence");
 
     // Reset calibration state
     calib_step_ = CalibrationStep::MID_PROMPT;

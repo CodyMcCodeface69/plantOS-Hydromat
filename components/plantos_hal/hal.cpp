@@ -5,7 +5,7 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/output/float_output.h"
 #include "esphome/components/switch/switch.h"
-#include "esphome/components/ezo_ph/ezo_ph.h"
+#include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 #include "esphome/components/http_request/http_request.h"
 #include "esphome/core/time.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
@@ -35,7 +35,7 @@ void ESPHomeHAL::set_ph_sensor(esphome::sensor::Sensor* ph_sensor) {
     ESP_LOGI(TAG, "pH sensor configured");
 }
 
-void ESPHomeHAL::set_ph_sensor_component(esphome::ezo_ph::EZOPHComponent* ph_sensor_component) {
+void ESPHomeHAL::set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component) {
     ph_sensor_component_ = ph_sensor_component;
     ESP_LOGI(TAG, "pH sensor component configured for calibration and direct readings");
 }
@@ -831,6 +831,21 @@ bool ESPHomeHAL::startPhCalibration(float calibrationPoint, int calibrationStep)
             ESP_LOGE(TAG, "Invalid calibration step: %d", calibrationStep);
             return false;
     }
+}
+
+bool ESPHomeHAL::isPhSensorReady() const {
+    if (!ph_sensor_component_) return false;
+    return ph_sensor_component_->is_sensor_ready();
+}
+
+void ESPHomeHAL::setPhVerbose(bool enable) {
+    if (!ph_sensor_component_) return;
+    ph_sensor_component_->set_verbose(enable);
+}
+
+void ESPHomeHAL::queryPhCalibrationStatus() {
+    if (!ph_sensor_component_) return;
+    ph_sensor_component_->query_calibration_status();
 }
 
 bool ESPHomeHAL::takeSinglePhReading(float &value) {

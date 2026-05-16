@@ -353,6 +353,12 @@ void EZOPHUARTComponent::calibrate_clear() {
 void EZOPHUARTComponent::query_calibration_status() {
   ESP_LOGI(TAG, "Querying calibration status");
 
+  // Flush any stale data (e.g. pending pH reading from state machine)
+  while (this->available()) {
+    uint8_t b;
+    this->read_byte(&b);
+  }
+
   if (!this->send_command_("Cal,?")) {
     ESP_LOGE(TAG, "Failed to send calibration query command");
     return;
@@ -722,7 +728,11 @@ bool EZOPHUARTComponent::parse_ph_value_(const char *response, float &value) {
     ESP_LOGD(TAG, "Ignoring temperature compensation confirmation: %s", response);
     return false;
   }
-  if (strncmp(response, "Cal,", 4) == 0 || strncmp(response, "?Cal,", 5) == 0) {
+  if (response[0] == '?') {
+    ESP_LOGD(TAG, "Ignoring command response (not a pH reading): %s", response);
+    return false;
+  }
+  if (strncmp(response, "Cal,", 4) == 0) {
     ESP_LOGD(TAG, "Ignoring calibration response: %s", response);
     return false;
   }

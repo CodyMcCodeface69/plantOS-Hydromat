@@ -837,6 +837,39 @@ button:
         - wifi.enable:
         - logger.log: "WiFi reconnection initiated"
 
+  - platform: template
+    name: "03_03_Wifi Scan"
+    on_press:
+      then:
+        - lambda: |-
+            ESP_LOGI("wifi_scan", "=== WiFi Scan gestartet ===");
+            wifi_scan_config_t scan_config = {};
+            scan_config.show_hidden = true;
+            scan_config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+            scan_config.scan_time.active.min = 50;
+            scan_config.scan_time.active.max = 150;
+            esp_err_t err = esp_wifi_scan_start(&scan_config, true);
+            if (err != ESP_OK) {
+              ESP_LOGE("wifi_scan", "Scan fehlgeschlagen: %s", esp_err_to_name(err));
+              return;
+            }
+            uint16_t ap_count = 0;
+            esp_wifi_scan_get_ap_num(&ap_count);
+            ESP_LOGI("wifi_scan", "Gefunden: %d Access Points", ap_count);
+            if (ap_count == 0) return;
+            wifi_ap_record_t *ap_list = (wifi_ap_record_t*)malloc(ap_count * sizeof(wifi_ap_record_t));
+            if (!ap_list) { ESP_LOGE("wifi_scan", "malloc fehlgeschlagen"); return; }
+            esp_wifi_scan_get_ap_records(&ap_count, ap_list);
+            for (int i = 0; i < ap_count; i++) {
+              ESP_LOGI("wifi_scan", "[%2d] SSID: %-32s  BSSID: %02X:%02X:%02X:%02X:%02X:%02X  RSSI: %4d dBm  Ch: %2d",
+                       i + 1, (char*)ap_list[i].ssid,
+                       ap_list[i].bssid[0], ap_list[i].bssid[1], ap_list[i].bssid[2],
+                       ap_list[i].bssid[3], ap_list[i].bssid[4], ap_list[i].bssid[5],
+                       (int)ap_list[i].rssi, ap_list[i].primary);
+            }
+            free(ap_list);
+            ESP_LOGI("wifi_scan", "=== WiFi Scan abgeschlossen ===");
+
   # === 04 - System State Control ===
   - platform: template
     name: "04_01_Set to SHUTDOWN (All Actuators OFF, Cal OFF)"

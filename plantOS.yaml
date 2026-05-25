@@ -7,6 +7,8 @@
 
 esphome:
   name: plantos
+  includes:
+    - wifi_scan.h
   on_boot:
     # Configure actuator safety gate max durations (in seconds) on boot
     # Each actuator has a safety timeout to prevent accidents
@@ -842,7 +844,7 @@ button:
     on_press:
       then:
         - lambda: |-
-            ESP_LOGI("wifi_scan", "=== WiFi Scan gestartet ===");
+            ESP_LOGI("wifi_scan", "=== WiFi Scan started ===");
             wifi_scan_config_t scan_config = {};
             scan_config.show_hidden = true;
             scan_config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
@@ -850,15 +852,15 @@ button:
             scan_config.scan_time.active.max = 150;
             esp_err_t err = esp_wifi_scan_start(&scan_config, true);
             if (err != ESP_OK) {
-              ESP_LOGE("wifi_scan", "Scan fehlgeschlagen: %s", esp_err_to_name(err));
+              ESP_LOGE("wifi_scan", "Scan failed: %s", esp_err_to_name(err));
               return;
             }
             uint16_t ap_count = 0;
             esp_wifi_scan_get_ap_num(&ap_count);
-            ESP_LOGI("wifi_scan", "Gefunden: %d Access Points", ap_count);
+            ESP_LOGI("wifi_scan", "Found: %d access points", ap_count);
             if (ap_count == 0) return;
             wifi_ap_record_t *ap_list = (wifi_ap_record_t*)malloc(ap_count * sizeof(wifi_ap_record_t));
-            if (!ap_list) { ESP_LOGE("wifi_scan", "malloc fehlgeschlagen"); return; }
+            if (!ap_list) { ESP_LOGE("wifi_scan", "malloc failed"); return; }
             esp_wifi_scan_get_ap_records(&ap_count, ap_list);
             for (int i = 0; i < ap_count; i++) {
               ESP_LOGI("wifi_scan", "[%2d] SSID: %-32s  BSSID: %02X:%02X:%02X:%02X:%02X:%02X  RSSI: %4d dBm  Ch: %2d",
@@ -868,7 +870,7 @@ button:
                        (int)ap_list[i].rssi, ap_list[i].primary);
             }
             free(ap_list);
-            ESP_LOGI("wifi_scan", "=== WiFi Scan abgeschlossen ===");
+            ESP_LOGI("wifi_scan", "=== WiFi Scan complete ===");
 
   # === 04 - System State Control ===
   - platform: template

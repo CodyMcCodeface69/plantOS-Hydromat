@@ -200,27 +200,17 @@ http_request:
 # This enables accurate timestamping for logs, sensor data, and scheduled actions.
 ################################################################################
 time:
-  # === TIME DUMMY (for testing calendar function) ===
-  # Provides configurable dummy time instead of real NTP synchronization
-  # Allows manual time control via buttons for testing grow day calculations
-  - platform: time_dummy
-    id: sntp_time  # Keep same ID for compatibility with controller
-    initial_time: "2025-12-30 08:00:00"  # Starting time (YYYY-MM-DD HH:MM:SS)
-    update_interval: 1s
-
-  # === SNTP TIME (production - currently disabled) ===
-  # Uncomment below to use real NTP time synchronization
-  # - platform: sntp
-  #   id: sntp_time
-  #   servers:
-  #     - 0.pool.ntp.org
-  #     - 1.pool.ntp.org
-  #     - 2.pool.ntp.org
-  #   timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
-  #   update_interval: 15min
-  #   on_time_sync:
-  #     then:
-  #       - logger.log: "System time synchronized with NTP server"
+  - platform: sntp
+    id: sntp_time
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+      - 2.pool.ntp.org
+    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
+    update_interval: 15min
+    on_time_sync:
+      then:
+        - logger.log: "System time synchronized with NTP server"
 
 external_components:
   # Points to local custom components directory
@@ -228,7 +218,7 @@ external_components:
   - source: components
     components: [sensor_dummy, sensor_filter, ezo_ph_uart,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
-                 i2c_scanner, time_dummy, wdt_manager, plantos_hal,
+                 i2c_scanner, wdt_manager, plantos_hal,
                  plantos_controller, tds_sensor, alert_service]
   # ADC fix for ESP32-C6 (oneshot API - built-in ADC doesn't compile on C6)
   # Ref: https://github.com/esphome/issues/issues/5363
@@ -706,9 +696,9 @@ text_sensor:
     update_interval: 60s
 
   - platform: template
-    name: "00_02_Current Time (Dummy)"
+    name: "00_02_Current Time"
     id: current_time_text
-    # Lambda returns current dummy time in readable format
+    # Lambda returns current time from SNTP
     lambda: |-
       auto time = id(sntp_time)->now();
       if (time.is_valid()) {
@@ -969,87 +959,6 @@ button:
       then:
         - lambda: |-
             id(psm)->clearEvent();
-
-  # === 06 - Time Control (Dummy Time for Testing) ===
-  - platform: template
-    name: "06_01_Time +1 Day"
-    on_press:
-      # Increase dummy time by 1 day (86400 seconds)
-      # Used to test calendar function and grow day calculations
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Time +1 Day button pressed");
-            id(sntp_time)->add_days(1);
-
-  - platform: template
-    name: "06_02_Time -1 Day"
-    on_press:
-      # Decrease dummy time by 1 day (86400 seconds)
-      # Used to test calendar function and grow day calculations
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Time -1 Day button pressed");
-            id(sntp_time)->add_days(-1);
-
-  - platform: template
-    name: "06_03_Time +1 Hour"
-    on_press:
-      # Increase dummy time by 1 hour (3600 seconds)
-      # Used to test time-based events and scheduling
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Time +1 Hour button pressed");
-            id(sntp_time)->add_hours(1);
-
-  - platform: template
-    name: "06_04_Time -1 Hour"
-    on_press:
-      # Decrease dummy time by 1 hour (3600 seconds)
-      # Used to test time-based events and scheduling
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Time -1 Hour button pressed");
-            id(sntp_time)->add_hours(-1);
-
-  - platform: template
-    name: "06_05_Time +1 Minute"
-    on_press:
-      # Increase dummy time by 1 minute (60 seconds)
-      # Used to test time-based events and scheduling
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Time +1 Minute button pressed");
-            id(sntp_time)->add_minutes(1);
-
-  - platform: template
-    name: "06_06_Time -1 Minute"
-    on_press:
-      # Decrease dummy time by 1 minute (60 seconds)
-      # Used to test time-based events and scheduling
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Time -1 Minute button pressed");
-            id(sntp_time)->add_minutes(-1);
-
-  - platform: template
-    name: "06_07_Time +1 Second"
-    on_press:
-      # Increase dummy time by 1 second
-      # Used to test precise time-based events and scheduling
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Time +1 Second button pressed");
-            id(sntp_time)->add_seconds(1);
-
-  - platform: template
-    name: "06_08_Time -1 Second"
-    on_press:
-      # Decrease dummy time by 1 second
-      # Used to test precise time-based events and scheduling
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Time -1 Second button pressed");
-            id(sntp_time)->add_seconds(-1);
 
   # === 07 - pH & Measurement ===
   - platform: template
@@ -1484,7 +1393,7 @@ plantos_hal:
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO17 (WTR_HI)
   water_level_low_sensor: water_level_low_sensor  # XKC-Y23-V capacitive sensor on GPIO23 (WTR_LO - auto-feed trigger level)
   water_level_empty_sensor: water_level_empty_sensor  # XKC-Y23-V capacitive sensor on GPIO22 (WTR_Empty - minimum safe level)
-  time_source: sntp_time  # Time source for clock-based pH scheduling (time_dummy for testing, can be NTP/RTC)
+  time_source: sntp_time  # SNTP time source for clock-based scheduling
 
   # Actuator GPIO Outputs (Phase 2: Hardware Control - 5 GPIO actuators)
   # NOTE: Using outputs instead of switches to avoid circular dependency

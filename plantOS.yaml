@@ -937,6 +937,29 @@ button:
             ESP_LOGI("button", "Auto-fill toggled: %s → %s",
                      current ? "ON" : "OFF", !current ? "ON" : "OFF");
 
+  # === 04_12-04_14 - Neue Operationen & Override ===
+  - platform: template
+    name: "04_12_EC Correction (EC_PROCESSING → EC_FEEDING → pH)"
+    on_press:
+      then:
+        - lambda: |-
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "EC CORRECTION REQUESTED");
+            ESP_LOGI("button", "States: EC_PROCESSING → EC_CALCULATING → EC_FEEDING → EC_MIXING → EC_MEASURING → PH_PROCESSING");
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startEcCheck();
+
+  - platform: template
+    name: "04_13_Emergency Stop (alle Pumpen AUS → SHUTDOWN)"
+    on_press:
+      then:
+        - lambda: |-
+            ESP_LOGW("button", "========================================");
+            ESP_LOGW("button", "EMERGENCY STOP REQUESTED");
+            ESP_LOGW("button", "All pumps OFF immediately → SHUTDOWN");
+            ESP_LOGW("button", "========================================");
+            id(unified_controller)->emergencyStop();
+
   # === 05 - Logging & Cleanup ===
   - platform: template
     name: "05_01_Clear PSM Alerts"
@@ -2615,6 +2638,24 @@ switch:
 # WARNING: Use only for hardware testing and calibration!
 ################################################################################
 number:
+  # === 04_14 - Dose Multiplier Override ===
+  - platform: template
+    id: dose_multiplier_slider
+    name: "04_14_Dose Multiplier (0.1x – 2.0x)"
+    icon: "mdi:beaker-outline"
+    optimistic: true
+    min_value: 0.1
+    max_value: 2.0
+    step: 0.05
+    initial_value: 1.0
+    restore_value: true
+    unit_of_measurement: "x"
+    mode: slider
+    set_action:
+      - lambda: |-
+          ESP_LOGI("number", "Dose multiplier set to %.2fx", x);
+          id(unified_controller)->setOverrideDoseMultiplier(x);
+
   # === EC Calibration Target ===
   - platform: template
     name: "07_20_EC Calibration Target (uS/cm)"

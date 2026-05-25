@@ -3534,6 +3534,14 @@ void PlantOSController::startReservoirChange() {
     transitionTo(ControllerState::WATER_EMPTYING);
 }
 
+void PlantOSController::emergencyStop() {
+    ESP_LOGW(TAG, "========================================================");
+    ESP_LOGW(TAG, "  EMERGENCY STOP - ALL PUMPS OFF");
+    ESP_LOGW(TAG, "========================================================");
+    turnOffAllPumps();
+    transitionTo(ControllerState::SHUTDOWN);
+}
+
 void PlantOSController::setToShutdown() {
     ESP_LOGI(TAG, "Transitioning to SHUTDOWN state");
     transitionTo(ControllerState::SHUTDOWN);

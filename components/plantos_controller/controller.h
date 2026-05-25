@@ -373,6 +373,12 @@ public:
     void activateAirPump();
 
     /**
+     * Emergency stop: immediately cut all pumps/valves, then enter SHUTDOWN
+     * Use when hardware must stop NOW regardless of current state
+     */
+    void emergencyStop();
+
+    /**
      * Reset controller to INIT state
      * Used for error recovery
      */

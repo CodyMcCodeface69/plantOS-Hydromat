@@ -1128,7 +1128,7 @@ private:
 
     /**
      * Check water level sensor states for logical contradictions
-     * HIGH=true + EMPTY=true simultaneously is physically impossible
+     * EMPTY is the lowest sensor — HIGH=ON + EMPTY=OFF is the impossible state (sensor fault)
      */
     void checkWaterLevelPlausibility();
 

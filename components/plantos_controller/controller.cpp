@@ -4382,11 +4382,12 @@ void PlantOSController::checkWaterLevelPlausibility() {
     bool high = hal_->readWaterLevelHigh();
     bool empty = hal_->readWaterLevelEmpty();
 
-    // HIGH and EMPTY both active simultaneously is physically impossible
-    if (high && empty) {
+    // EMPTY is the lowest sensor (~bottom of tank) — always ON when there's any water.
+    // HIGH=ON + EMPTY=ON is normal (full tank). The impossible state is HIGH=ON + EMPTY=OFF.
+    if (high && !empty) {
         status_logger_.updateAlertStatus("WATER_LEVEL_LOGIC_ERROR",
-            "Water level sensors contradictory: HIGH and EMPTY both active simultaneously");
-        ESP_LOGE(TAG, "[PLAUSIBILITY] Water level logic error: HIGH and EMPTY sensors both active");
+            "Water level sensors contradictory: HIGH active but EMPTY inactive (sensor fault?)");
+        ESP_LOGE(TAG, "[PLAUSIBILITY] Water level logic error: HIGH=ON but EMPTY=OFF — possible sensor fault");
     } else {
         status_logger_.clearAlert("WATER_LEVEL_LOGIC_ERROR");
     }

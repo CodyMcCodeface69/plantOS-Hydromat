@@ -1484,11 +1484,11 @@ plantos_hal:
   # Tank Volume Configuration (for mL/L dosing calculations)
   # Tank Volume Delta: Measured volume between LOW and HIGH water level sensors
   # Used for normal daily feeding operations (auto-feed fills from LOW to HIGH)
-  tank_volume_delta_liters: 1.7     # Volume from LOW to HIGH sensors (default: 10.0L)
+  tank_volume_delta_liters: 27.4    # Volume from LOW to HIGH sensors | 57x37x13cm = 27.417L
 
   # Total Tank Volume: Measured volume from EMPTY to HIGH water level sensors
   # Used for complete reservoir change operations (drains to EMPTY, refills to HIGH)
-  total_tank_volume_liters: 2.0     # Volume from EMPTY to HIGH sensors (default: 10.0L)
+  total_tank_volume_liters: 47.5    # Volume from EMPTY to HIGH sensors | 57x37x22.5cm = 47.498L
 
   # Magnetic Valve Flow Rate (for automated water addition)
   # IMPORTANT: Calibrate using 10s test button (even though valve is ON/OFF only)

@@ -527,12 +527,8 @@ void PlantOSController::handleInit() {
         boot_alert_sent_ = true;
         uint32_t now = hal_->getSystemTime();
 
-        // Set EC check cooldown to prevent immediate re-feeding after reboot
-        // (pH cooldown is already set in setup(), EC cooldown defaults to 0)
-        last_ec_check_time_ = now;
         last_sensor_health_check_time_ = now;
-        ESP_LOGI(TAG, "BOOT: Cooldowns initialized (EC check delayed by %u min)",
-                 EC_CHECK_INTERVAL_MS / 60000);
+        ESP_LOGI(TAG, "BOOT: Cooldowns initialized");
 
         // Boot sensor check - log all available sensor readings
         ESP_LOGI(TAG, "BOOT SENSOR CHECK:");
@@ -703,8 +699,9 @@ void PlantOSController::handleIdle() {
             last_ph_check_timestamp_ = current_timestamp;
             last_ph_check_time_ = now;  // Update fallback timer too
 
-            if (!auto_ph_correction_enabled_) {
-                ESP_LOGD(TAG, "Automatic pH check skipped — auto pH correction disabled");
+            if (!auto_ph_correction_enabled_ || (night_mode_enabled_ && isNightModeHours())) {
+                ESP_LOGD(TAG, "Automatic pH check skipped — %s",
+                         !auto_ph_correction_enabled_ ? "auto pH correction disabled" : "night mode active");
             } else {
                 ESP_LOGI(TAG, "========================================================");
                 ESP_LOGI(TAG, "  AUTOMATIC pH CHECK (time-based: every %u hours)",
@@ -720,8 +717,9 @@ void PlantOSController::handleIdle() {
         if (now - last_ph_check_time_ >= ph_interval_ms) {
             last_ph_check_time_ = now;
 
-            if (!auto_ph_correction_enabled_) {
-                ESP_LOGD(TAG, "Automatic pH check skipped — auto pH correction disabled");
+            if (!auto_ph_correction_enabled_ || (night_mode_enabled_ && isNightModeHours())) {
+                ESP_LOGD(TAG, "Automatic pH check skipped — %s",
+                         !auto_ph_correction_enabled_ ? "auto pH correction disabled" : "night mode active");
             } else {
                 ESP_LOGW(TAG, "========================================================");
                 ESP_LOGW(TAG, "  AUTOMATIC pH CHECK (fallback mode: no time source)");
@@ -735,18 +733,15 @@ void PlantOSController::handleIdle() {
     }
 
     // ========================================================================
-    // PERIODIC EC MONITORING - Every 2 hours, trigger EC_PROCESSING
-    // EC_PROCESSING then decides if actual feeding is needed (with 4h guard)
+    // POST-FILL EC CHECK - triggered by auto_ec_check_pending_ after WATER_FILLING
+    // Requires: auto-feeding enabled, not night mode hours
     // ========================================================================
-    if (hal_->hasECValue()) {
-        if (now - last_ec_check_time_ >= EC_CHECK_INTERVAL_MS) {
-            last_ec_check_time_ = now;
-            ESP_LOGI(TAG, "========================================================");
-            ESP_LOGI(TAG, "  AUTOMATIC EC CHECK (every 2 hours)");
-            ESP_LOGI(TAG, "========================================================");
-            transitionTo(ControllerState::EC_PROCESSING);
-            return;
-        }
+    if (auto_ec_check_pending_ && auto_feeding_enabled_ && !(night_mode_enabled_ && isNightModeHours())) {
+        ESP_LOGI(TAG, "========================================================");
+        ESP_LOGI(TAG, "  EC CHECK TRIGGERED (post water fill)");
+        ESP_LOGI(TAG, "========================================================");
+        transitionTo(ControllerState::EC_PROCESSING);
+        return;
     }
 
     // Check if night mode hours started - transition to NIGHT
@@ -1236,10 +1231,11 @@ void PlantOSController::handlePhCalculating() {
         auto schedule = calendar_manager_->get_schedule(current_day);
         target_min = schedule.target_ph_min;
         target_max = schedule.target_ph_max;
-        ESP_LOGI(TAG, "pH: %.2f, Target (day %d): %.2f-%.2f",
-                 ph_current_, current_day, target_min, target_max);
+        ESP_LOGI(TAG, "pH: %.2f, Target (day %d): %.2f-%.2f (dose to midpoint: %.2f)",
+                 ph_current_, current_day, target_min, target_max, (target_min + target_max) / 2.0f);
     } else {
-        ESP_LOGI(TAG, "pH: %.2f, Target (default): %.2f-%.2f", ph_current_, target_min, target_max);
+        ESP_LOGI(TAG, "pH: %.2f, Target (default): %.2f-%.2f (dose to midpoint: %.2f)",
+                 ph_current_, target_min, target_max, (target_min + target_max) / 2.0f);
     }
 
     // Check if pH is within target range
@@ -1289,8 +1285,9 @@ void PlantOSController::handlePhCalculating() {
         return;
     }
 
-    // pH is too high - calculate required acid dose in mL
-    float dose_ml = calculateAcidDoseML(ph_current_, target_max);
+    // pH is too high - calculate required acid dose to reach midpoint of target range
+    float ph_dose_target = (target_min + target_max) / 2.0f;
+    float dose_ml = calculateAcidDoseML(ph_current_, ph_dose_target);
 
     // Check minimum dose threshold (avoid tiny corrections)
     if (dose_ml < 0.5f) {
@@ -2177,7 +2174,7 @@ void PlantOSController::handleEcProcessing() {
         int64_t elapsed_s = current_ts - last_ec_feeding_timestamp_;
         if (elapsed_s < EC_MIN_INTERVAL_S) {
             int64_t wait_s = EC_MIN_INTERVAL_S - elapsed_s;
-            ESP_LOGI(TAG, "[EC_PROCESSING] 4h guard: %lld/%lld s elapsed - %lld s remaining",
+            ESP_LOGI(TAG, "[EC_PROCESSING] 12h guard: %lld/%lld s elapsed - %lld s remaining",
                      elapsed_s, EC_MIN_INTERVAL_S, wait_s);
             auto_ec_check_pending_ = false;
             transitionAfterEcSkipped();
@@ -2575,8 +2572,8 @@ void PlantOSController::handleWaterFilling() {
             valve_command_sent = false;  // Reset for next fill cycle
             ESP_LOGI(TAG, "[WATER_FILLING] Fill complete");
 
-            // Post-fill sequence (Steuerungslogik.md 10.2): always EC before pH after water fill
-            ESP_LOGI(TAG, "[WATER_FILLING] Post-fill: starting EC check → pH correction sequence");
+            // Post-fill sequence: queue EC check and pH correction, let IDLE dispatch them
+            ESP_LOGI(TAG, "[WATER_FILLING] Post-fill: queuing EC check → pH correction sequence");
             auto_ec_check_pending_ = true;
             auto_ph_correction_pending_ = true;
             ph_post_fill_stabilize_ = true;  // Extended 10-min pH stabilization after fill
@@ -2587,7 +2584,7 @@ void PlantOSController::handleWaterFilling() {
             ec_attempt_count_ = 0;
             ec_total_ml_per_L_ = 0.0f;
 
-            transitionTo(ControllerState::EC_PROCESSING);
+            transitionTo(ControllerState::IDLE);
             return;
         }
 
@@ -2650,8 +2647,8 @@ void PlantOSController::handleWaterFilling() {
         valve_command_sent = false;  // Reset for next fill cycle
         ESP_LOGI(TAG, "[WATER_FILLING] Timeout complete");
 
-        // Post-fill sequence (Steuerungslogik.md 10.2): always EC before pH after water fill
-        ESP_LOGI(TAG, "[WATER_FILLING] Post-fill: starting EC check → pH correction sequence");
+        // Post-fill sequence: queue EC check and pH correction, let IDLE dispatch them
+        ESP_LOGI(TAG, "[WATER_FILLING] Post-fill: queuing EC check → pH correction sequence");
         auto_ec_check_pending_ = true;
         auto_ph_correction_pending_ = true;
         ph_post_fill_stabilize_ = true;  // Extended 10-min pH stabilization after fill
@@ -2662,7 +2659,7 @@ void PlantOSController::handleWaterFilling() {
         ec_attempt_count_ = 0;
         ec_total_ml_per_L_ = 0.0f;
 
-        transitionTo(ControllerState::EC_PROCESSING);
+        transitionTo(ControllerState::IDLE);
         return;
     }
 }

@@ -488,7 +488,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 
 | AUTOMATIC TRIGGER         | PRECONDITION       | TRANSITION TO        | DESCRIPTION |
 |---------------------------|--------------------|----------------------|-------------|
-| Every 2 hours (in IDLE)    | System in IDLE<br>**Auto pH correction enabled** (switch 04_10) | PH_PROCESSING        | Periodic pH monitoring (**NOT triggered in NIGHT**)<br>Skipped silently when 04_10 switch is OFF |
+| Every 2 hours (in IDLE)    | System in IDLE<br>**Auto pH correction enabled** (switch 04_10)<br>**Not in night mode hours** | PH_PROCESSING        | Periodic pH monitoring (**NOT triggered in NIGHT or when night mode hours are active**)<br>Skipped silently when 04_10 switch is OFF or 22:00–09:00 |
 | **Automatic Feeding** ⚡   | **Water level LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)**<br>System in IDLE<br>Auto-feeding enabled (switch **04_11**)<br>NOT in NIGHT/SHUTDOWN/PAUSE<br>NOT already fed today (NVS check) | **FEED_FILLING → FEEDING → EC_FEEDING** | **Once-per-day automatic feeding when water reaches LOW level**<br>Stores date to NVS: `AUTOFEED_<unix_timestamp>`<br>Prevents duplicate feeds after power cycles<br>Resets at midnight UTC (new calendar day)<br>Toggle via Web UI switch: **04_11_Auto EC/Feeding Correction** |
 | Night mode hours start     | IDLE + night mode enabled + current hour in range | NIGHT | Automatic transition to night mode |
 | Night mode hours end       | NIGHT + (night mode disabled OR hour out of range) | IDLE | Automatic transition back to idle |
@@ -506,7 +506,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | PH_MEASURING       | 30s (normal) / 5min (post EC feeding) / 10min (post water fill) | → PH_CALCULATING |
 | PH_INJECTING       | Calculated dose + 200ms    | → PH_MIXING |
 | PH_MIXING          | 2 minutes (120s)           | → PH_MEASURING (loop back to verify) |
-| WATER_FILLING      | 10min (fallback) or HIGH sensor | → EC_PROCESSING (post-fill sequence: EC → pH) |
+| WATER_FILLING      | 10min (fallback) or HIGH sensor | → IDLE (sets `auto_ec_check_pending_`; IDLE dispatches EC_PROCESSING when not night mode) |
 | WATER_EMPTYING     | 30s (fallback) or sensor   | → IDLE |
 | FEED_FILLING       | Calculated or sensor       | → FEEDING |
 | EC_CALIBRATING     | ~2.5 min nominal (30s+30s+30s+30s + readings) | → IDLE on COMPLETE, → ERROR on failure |
@@ -582,11 +582,11 @@ Sent to pH sensor before all critical readings:
 - **Manual Override**: All manual operations return warning "Cannot start X - system in NIGHT mode"
 - **Periodic pH Checks**: Disabled during night mode (no automatic PH_PROCESSING trigger)
 - **Time Source Required**: Needs NTP time synchronization to determine current hour
-- **Default Configuration**: Disabled (off), 22:00 start, 08:00 end when enabled
+- **Default Configuration**: **Enabled (on)**, 22:00 start, **09:00 end**
 - **Web UI Controls**:
-  - Switch: "Night Mode Enabled" (toggle on/off)
+  - Switch: "Night Mode Enabled" (toggle on/off, **default ON**)
   - Number: "Night Mode Start Hour" (0-23, default: 22)
-  - Number: "Night Mode End Hour" (0-23, default: 8)
+  - Number: "Night Mode End Hour" (0-23, default: **9**)
 
 ## 9. Automatic Feeding Daily Limit ⚡
 **Prevents excessive feeding through NVS-backed daily tracking**:

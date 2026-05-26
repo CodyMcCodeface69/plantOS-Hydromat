@@ -439,9 +439,9 @@ private:
     int64_t grow_start_timestamp_{0};  // Unix timestamp of day 1 (0 = not configured)
 
     // Night mode configuration
-    bool night_mode_enabled_{false};      // Night mode toggle
+    bool night_mode_enabled_{true};        // Night mode ON by default (22:00–09:00)
     uint8_t night_mode_start_hour_{22};   // Start hour (0-23), default 22:00
-    uint8_t night_mode_end_hour_{8};      // End hour (0-23), default 08:00
+    uint8_t night_mode_end_hour_{9};      // End hour (0-23), default 09:00
 
     // Grow light schedule control (default: disabled - use Shelly scripts instead)
     bool grow_light_schedule_enabled_{false};
@@ -588,7 +588,7 @@ private:
     uint8_t ec_attempt_count_{0};                   // Number of EC correction attempts in current cycle
     static constexpr uint8_t MAX_EC_ATTEMPTS = 3;
     int64_t last_ec_feeding_timestamp_{0};           // Unix timestamp (s) of last completed EC feeding
-    static constexpr int64_t EC_MIN_INTERVAL_S = 14400;  // 4 hours minimum between EC feedings
+    static constexpr int64_t EC_MIN_INTERVAL_S = 43200;  // 12 hours minimum between EC feedings
     float ec_dose_A_ml_{0.0f};                      // Calculated dose for NutrientPumpA (mL)
     float ec_dose_B_ml_{0.0f};                      // Calculated dose for NutrientPumpB (mL)
     float ec_dose_C_ml_{0.0f};                      // Calculated dose for NutrientPumpC (mL)
@@ -596,9 +596,6 @@ private:
     bool auto_ec_check_pending_{false};             // Flag: trigger EC check after WATER_FILLING
     static constexpr const char* NVS_KEY_EC_K = "EcKv2";  // v2: unit changed to µS/cm, invalidates stale mS/cm values
 
-    // Periodic EC monitoring timer (IDLE → EC_PROCESSING)
-    uint32_t last_ec_check_time_{0};               // millis() when last EC check was triggered
-    static constexpr uint32_t EC_CHECK_INTERVAL_MS = 7200000;  // 2 hours between EC checks
 
     // ========================================================================
     // pH Correction State

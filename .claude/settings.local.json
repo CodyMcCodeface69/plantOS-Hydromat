@@ -38,7 +38,9 @@
       "Bash(git -C /home/cody/plantOS-testlab show 308554f -- plantOS.yaml)",
       "Bash(git -C /home/cody/plantOS-testlab show 308554f^:plantOS.yaml)",
       "Bash(find /home/cody/plantOS-testlab/.esphome -name \"esp_sntp.h\" 2>/dev/null | head -5; find /root/.platformio -name \"esp_sntp.h\" 2>/dev/null | head -5)",
-      "Read(//root/**)"
+      "Read(//root/**)",
+      "Bash(which task *)",
+      "Read(//nix/**)"
     ],
     "deny": [],
     "ask": []

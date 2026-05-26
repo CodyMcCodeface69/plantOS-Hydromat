@@ -63,9 +63,9 @@ void PlantOSController::setup() {
         auto_fill_enabled_ = psm_->loadState(NVS_KEY_AUTO_FILL_ENABLE, false);
         ESP_LOGI(TAG, "Auto-fill: %s", auto_fill_enabled_ ? "ENABLED" : "DISABLED");
 
-        // Load vacation mode from NVS
-        vacation_mode_ = psm_->loadState(NVS_KEY_VACATION, false);
-        ESP_LOGI(TAG, "Vacation mode: %s", vacation_mode_ ? "ENABLED (70%% doses, 5 retries)" : "DISABLED");
+        // Load auto pH correction state from NVS (default ON)
+        auto_ph_correction_enabled_ = psm_->loadState(NVS_KEY_AUTO_PH_CORR, true);
+        ESP_LOGI(TAG, "Auto pH correction: %s", auto_ph_correction_enabled_ ? "ENABLED" : "DISABLED");
 
         // Load adaptive pH K-factor from NVS
         ph_K_ = psm_->loadFloat(NVS_KEY_PH_K, 0.07f);
@@ -703,26 +703,34 @@ void PlantOSController::handleIdle() {
             last_ph_check_timestamp_ = current_timestamp;
             last_ph_check_time_ = now;  // Update fallback timer too
 
-            ESP_LOGI(TAG, "========================================================");
-            ESP_LOGI(TAG, "  AUTOMATIC pH CHECK (time-based: every %u hours)",
-                     ph_interval_ms / 3600000);
-            ESP_LOGI(TAG, "========================================================");
+            if (!auto_ph_correction_enabled_) {
+                ESP_LOGD(TAG, "Automatic pH check skipped — auto pH correction disabled");
+            } else {
+                ESP_LOGI(TAG, "========================================================");
+                ESP_LOGI(TAG, "  AUTOMATIC pH CHECK (time-based: every %u hours)",
+                         ph_interval_ms / 3600000);
+                ESP_LOGI(TAG, "========================================================");
 
-            transitionTo(ControllerState::PH_PROCESSING);
-            return;  // Exit IDLE immediately
+                transitionTo(ControllerState::PH_PROCESSING);
+                return;  // Exit IDLE immediately
+            }
         }
     } else {
         // FALLBACK: millis()-based scheduling (no time source available)
         if (now - last_ph_check_time_ >= ph_interval_ms) {
             last_ph_check_time_ = now;
 
-            ESP_LOGW(TAG, "========================================================");
-            ESP_LOGW(TAG, "  AUTOMATIC pH CHECK (fallback mode: no time source)");
-            ESP_LOGW(TAG, "  Using boot-time based interval: every %u hours", ph_interval_ms / 3600000);
-            ESP_LOGW(TAG, "========================================================");
+            if (!auto_ph_correction_enabled_) {
+                ESP_LOGD(TAG, "Automatic pH check skipped — auto pH correction disabled");
+            } else {
+                ESP_LOGW(TAG, "========================================================");
+                ESP_LOGW(TAG, "  AUTOMATIC pH CHECK (fallback mode: no time source)");
+                ESP_LOGW(TAG, "  Using boot-time based interval: every %u hours", ph_interval_ms / 3600000);
+                ESP_LOGW(TAG, "========================================================");
 
-            transitionTo(ControllerState::PH_PROCESSING);
-            return;  // Exit IDLE immediately
+                transitionTo(ControllerState::PH_PROCESSING);
+                return;  // Exit IDLE immediately
+            }
         }
     }
 
@@ -1247,6 +1255,7 @@ void PlantOSController::handlePhCalculating() {
         recordOperationStep("pH_CORRECTION_SUCCESS");
 
         // Resolve any active pH-related alerts
+        status_logger_.resolveAlert("PH_TOO_LOW");
         if (ENHANCED_ERROR_HANDLING_ENABLED) {
             status_logger_.resolveAlert("PH_CRITICAL");
             status_logger_.resolveAlert("NO_PH_READINGS");
@@ -1263,9 +1272,19 @@ void PlantOSController::handlePhCalculating() {
         return;
     }
 
-    // Check if pH is too low (cannot correct - no base pump)
+    // Check if pH is too low (cannot correct without a base pump)
     if (ph_current_ < target_min) {
-        ESP_LOGW(TAG, "pH too low (%.2f) - cannot correct without base pump", ph_current_);
+        ESP_LOGW(TAG, "pH too low (%.2f < %.2f) - no base pump available, raising alert", ph_current_, target_min);
+        char reason_buf[80];
+        snprintf(reason_buf, sizeof(reason_buf), "pH %.2f below minimum %.2f", ph_current_, target_min);
+        status_logger_.updateAlertWithContext(
+            "PH_TOO_LOW",
+            reason_buf,
+            "pH too acidic — manual base addition required",
+            "Detected in PH_CALCULATING after measurement cycle",
+            "No base pump configured in system",
+            "Add base solution manually or check acid pump for leaks"
+        );
         transitionTo(ControllerState::IDLE);
         return;
     }
@@ -1329,37 +1348,26 @@ void PlantOSController::handlePhInjecting() {
         uint32_t mixing_duration_ms = calculatePhMixingDuration();
         uint32_t mixing_sec = (mixing_duration_ms + 999) / 1000;
 
-        // Total AirPump ON time = injection + mixing
-        uint32_t total_air_pump_sec = injection_sec + mixing_sec;
-
         ESP_LOGI(TAG, "Starting acid injection: %.1f mL (%.2f sec)", ph_dose_ml_, injection_sec / 1.0f);
-        ESP_LOGI(TAG, "AirPump pattern: %u sec (injection) + %u sec (mixing) = %u sec total",
-                 injection_sec, mixing_sec, total_air_pump_sec);
 
-        // Send AirPump pattern via Shelly sequence API (single HTTP call for entire pH correction)
-        // Pattern: single ON duration covering injection+mixing, finalstate=ON (for IDLE mode)
-        if (safety_gate_) {
-            std::vector<uint32_t> pattern = {total_air_pump_sec};
-
-            // Send pattern through SafetyGate (validates and sends via HAL)
-            if (!safety_gate_->setAirPumpPattern(pattern, true)) {
-                ESP_LOGW(TAG, "AirPump pattern rejected by SafetyGate - using simple ON command");
-                // Fall back to simple ON (no duration limit)
-                requestPump(AIR_PUMP, true, 0);
-            } else {
-                ESP_LOGI(TAG, "AirPump Shelly pattern sent: %u sec ON, then stay ON", total_air_pump_sec);
-            }
-        } else {
-            ESP_LOGD(TAG, "SafetyGate not configured - air pump control skipped");
-        }
+        // OPTIONAL: air pump cycling during pH injection — disabled based on test results.
+        // Re-enable if poor acid mixing or pH measurement drift is observed.
+        // if (safety_gate_) {
+        //     uint32_t total_air_pump_sec = injection_sec + mixing_sec;
+        //     std::vector<uint32_t> pattern = {total_air_pump_sec};
+        //     if (!safety_gate_->setAirPumpPattern(pattern, true)) {
+        //         ESP_LOGW(TAG, "AirPump pattern rejected - falling back to simple ON");
+        //         requestPump(AIR_PUMP, true, 0);
+        //     } else {
+        //         ESP_LOGI(TAG, "AirPump pattern sent: %u sec", total_air_pump_sec);
+        //     }
+        // }
 
         // Request acid pump via SafetyGate with adaptive duration (will auto-adapt if needed)
         if (!requestPumpAdaptive(ACID_PUMP, true, injection_sec, false)) {
             ESP_LOGE(TAG, "Acid pump rejected by SafetyGate even after adaptation - aborting");
-            // Stop air pump sequence since we're aborting
-            if (safety_gate_) {
-                safety_gate_->stopAirPumpSequence(true);  // Stop but keep ON for normal operation
-            }
+            // OPTIONAL: stop air pump sequence on abort — disabled (air pump not used during pH injection).
+            // if (safety_gate_) { safety_gate_->stopAirPumpSequence(true); }
 
             // Set comprehensive alert before ERROR transition
             status_logger_.updateAlertWithContext(
@@ -1425,13 +1433,12 @@ void PlantOSController::handlePhMixing() {
     if (elapsed >= ph_mixing_duration_ms_) {
         ESP_LOGI(TAG, "pH mixing complete (%.1f seconds)", ph_mixing_duration_ms_ / 1000.0f);
 
-        // Check if cycling was enabled before pH correction
-        // If so, restore the cycling pattern on Shelly
-        if (safety_gate_ && safety_gate_->isCyclingEnabled(AIR_PUMP)) {
-            ESP_LOGI(TAG, "Restoring AirPump cycling pattern");
-            safety_gate_->enableCycling(AIR_PUMP, true);  // Re-sends pattern to Shelly
-        }
-        // If cycling not enabled, the pattern's finalstate=ON keeps pump ON (Normal mode)
+        // OPTIONAL: restore air pump cycling after pH mixing — disabled (air pump not used during pH correction).
+        // Re-enable if mixing quality needs improvement:
+        // if (safety_gate_ && safety_gate_->isCyclingEnabled(AIR_PUMP)) {
+        //     ESP_LOGI(TAG, "Restoring AirPump cycling pattern");
+        //     safety_gate_->enableCycling(AIR_PUMP, true);
+        // }
 
         // Loop back to PH_MEASURING to verify correction
         // Will continue until pH is in range OR max attempts reached
@@ -1903,174 +1910,77 @@ void PlantOSController::handlePhCalibrating() {
 }
 
 void PlantOSController::handleFeeding() {
-    // Orange pulse LED handled by LedBehaviorSystem
-    // Sequential nutrient pump activation: A → B → C
+    // EC-dependent feeding: splits the day's total calendar dose into installments of 1/5,
+    // doses A → B → C per installment, then mixes and measures EC.
+    // Repeats until EC target is reached (or FEEDING_MANUAL_MAX_CYCLES safety cap).
+    // If no EC target is configured (ec_target == 0), falls back to single-pass fixed dose.
+    //
+    // This state is a setup stage only — it calculates doses and immediately hands off
+    // to the EC_FEEDING → EC_MIXING → EC_MEASURING loop.
 
-    uint32_t elapsed = getStateElapsed();
-
-    // Static variables to cache doses and duration across loop iterations
-    static float dose_a_ml = 0.0f;
-    static float dose_b_ml = 0.0f;
-    static float dose_c_ml = 0.0f;
-    static uint32_t current_duration_ms = 0;
-
-    // On first entry to feeding state: calculate doses and send temperature compensation
-    if (state_counter_ == 0 && elapsed < 100) {
-        sendTemperatureCompensation();
-
-        // Calculate nutrient doses from CalendarManager (mL/L) and convert to actual mL
-        if (calendar_manager_ && hal_) {
-            // Use calendar manager's actual current day (not timestamp-based calculation)
-            uint8_t current_day = calendar_manager_->get_current_day();
-
-            // Get schedule for current day from calendar
-            auto schedule = calendar_manager_->get_schedule(current_day);
-
-            // Select tank volume based on operation context:
-            // - Normal feed (auto-feed): use delta volume (LOW→HIGH)
-            // - Reservoir change: use total volume (EMPTY→HIGH)
-            float tank_volume_liters = is_reservoir_change_
-                ? hal_->getTotalTankVolume()
-                : hal_->getTankVolumeDelta();
-
-            ESP_LOGI(TAG, "Using %s tank volume: %.1fL",
-                     is_reservoir_change_ ? "TOTAL (reservoir change)" : "DELTA (normal feed)",
-                     tank_volume_liters);
-
-            // Calculate actual mL doses from mL/L concentrations
-            dose_a_ml = schedule.nutrient_A_ml_per_liter * tank_volume_liters;
-            dose_b_ml = schedule.nutrient_B_ml_per_liter * tank_volume_liters;
-            dose_c_ml = schedule.nutrient_C_ml_per_liter * tank_volume_liters;
-
-            ESP_LOGI(TAG, "Feeding day %d: Tank %.1fL, A:%.2f mL, B:%.2f mL, C:%.2f mL",
-                     current_day, tank_volume_liters, dose_a_ml, dose_b_ml, dose_c_ml);
-        } else {
-            ESP_LOGW(TAG, "Calendar not available - skipping nutrient dosing");
-        }
+    if (!hal_ || !calendar_manager_) {
+        ESP_LOGW(TAG, "[FEEDING] Missing HAL or CalendarManager - aborting");
+        if (psm_) psm_->clearEvent();
+        transitionTo(ControllerState::IDLE);
+        return;
     }
 
-    // Use state_counter to track which pump we're on (0=A, 1=B, 2=C, 3=done)
-    const char* pump_name = nullptr;
-    float dose_ml = 0.0f;
+    sendTemperatureCompensation();
 
-    if (state_counter_ == 0) {
-        pump_name = NUTRIENT_PUMP_A;
-        dose_ml = dose_a_ml;
-    } else if (state_counter_ == 1) {
-        pump_name = NUTRIENT_PUMP_B;
-        dose_ml = dose_b_ml;
-    } else if (state_counter_ == 2) {
-        pump_name = NUTRIENT_PUMP_C;
-        dose_ml = dose_c_ml;
+    uint8_t current_day = calendar_manager_->get_current_day();
+    auto schedule = calendar_manager_->get_schedule(current_day);
+
+    float tank_volume_liters = is_reservoir_change_
+        ? hal_->getTotalTankVolume()
+        : hal_->getTankVolumeDelta();
+
+    ESP_LOGI(TAG, "[FEEDING] Day %d | %s volume: %.1fL | EC target: %.0f uS/cm",
+             current_day,
+             is_reservoir_change_ ? "TOTAL" : "DELTA",
+             tank_volume_liters,
+             schedule.ec_target);
+
+    if (tank_volume_liters <= 0.0f) {
+        ESP_LOGW(TAG, "[FEEDING] Tank volume unavailable — using 10 L fallback");
+        tank_volume_liters = 10.0f;
+    }
+
+    // Full calendar dose × dose_multiplier
+    float full_a = schedule.nutrient_A_ml_per_liter * tank_volume_liters * override_dose_multiplier_;
+    float full_b = schedule.nutrient_B_ml_per_liter * tank_volume_liters * override_dose_multiplier_;
+    float full_c = schedule.nutrient_C_ml_per_liter * tank_volume_liters * override_dose_multiplier_;
+
+    if (schedule.ec_target > 0.0f) {
+        // EC-dependent mode: divide total dose into installments of 1/5 and iterate
+        ec_dose_A_ml_ = full_a / 5.0f;
+        ec_dose_B_ml_ = full_b / 5.0f;
+        ec_dose_C_ml_ = full_c / 5.0f;
+
+        ec_pre_feeding_ = hal_->hasECValue() ? hal_->readEC() : 0.0f;
+        ec_total_ml_per_L_ = 0.0f;
+        ec_attempt_count_ = 0;
+        feeding_manual_mode_ = true;
+
+        ESP_LOGI(TAG, "[FEEDING] EC mode: installment A=%.2f mL  B=%.2f mL  C=%.2f mL (1/5 of full dose)",
+                 ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
+        ESP_LOGI(TAG, "[FEEDING] EC before dosing: %.1f uS/cm  Target: %.0f uS/cm",
+                 ec_pre_feeding_, schedule.ec_target);
+
+        if (psm_) psm_->logEvent("EC_FEEDING", 0);
+        transitionTo(ControllerState::EC_FEEDING);
     } else {
-        // All pumps complete
-        ESP_LOGI(TAG, "Feeding sequence complete");
+        // Fixed-dose fallback: single pass A → B → C when EC target not configured
+        ec_dose_A_ml_ = full_a;
+        ec_dose_B_ml_ = full_b;
+        ec_dose_C_ml_ = full_c;
+        feeding_manual_mode_ = false;
 
-        // Clear PSM event - feeding complete
-        if (psm_) {
-            psm_->clearEvent();
-        }
+        ESP_LOGI(TAG, "[FEEDING] Fixed-dose mode (no EC target): A=%.2f mL  B=%.2f mL  C=%.2f mL",
+                 ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
 
-        // Check if auto pH correction should follow
-        if (auto_ph_correction_pending_) {
-            ESP_LOGI(TAG, "Auto pH correction pending - starting pH check");
-            auto_ph_correction_pending_ = false;
-
-            // Reset pH correction state
-            ph_attempt_count_ = 0;
-            ph_readings_.clear();
-            ph_current_ = 0.0f;
-            ph_dose_ml_ = 0.0f;
-            ph_dose_duration_ms_ = 0;
-            ph_cycle_start_ph_ = 0.0f;
-            ph_cycle_total_ml_ = 0.0f;
-            ph_cycle_water_filled_ = false;
-            ph_cycle_aborted_ = false;
-
-            // Log event for crash recovery
-            if (psm_) {
-                psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
-            }
-
-            transitionTo(ControllerState::PH_PROCESSING);
-        } else {
-            transitionTo(ControllerState::IDLE);
-        }
-        return;
+        if (psm_) psm_->logEvent("EC_FEEDING", 0);
+        transitionTo(ControllerState::EC_FEEDING);
     }
-
-    // On entry for this pump: calculate duration and activate it (only once!)
-    if (!state_entry_executed_) {
-        state_entry_executed_ = true;
-        // Convert mL to duration using HAL pumpflow (only once per pump)
-        if (dose_ml > 0.0f && hal_) {
-            float duration_sec = hal_->pumpflow(pump_name, dose_ml);
-            current_duration_ms = static_cast<uint32_t>(duration_sec * 1000.0f);
-            ESP_LOGI(TAG, "%s dose: %.2f mL = %.2f sec (%d ms)",
-                     pump_name, dose_ml, duration_sec, current_duration_ms);
-        } else {
-            current_duration_ms = 0;
-        }
-
-        if (current_duration_ms > 0) {
-            uint32_t duration_sec = (current_duration_ms + 999) / 1000;  // Round up to seconds
-
-            // Request pump with adaptive duration (will auto-adapt if needed)
-            if (!requestPumpAdaptive(pump_name, true, duration_sec, false)) {
-                ESP_LOGE(TAG, "%s command rejected by SafetyGate even after adaptation!", pump_name);
-
-                // Set comprehensive alert before aborting
-                std::string pump_id_str(pump_name);
-                status_logger_.updateAlertWithContext(
-                    "PUMP_REJECTION_" + pump_id_str,
-                    std::string(pump_name) + " rejected by SafetyGate",
-                    "SafetyGate rejected " + pump_id_str + " command even after duration adaptation",
-                    "Check " + pump_id_str + " wiring, verify pump not stuck, check SafetyGate max duration config",
-                    "Feeding sequence: dosing " + std::to_string(dose_ml) + " mL",
-                    "Aborting feeding sequence. Manual intervention required.",
-                    0
-                );
-
-                // Clear PSM event - feeding aborted due to safety rejection
-                if (psm_) {
-                    psm_->clearEvent();
-                }
-
-                // Abort feeding sequence
-                transitionTo(ControllerState::IDLE);
-                return;
-            }
-
-            ESP_LOGI(TAG, "%s ON for %.2f mL (%d ms)", pump_name, dose_ml, current_duration_ms);
-
-            // Reset timer to start from NOW (prevents timing issues with any potential delays)
-            // This ensures the pump duration is accurate regardless of activation delays
-            state_start_time_ = hal_->getSystemTime();
-            ESP_LOGD(TAG, "Timer reset: %s duration starts now", pump_name);
-        } else {
-            ESP_LOGI(TAG, "%s duration is 0 - skipping", pump_name);
-            // Immediately move to next pump
-            state_counter_++;
-            state_start_time_ = hal_->getSystemTime();
-        }
-        return;
-    }
-
-    // Wait for duration + 200ms safety margin
-    if (elapsed < current_duration_ms + 200) {
-        return;
-    }
-
-    // Turn off current pump explicitly
-    if (safety_gate_) {
-        safety_gate_->executeCommand(pump_name, false, 0);
-    }
-
-    ESP_LOGI(TAG, "%s complete", pump_name);
-
-    // Move to next pump
-    state_counter_++;
-    state_start_time_ = hal_->getSystemTime();
 }
 
 void PlantOSController::handleFeedFilling() {
@@ -2368,17 +2278,12 @@ void PlantOSController::handleEcCalculating() {
     ec_dose_B_ml_ = std::min((r_B / r_total) * total_ml_per_L * tank_volume_L, r_B * tank_volume_L);
     ec_dose_C_ml_ = std::min((r_C / r_total) * total_ml_per_L * tank_volume_L, r_C * tank_volume_L);
 
-    // Apply vacation mode and override multipliers (Phase 6)
-    float ec_effective_multiplier = override_dose_multiplier_;
-    if (vacation_mode_) {
-        ec_effective_multiplier *= VACATION_DOSE_MULTIPLIER;
-    }
-    if (ec_effective_multiplier != 1.0f) {
-        ec_dose_A_ml_ *= ec_effective_multiplier;
-        ec_dose_B_ml_ *= ec_effective_multiplier;
-        ec_dose_C_ml_ *= ec_effective_multiplier;
-        ESP_LOGI(TAG, "[EC_CALCULATING] Dose multiplier: %.2f (vacation=%s, override=%.2f)",
-                 ec_effective_multiplier, vacation_mode_ ? "ON" : "OFF", override_dose_multiplier_);
+    // Apply override dose multiplier
+    if (override_dose_multiplier_ != 1.0f) {
+        ec_dose_A_ml_ *= override_dose_multiplier_;
+        ec_dose_B_ml_ *= override_dose_multiplier_;
+        ec_dose_C_ml_ *= override_dose_multiplier_;
+        ESP_LOGI(TAG, "[EC_CALCULATING] Dose multiplier: %.2f (override)", override_dose_multiplier_);
     }
 
     // Accumulate mL/L for K-factor update after mixing
@@ -2412,8 +2317,16 @@ void PlantOSController::handleEcFeeding() {
         pump_name = NUTRIENT_PUMP_C;
         dose_ml = ec_dose_C_ml_;
     } else {
-        // All pumps complete - start mixing
-        ESP_LOGI(TAG, "[EC_FEEDING] Nutrient dosing complete - starting mixing phase");
+        // All pumps complete - accumulate mL/L for K-factor update, then mix
+        if (hal_) {
+            float tank_L = hal_->getTankVolumeDelta();
+            if (tank_L > 0.0f) {
+                float dosed_ml = ec_dose_A_ml_ + ec_dose_B_ml_ + ec_dose_C_ml_;
+                ec_total_ml_per_L_ += dosed_ml / tank_L;
+            }
+        }
+        ESP_LOGI(TAG, "[EC_FEEDING] Nutrient dosing complete (total so far: %.4f mL/L) - starting mixing",
+                 ec_total_ml_per_L_);
         transitionTo(ControllerState::EC_MIXING);
         return;
     }
@@ -2491,8 +2404,9 @@ void PlantOSController::handleEcMeasuring() {
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
         ec_attempt_count_++;
-        ESP_LOGI(TAG, "[EC_MEASURING] Attempt %d/%d - waiting %.0fs for EC to stabilize",
-                 ec_attempt_count_, MAX_EC_ATTEMPTS, EC_SETTLE_MS / 1000.0f);
+        uint8_t max_attempts = feeding_manual_mode_ ? FEEDING_MANUAL_MAX_CYCLES : MAX_EC_ATTEMPTS;
+        ESP_LOGI(TAG, "[EC_MEASURING] Installment %d/%d - waiting %.0fs for EC to stabilize",
+                 ec_attempt_count_, max_attempts, EC_SETTLE_MS / 1000.0f);
         return;
     }
 
@@ -2502,44 +2416,57 @@ void PlantOSController::handleEcMeasuring() {
 
     if (!hal_->hasECValue()) {
         ESP_LOGW(TAG, "[EC_MEASURING] No EC reading available - aborting cycle");
+        feeding_manual_mode_ = false;
         if (psm_) psm_->clearEvent();
         transitionTo(ControllerState::IDLE);
         return;
     }
 
     float ec_after = hal_->readEC();
-    ESP_LOGI(TAG, "[EC_MEASURING] EC after feeding: %.1f uS/cm (pre-cycle: %.1f, delta: %.1f)",
+    ESP_LOGI(TAG, "[EC_MEASURING] EC after installment: %.1f uS/cm (pre-cycle: %.1f, delta: +%.1f)",
              ec_after, ec_pre_feeding_, ec_after - ec_pre_feeding_);
 
     // Update adaptive K-factor based on observed EC response
     updateEcKFactor(ec_pre_feeding_, ec_after, ec_total_ml_per_L_);
 
-    // Record timestamp to enforce 4h minimum interval between feedings
+    // Record timestamp to enforce 4h minimum interval between automatic feedings
     if (hal_->hasTime()) {
         last_ec_feeding_timestamp_ = hal_->getCurrentTimestamp();
     }
 
     // Get target to check if we're in range
     float ec_min = 0.0f;
+    float ec_target = 0.0f;
     if (calendar_manager_) {
         auto schedule = calendar_manager_->get_today_schedule();
-        ec_min = schedule.ec_target - schedule.ec_tolerance;
+        ec_target = schedule.ec_target;
+        ec_min = ec_target - schedule.ec_tolerance;
     }
 
+    uint8_t max_attempts = feeding_manual_mode_ ? FEEDING_MANUAL_MAX_CYCLES : MAX_EC_ATTEMPTS;
     bool in_range = (ec_min > 0.0f) && (ec_after >= ec_min);
-    bool max_attempts_reached = (ec_attempt_count_ >= MAX_EC_ATTEMPTS);
+    bool max_attempts_reached = (ec_attempt_count_ >= max_attempts);
 
     if (in_range) {
-        ESP_LOGI(TAG, "[EC_MEASURING] EC in range (%.3f >= %.3f) - cycle complete", ec_after, ec_min);
+        ESP_LOGI(TAG, "[EC_MEASURING] EC target reached (%.1f >= %.1f uS/cm) after %d installment(s)",
+                 ec_after, ec_min, ec_attempt_count_);
+        feeding_manual_mode_ = false;
         status_logger_.resolveAlert("EC_HIGH");
         status_logger_.resolveAlert("EC_LOW");
     } else if (max_attempts_reached) {
-        ESP_LOGW(TAG, "[EC_MEASURING] Max attempts (%d) reached - EC still %.1f uS/cm",
-                 MAX_EC_ATTEMPTS, ec_after);
+        ESP_LOGW(TAG, "[EC_MEASURING] Max installments (%d) reached - EC still %.1f uS/cm (target %.0f)",
+                 max_attempts, ec_after, ec_target);
+        feeding_manual_mode_ = false;
         status_logger_.updateAlertStatus("EC_LOW",
-            "EC below target after max feeding attempts - check nutrient supply");
+            "EC below target after max feeding installments - check nutrient supply");
+    } else if (feeding_manual_mode_) {
+        // Manual feeding: use same pre-calculated installment doses (not K-factor recalculation)
+        ESP_LOGI(TAG, "[EC_MEASURING] EC still low (%.1f < %.1f uS/cm) - giving installment %d",
+                 ec_after, ec_min, ec_attempt_count_ + 1);
+        transitionTo(ControllerState::EC_FEEDING);
+        return;
     } else {
-        // EC still low - retry with recalculated dose
+        // Automated EC correction: retry with K-factor recalculated dose
         ESP_LOGI(TAG, "[EC_MEASURING] EC still low (%.1f < %.1f uS/cm) - retry %d/%d",
                  ec_after, ec_min, ec_attempt_count_, MAX_EC_ATTEMPTS);
         transitionTo(ControllerState::EC_CALCULATING);
@@ -3103,7 +3030,7 @@ void PlantOSController::startPhCorrection() {
     ph_cycle_aborted_ = false;
 
     // Initialize operation retry framework (max 3 retries for pH correction)
-    initOperationRetry("PH_CORRECTION", vacation_mode_ ? VACATION_MAX_RETRIES : 3);
+    initOperationRetry("PH_CORRECTION", 3);
 
     // Log event for crash recovery persistence
     if (psm_) {
@@ -3946,16 +3873,11 @@ float PlantOSController::calculateAcidDoseML(float current_ph, float target_ph_m
     // Clamp to [PH_MIN_DOSE_ML, PH_MAX_DOSE_ML]
     dose_ml = std::max(PH_MIN_DOSE_ML, std::min(PH_MAX_DOSE_ML, dose_ml));
 
-    // Apply vacation mode and override multipliers (Phase 6)
-    float effective_multiplier = override_dose_multiplier_;
-    if (vacation_mode_) {
-        effective_multiplier *= VACATION_DOSE_MULTIPLIER;
-    }
-    if (effective_multiplier != 1.0f) {
+    // Apply override dose multiplier
+    if (override_dose_multiplier_ != 1.0f) {
         float raw_dose = dose_ml;
-        dose_ml = std::max(PH_MIN_DOSE_ML, dose_ml * effective_multiplier);
-        ESP_LOGI(TAG, "Acid dose multiplier: %.2f (vacation=%s, override=%.2f) → %.2f mL → %.2f mL",
-                 effective_multiplier, vacation_mode_ ? "ON" : "OFF",
+        dose_ml = std::max(PH_MIN_DOSE_ML, dose_ml * override_dose_multiplier_);
+        ESP_LOGI(TAG, "Acid dose multiplier: %.2f (override) → %.2f mL → %.2f mL",
                  override_dose_multiplier_, raw_dose, dose_ml);
     }
 
@@ -4582,19 +4504,14 @@ int64_t PlantOSController::getCurrentDateTimestamp() {
     return midnight_timestamp;
 }
 
-void PlantOSController::setVacationMode(bool enabled) {
-    vacation_mode_ = enabled;
+void PlantOSController::setAutoPhCorrectionEnabled(bool enabled) {
+    auto_ph_correction_enabled_ = enabled;
 
     if (psm_) {
-        psm_->saveState(NVS_KEY_VACATION, enabled);
+        psm_->saveState(NVS_KEY_AUTO_PH_CORR, enabled);
     }
 
-    if (enabled) {
-        ESP_LOGI(TAG, "Vacation mode ENABLED: doses=%.0f%%, retries=%d",
-                 VACATION_DOSE_MULTIPLIER * 100.0f, VACATION_MAX_RETRIES);
-    } else {
-        ESP_LOGI(TAG, "Vacation mode DISABLED: normal doses and retries restored");
-    }
+    ESP_LOGI(TAG, "Auto pH correction %s", enabled ? "ENABLED" : "DISABLED");
 }
 
 void PlantOSController::setAutoFillEnabled(bool enabled) {

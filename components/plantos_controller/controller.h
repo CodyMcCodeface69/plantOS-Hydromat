@@ -259,18 +259,18 @@ public:
     void resetEcCalibration();
 
     /**
-     * Enable or disable vacation mode
-     * When active: doses reduced to 70%, retry limits increased to 5
+     * Enable or disable automatic periodic pH correction
+     * When enabled, pH correction runs on schedule (every N hours) from IDLE
      * NVS-persistent across power cycles
-     * @param enabled true to enable vacation mode
+     * @param enabled true to enable auto pH correction
      */
-    void setVacationMode(bool enabled);
+    void setAutoPhCorrectionEnabled(bool enabled);
 
     /**
-     * Check if vacation mode is active
-     * @return true if vacation mode is enabled
+     * Check if automatic pH correction is enabled
+     * @return true if auto pH correction is enabled
      */
-    bool isVacationModeEnabled() const { return vacation_mode_; }
+    bool isAutoPhCorrectionEnabled() const { return auto_ph_correction_enabled_; }
 
     /**
      * Enable or disable automatic water fill
@@ -539,7 +539,7 @@ private:
     static constexpr const char* NVS_KEY_AUTO_RES_DAY = "AutoResDay";
 
     // ========================================================================
-    // Auto-Fill State (Phase 6)
+    // Auto-Fill State
     // ========================================================================
 
     /// Enable/disable automatic water fill when EMPTY sensor triggers
@@ -549,14 +549,24 @@ private:
     static constexpr const char* NVS_KEY_AUTO_FILL_ENABLE = "AutoFillEn";
 
     // ========================================================================
-    // Vacation Mode (Phase 6)
+    // Auto pH Correction State
     // ========================================================================
 
-    bool vacation_mode_{false};
+    /// Enable/disable automatic periodic pH correction from IDLE state
+    bool auto_ph_correction_enabled_{true};
 
-    static constexpr float VACATION_DOSE_MULTIPLIER = 0.70f;  // 70% of normal dose
-    static constexpr uint8_t VACATION_MAX_RETRIES = 5;        // 5 retries vs. 3 normal
-    static constexpr const char* NVS_KEY_VACATION = "VacMode";
+    /// NVS key for auto pH correction enable/disable state
+    static constexpr const char* NVS_KEY_AUTO_PH_CORR = "AutoPHCorr";
+
+    // ========================================================================
+    // EC-Dependent Manual Feeding State
+    // ========================================================================
+
+    /// True when feeding was manually triggered and should use calendar-dose/5 installments
+    bool feeding_manual_mode_{false};
+
+    /// Safety cap on installment cycles for manual feeding
+    static constexpr uint8_t FEEDING_MANUAL_MAX_CYCLES = 20;
 
     // ========================================================================
     // Runtime Dose Override (Phase 6)

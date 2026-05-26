@@ -439,11 +439,11 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | PH_PROCESSING      | - None (read pH sensor only) |
 | PH_MEASURING       | - Turn OFF all pumps (for accurate pH reading) |
 | PH_CALCULATING     | - None (calculation only) |
-| PH_INJECTING       | - Turn ON AcidPump (duration: calculated dose in mL → seconds)<br>- Turn ON AirPump (optional, for mixing during injection) |
-| PH_MIXING          | - Turn OFF AcidPump<br>- Keep AirPump ON (2 minutes mixing) |
+| PH_INJECTING       | - Turn ON AcidPump (duration: calculated dose in mL → seconds)<br>- AirPump: **DISABLED** (test results showed no benefit; re-enable if mixing drift observed) |
+| PH_MIXING          | - Turn OFF AcidPump<br>- AirPump: **DISABLED** (same as above; cycling restore also commented out) |
 | PH_CALIBRATING     | - None (sensor calibration only, no actuators) |
 | EC_CALIBRATING     | - None (sensor calibration only, no actuators) |
-| FEEDING            | - Turn ON NutrientPumpA (duration from calendar: dose_A_ml)<br>- Turn ON NutrientPumpB (duration from calendar: dose_B_ml)<br>- Turn ON NutrientPumpC (duration from calendar: dose_C_ml)<br>  (sequential: A → B → C) |
+| FEEDING            | **Setup state only — immediately delegates to EC_FEEDING loop.**<br>- Calculates individual dose = (calendar_mL/L × tank_volume × dose_multiplier) / 5<br>- If EC target configured: sets `feeding_manual_mode_=true`, transitions to EC_FEEDING<br>- If no EC target: uses full calendar dose in single pass via EC_FEEDING<br>**EC_FEEDING → EC_MIXING → EC_MEASURING loop repeats until EC target reached or 20 installments** |
 | WATER_FILLING      | - Turn ON WaterValve (max 30s, or until HIGH sensor) |
 | WATER_EMPTYING     | - Turn ON WastewaterPump (max 30s, or until LOW sensor OFF) |
 | FEED_FILLING       | - Turn ON WaterValve (calc'd duration, or until HIGH sensor) |
@@ -457,7 +457,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | PH_MEASURING       | "PH_CORRECTION" (0)       | Operation interrupted, return to IDLE |
 | PH_INJECTING       | (inherited from MEASURING)| Operation interrupted, return to IDLE |
 | PH_MIXING          | (inherited from MEASURING)| Operation interrupted, return to IDLE |
-| FEEDING            | "FEEDING" (0)             | Operation interrupted, return to IDLE |
+| FEEDING            | "EC_FEEDING" (0)          | Setup state — immediately enters EC_FEEDING; recovery returns to IDLE |
 | WATER_FILLING      | "WATER_FILL" (0)          | Force-close WaterValve, clear PSM |
 | WATER_EMPTYING     | "WATER_EMPTYING" (0)      | Force-stop WastewaterPump, clear PSM |
 | FEED_FILLING       | "FEED_OPERATION" (0)      | Force-close WaterValve, clear flags & PSM |
@@ -474,7 +474,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | startEcCalibration()       | Must be in IDLE<br>EC sensor must have value | EC_CALIBRATING | Single-point EC calibration (1413 uS/cm, web UI) |
 | setEcCalibrationTarget(x)  | Any state          | (no transition)      | Set target uS/cm for EC calibration (default: 1413) |
 | resetEcCalibration()       | Any state          | (no transition)      | Reset EC factor to 1.0 (factory default) |
-| startFeeding()             | Must be in IDLE    | FEEDING              | Manual nutrient dosing (web UI button)<br>**Blocked in NIGHT state** |
+| startFeeding()             | Must be in IDLE    | FEEDING → EC_FEEDING | Manual EC-dependent nutrient dosing (web UI button)<br>Doses in installments of (calendar_total × multiplier) / 5<br>Loops via EC_MIXING → EC_MEASURING until EC target reached (max 20 installments)<br>Falls back to single-pass if no EC target configured<br>**Blocked in NIGHT state** |
 | startFillTank()            | Must be in IDLE    | WATER_FILLING        | Fill tank → EC check → pH correction (post-fill sequence)<br>**Blocked in NIGHT state** |
 | startEmptyTank()           | N/A (info only)    | IDLE (no change)     | Info message (use manual drain) |
 | startFeed()                | Must be in IDLE<br>Tank must be empty | FEED_FILLING         | Complete feed: Fill→Nutrients→pH<br>(safety check: both sensors OFF)<br>**Blocked in NIGHT state** |
@@ -488,8 +488,8 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 
 | AUTOMATIC TRIGGER         | PRECONDITION       | TRANSITION TO        | DESCRIPTION |
 |---------------------------|--------------------|----------------------|-------------|
-| Every 2 hours (in IDLE)    | System in IDLE     | PH_PROCESSING        | Periodic pH monitoring (**NOT triggered in NIGHT**) |
-| **Automatic Feeding** ⚡   | **Water level LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)**<br>System in IDLE<br>Auto-feeding enabled<br>NOT in NIGHT/SHUTDOWN/PAUSE<br>NOT already fed today (NVS check) | **FEED_FILLING → FEEDING** | **Once-per-day automatic feeding when water reaches LOW level**<br>Stores date to NVS: `AUTOFEED_<unix_timestamp>`<br>Prevents duplicate feeds after power cycles<br>Resets at midnight UTC (new calendar day)<br>Toggle via Web UI switch: "02_02_Auto Feeding Enabled" |
+| Every 2 hours (in IDLE)    | System in IDLE<br>**Auto pH correction enabled** (switch 04_10) | PH_PROCESSING        | Periodic pH monitoring (**NOT triggered in NIGHT**)<br>Skipped silently when 04_10 switch is OFF |
+| **Automatic Feeding** ⚡   | **Water level LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)**<br>System in IDLE<br>Auto-feeding enabled (switch **04_11**)<br>NOT in NIGHT/SHUTDOWN/PAUSE<br>NOT already fed today (NVS check) | **FEED_FILLING → FEEDING → EC_FEEDING** | **Once-per-day automatic feeding when water reaches LOW level**<br>Stores date to NVS: `AUTOFEED_<unix_timestamp>`<br>Prevents duplicate feeds after power cycles<br>Resets at midnight UTC (new calendar day)<br>Toggle via Web UI switch: **04_11_Auto EC/Feeding Correction** |
 | Night mode hours start     | IDLE + night mode enabled + current hour in range | NIGHT | Automatic transition to night mode |
 | Night mode hours end       | NIGHT + (night mode disabled OR hour out of range) | IDLE | Automatic transition back to idle |
 | PSM recovery check         | Boot from INIT     | SHUTDOWN or PAUSE    | Restore persisted state after power loss |
@@ -522,9 +522,12 @@ All actuator commands flow through ActuatorSafetyGate which provides:
 - **Soft-start/soft-stop**: PWM ramping to protect hardware
 
 ## 2. Critical pH Monitoring
-- If pH < 5.0 or pH > 7.5: log to PSM, add alert, continue measuring
+- If pH < 5.0 or pH > 7.5: log to PSM, add **PH_CRITICAL** alert, continue measuring
 - pH range checked in PH_CALCULATING before correction
 - Max 5 correction attempts before aborting to IDLE
+- **PH_TOO_LOW** alert raised when pH is below target_min and cannot be corrected (no base pump)
+  - Alert clears automatically when pH returns to within target range
+  - Triggered in PH_CALCULATING, persists until next successful pH correction cycle
 
 ## 3. Water Level Sensor Monitoring (3-Sensor System)
 
@@ -594,7 +597,7 @@ Sent to pH sensor before all critical readings:
 - **In-Memory Cache**: Tracks `last_auto_feed_date_` to avoid repeated NVS reads
 - **Time Source Required**: Needs NTP synchronization to calculate current date (Unix timestamp / 86400)
 - **Blocked States**: NIGHT, SHUTDOWN, PAUSE, ERROR states prevent automatic feeding
-- **Web UI Control**: Switch "02_02_Auto Feeding Enabled" (default: ON, persisted to NVS)
+- **Web UI Control**: Switch "04_11_Auto EC/Feeding Correction" (default: ON, persisted to NVS)
 - **Safety**: Prevents overfeeding if water level fluctuates near LOW threshold multiple times per day
 - **Implementation**: `shouldTriggerAutoFeeding()` checks 7 conditions before triggering feed
 

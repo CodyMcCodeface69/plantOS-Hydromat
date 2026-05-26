@@ -903,33 +903,7 @@ button:
             ESP_LOGI("button", "Set to IDLE button pressed");
             id(unified_controller)->setToIdle();
 
-  # === 04_10-04_11 - Betriebsmodi (Phase 6) ===
-  - platform: template
-    name: "04_10_Toggle Vacation Mode (70% doses, 5 retries)"
-    on_press:
-      # Toggle vacation mode: conservative dosing (70%) for extended unattended operation
-      # Persisted to NVS across power cycles
-      then:
-        - lambda: |-
-            bool current = id(unified_controller)->isVacationModeEnabled();
-            id(unified_controller)->setVacationMode(!current);
-            ESP_LOGI("button", "Vacation mode toggled: %s → %s",
-                     current ? "ON" : "OFF", !current ? "ON" : "OFF");
-
-  - platform: template
-    name: "04_11_Toggle Auto-Fill (EMPTY → WATER_FILLING)"
-    on_press:
-      # Toggle automatic water fill when EMPTY sensor activates
-      # When enabled: IDLE + EMPTY sensor → starts WATER_FILLING → EC → pH sequence
-      # Persisted to NVS
-      then:
-        - lambda: |-
-            bool current = id(unified_controller)->isAutoFillEnabled();
-            id(unified_controller)->setAutoFillEnabled(!current);
-            ESP_LOGI("button", "Auto-fill toggled: %s → %s",
-                     current ? "ON" : "OFF", !current ? "ON" : "OFF");
-
-  # === 04_12-04_14 - Neue Operationen & Override ===
+  # === 04_12-04_14 - Operations & Override ===
   - platform: template
     name: "04_12_EC Correction (EC_PROCESSING → EC_FEEDING → pH)"
     on_press:
@@ -962,14 +936,19 @@ button:
         - lambda: |-
             id(psm)->clearEvent();
 
-  # === 06 - Zeit & NTP ===
+  # === 06 - Time & NTP ===
   - platform: template
     name: "06_01_Force NTP Sync"
     on_press:
       then:
         - lambda: |-
-            ESP_LOGW("button", "Forcing NTP sync...");
-            id(sntp_time)->update();
+            // SNTPComponent::update() is a no-op for USE_ESP_IDF; call setup() to properly
+            // stop and restart SNTP (stops running daemon, reconfigures servers, re-inits).
+            ESP_LOGW("ntp", "Force NTP sync — restarting SNTP daemon");
+            ESP_LOGW("ntp", "  Time valid before restart: %s",
+                     id(sntp_time)->now().is_valid() ? "YES" : "NO");
+            id(sntp_time)->setup();
+            ESP_LOGW("ntp", "  SNTP restarted — on_time_sync callback will fire when synced");
 
   # === 07 - pH & Measurement ===
   - platform: template
@@ -1833,11 +1812,11 @@ switch:
           ESP_LOGW("switch", "Actuator Safety Gate DISABLED - manual control mode");
           id(actuator_safety)->setEnabled(false);
 
-  # === 02 - Automatic Feeding Control ===
+  # === 02 - Automatic EC/Feeding Control ===
   - platform: template
     id: auto_feeding_enabled_switch
-    name: "02_02_Auto Feeding Enabled"
-    icon: "mdi:robot"
+    name: "04_11_Auto EC/Feeding Correction"
+    icon: "mdi:flask-plus"
     restore_mode: RESTORE_DEFAULT_ON  # Auto-feeding enabled by default
     optimistic: false  # State determined by lambda return value
     turn_on_action:
@@ -1915,6 +1894,46 @@ switch:
     lambda: |-
       // Return cached value from controller (loaded from NVS at setup)
       return id(unified_controller).isAutoReservoirChangeEnabled();
+
+  # === 04_10 - Auto pH Correction Toggle ===
+  - platform: template
+    id: auto_ph_correction_switch
+    name: "04_10_Auto pH Correction"
+    icon: "mdi:flask-outline"
+    restore_mode: RESTORE_DEFAULT_ON
+    optimistic: false
+    turn_on_action:
+      - lambda: |-
+          id(unified_controller)->setAutoPhCorrectionEnabled(true);
+          id(psm).saveState("AutoPHCorr", true);
+          ESP_LOGI("switch", "Auto pH correction ENABLED");
+    turn_off_action:
+      - lambda: |-
+          id(unified_controller)->setAutoPhCorrectionEnabled(false);
+          id(psm).saveState("AutoPHCorr", false);
+          ESP_LOGW("switch", "Auto pH correction DISABLED");
+    lambda: |-
+      return id(unified_controller)->isAutoPhCorrectionEnabled();
+
+  # === 04_12 - Auto Water Level Toggle ===
+  - platform: template
+    id: auto_water_level_switch
+    name: "04_12_Auto Water Level"
+    icon: "mdi:water-auto"
+    restore_mode: RESTORE_DEFAULT_OFF
+    optimistic: false
+    turn_on_action:
+      - lambda: |-
+          id(unified_controller)->setAutoFillEnabled(true);
+          id(psm).saveState("AutoFillEn", true);
+          ESP_LOGI("switch", "Auto water level ENABLED");
+    turn_off_action:
+      - lambda: |-
+          id(unified_controller)->setAutoFillEnabled(false);
+          id(psm).saveState("AutoFillEn", false);
+          ESP_LOGW("switch", "Auto water level DISABLED");
+    lambda: |-
+      return id(unified_controller)->isAutoFillEnabled();
 
   # === 10 - Actuator Control (Manual Toggle Switches via Safety Gate) ===
   # These switches toggle actuators through the safety gate for monitored control

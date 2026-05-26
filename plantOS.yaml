@@ -962,6 +962,15 @@ button:
         - lambda: |-
             id(psm)->clearEvent();
 
+  # === 06 - Zeit & NTP ===
+  - platform: template
+    name: "06_01_Force NTP Sync"
+    on_press:
+      then:
+        - lambda: |-
+            ESP_LOGW("button", "Forcing NTP sync...");
+            id(sntp_time)->update();
+
   # === 07 - pH & Measurement ===
   - platform: template
     name: "07_01_Start pH Calibration"

@@ -94,6 +94,17 @@ bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
     }
 
     // ========================================================================
+    // SAFETY CHECK 3: SENSOR-BASED INTERLOCK
+    // ========================================================================
+    // WaterValve: Reject ON command if HIGH water level sensor is active (tank full)
+    if (enabled_ && targetState == true && id == "WaterValve") {
+        if (hal_ && hal_->readWaterLevelHigh()) {
+            logRejection(actuatorID, "Interlock: HIGH water level sensor active (tank full)");
+            return false;
+        }
+    }
+
+    // ========================================================================
     // COMMAND APPROVED - Update State Tracking
     // ========================================================================
 
@@ -403,6 +414,22 @@ void ActuatorSafetyGate::loop() {
             // Reset violation flag when actuator is turned off
             if (!state.lastRequestedState) {
                 state.violationLogged = false;
+            }
+        }
+
+        // SENSOR INTERLOCK: Force WaterValve OFF if HIGH sensor trips while valve is open
+        if (state.lastRequestedState == true && id == "WaterValve") {
+            if (hal_ && hal_->readWaterLevelHigh()) {
+                ESP_LOGE(TAG, "================================================================================");
+                ESP_LOGE(TAG, "SAFETY INTERLOCK: WaterValve forced OFF - HIGH water level sensor active!");
+                ESP_LOGE(TAG, "================================================================================");
+
+                state.lastRequestedState = false;
+                state.turnOnTime = 0;
+                state.rampState = RAMP_OFF;
+                state.currentDutyCycle = 0.0f;
+
+                executeHardwareCommand(id, false);
             }
         }
     }

@@ -787,9 +787,9 @@ private:
     bool shouldTriggerAutoFeeding();
 
     /**
-     * Get current date as Unix timestamp (midnight UTC)
-     * Used for daily feeding limit tracking
-     * @return Unix timestamp at start of current day, or 0 if NTP unavailable
+     * Get a unique per-day key for the current LOCAL calendar date.
+     * Used for daily feeding limit tracking (rolls over at local midnight).
+     * @return Local date key (local days since epoch × 86400), or 0 if NTP unavailable
      */
     int64_t getCurrentDateTimestamp();
 

@@ -4527,25 +4527,18 @@ bool PlantOSController::shouldTriggerAutoFeeding() {
 }
 
 int64_t PlantOSController::getCurrentDateTimestamp() {
-    if (!hal_) {
-        return 0;
-    }
+    // Use the LOCAL calendar date (timezone-adjusted) so the daily feeding limit
+    // rolls over at local midnight, consistent with the calendar day advance.
+    int32_t today_ordinal = getLocalDateOrdinal();
 
-    // Get current Unix timestamp
-    int64_t now = hal_->getCurrentTimestamp();
-
-    if (now == 0) {
+    if (today_ordinal <= 0) {
         ESP_LOGW(TAG, "[AUTO-FEEDING] NTP time unavailable");
         return 0;
     }
 
-    // Calculate midnight UTC (start of current day)
-    // Unix time / 86400 = days since epoch
-    // Multiply back by 86400 = timestamp at midnight
-    int64_t days_since_epoch = now / 86400;
-    int64_t midnight_timestamp = days_since_epoch * 86400;
-
-    return midnight_timestamp;
+    // Return a unique, stable per-local-day key (local days since epoch scaled to
+    // a seconds-granularity timestamp). Used only for equality + NVS key purposes.
+    return static_cast<int64_t>(today_ordinal) * 86400;
 }
 
 void PlantOSController::setAutoPhCorrectionEnabled(bool enabled) {

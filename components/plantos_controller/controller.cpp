@@ -275,7 +275,9 @@ void PlantOSController::loop() {
                 schedule.nutrient_A_ml_per_liter,
                 schedule.nutrient_B_ml_per_liter,
                 schedule.nutrient_C_ml_per_liter,
-                calendar_manager_->is_safe_mode()
+                calendar_manager_->is_safe_mode(),
+                schedule.ec_target,
+                ec_target_multiplier_
             );
         }
 
@@ -1961,10 +1963,10 @@ void PlantOSController::handleFeeding() {
         tank_volume_liters = 10.0f;
     }
 
-    // Full calendar dose × dose_multiplier
-    float full_a = schedule.nutrient_A_ml_per_liter * tank_volume_liters * override_dose_multiplier_;
-    float full_b = schedule.nutrient_B_ml_per_liter * tank_volume_liters * override_dose_multiplier_;
-    float full_c = schedule.nutrient_C_ml_per_liter * tank_volume_liters * override_dose_multiplier_;
+    // Full calendar dose (EC target multiplier is applied to the EC target, not the dose itself)
+    float full_a = schedule.nutrient_A_ml_per_liter * tank_volume_liters;
+    float full_b = schedule.nutrient_B_ml_per_liter * tank_volume_liters;
+    float full_c = schedule.nutrient_C_ml_per_liter * tank_volume_liters;
 
     if (schedule.ec_target > 0.0f) {
         // EC-dependent mode: divide total dose into installments of 1/5 and iterate
@@ -2202,11 +2204,13 @@ void PlantOSController::handleEcProcessing() {
     }
 
     float ec_current = hal_->readEC();  // µS/cm
-    float ec_min = schedule.ec_target - schedule.ec_tolerance;
-    float ec_max = schedule.ec_target + schedule.ec_tolerance * 1.5f;
+    float ec_target = schedule.ec_target * ec_target_multiplier_;  // calendar target scaled by slider
+    float ec_min = ec_target - schedule.ec_tolerance;
+    float ec_max = ec_target + schedule.ec_tolerance * 1.5f;
 
-    ESP_LOGI(TAG, "[EC_PROCESSING] EC=%.1f uS/cm, target=%.0f±%.0f (min=%.0f, max=%.0f)",
-             ec_current, schedule.ec_target, schedule.ec_tolerance, ec_min, ec_max);
+    ESP_LOGI(TAG, "[EC_PROCESSING] EC=%.1f uS/cm, target=%.0f (cal %.0f x %.2f) ±%.0f (min=%.0f, max=%.0f)",
+             ec_current, ec_target, schedule.ec_target, ec_target_multiplier_,
+             schedule.ec_tolerance, ec_min, ec_max);
 
     // Over-concentration: wait for natural evaporation to lower EC
     if (ec_current > ec_max) {
@@ -2256,7 +2260,8 @@ void PlantOSController::handleEcCalculating() {
     // Use current EC reading for delta (may differ from ec_pre_feeding_ on retries)
     float ec_current = hal_->hasECValue() ? hal_->readEC() : ec_pre_feeding_;
     auto schedule = calendar_manager_->get_today_schedule();
-    float delta_ec = schedule.ec_target - ec_current;
+    float ec_target = schedule.ec_target * ec_target_multiplier_;  // calendar target scaled by slider
+    float delta_ec = ec_target - ec_current;
 
     if (delta_ec <= 10.0f) {  // 0.01 mS/cm = 10 µS/cm
         ESP_LOGI(TAG, "[EC_CALCULATING] EC already at or above target - no dosing needed");
@@ -2293,14 +2298,6 @@ void PlantOSController::handleEcCalculating() {
     ec_dose_A_ml_ = std::min((r_A / r_total) * total_ml_per_L * tank_volume_L, r_A * tank_volume_L);
     ec_dose_B_ml_ = std::min((r_B / r_total) * total_ml_per_L * tank_volume_L, r_B * tank_volume_L);
     ec_dose_C_ml_ = std::min((r_C / r_total) * total_ml_per_L * tank_volume_L, r_C * tank_volume_L);
-
-    // Apply override dose multiplier
-    if (override_dose_multiplier_ != 1.0f) {
-        ec_dose_A_ml_ *= override_dose_multiplier_;
-        ec_dose_B_ml_ *= override_dose_multiplier_;
-        ec_dose_C_ml_ *= override_dose_multiplier_;
-        ESP_LOGI(TAG, "[EC_CALCULATING] Dose multiplier: %.2f (override)", override_dose_multiplier_);
-    }
 
     // Accumulate mL/L for K-factor update after mixing
     float dosed_total_ml = ec_dose_A_ml_ + ec_dose_B_ml_ + ec_dose_C_ml_;
@@ -2455,7 +2452,7 @@ void PlantOSController::handleEcMeasuring() {
     float ec_target = 0.0f;
     if (calendar_manager_) {
         auto schedule = calendar_manager_->get_today_schedule();
-        ec_target = schedule.ec_target;
+        ec_target = schedule.ec_target * ec_target_multiplier_;  // calendar target scaled by slider
         ec_min = ec_target - schedule.ec_tolerance;
     }
 
@@ -3916,14 +3913,6 @@ float PlantOSController::calculateAcidDoseML(float current_ph, float target_ph_m
 
     // Clamp to [PH_MIN_DOSE_ML, PH_MAX_DOSE_ML]
     dose_ml = std::max(PH_MIN_DOSE_ML, std::min(PH_MAX_DOSE_ML, dose_ml));
-
-    // Apply override dose multiplier
-    if (override_dose_multiplier_ != 1.0f) {
-        float raw_dose = dose_ml;
-        dose_ml = std::max(PH_MIN_DOSE_ML, dose_ml * override_dose_multiplier_);
-        ESP_LOGI(TAG, "Acid dose multiplier: %.2f (override) → %.2f mL → %.2f mL",
-                 override_dose_multiplier_, raw_dose, dose_ml);
-    }
 
     ESP_LOGI(TAG, "Acid dose: %.3f pH_delta × %.1fL × K=%.4f = %.2f mL (clamped to [%.1f, %.1f])",
              ph_delta, tank_volume_L, ph_K_, dose_ml, PH_MIN_DOSE_ML, PH_MAX_DOSE_ML);

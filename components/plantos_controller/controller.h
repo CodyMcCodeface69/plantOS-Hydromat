@@ -287,19 +287,20 @@ public:
     bool isAutoFillEnabled() const { return auto_fill_enabled_; }
 
     /**
-     * Set global dose multiplier override (runtime, not persisted)
-     * Applied multiplicatively on top of vacation mode multiplier
-     * @param multiplier Scaling factor (1.0 = no override, 0.5 = 50%)
+     * Set EC target multiplier (runtime, not persisted)
+     * Scales the CalendarManager EC target: effective_target = schedule.ec_target * multiplier.
+     * Doses are not scaled directly; they follow naturally from dosing toward the scaled target.
+     * @param multiplier Scaling factor (1.0 = use calendar target as-is, 0.5 = 50%, 2.0 = 200%)
      */
-    void setOverrideDoseMultiplier(float multiplier) {
-        override_dose_multiplier_ = std::max(0.1f, std::min(2.0f, multiplier));
-        ESP_LOGI("controller", "Override dose multiplier set to %.2f", override_dose_multiplier_);
+    void setEcTargetMultiplier(float multiplier) {
+        ec_target_multiplier_ = std::max(0.1f, std::min(2.0f, multiplier));
+        ESP_LOGI("controller", "EC target multiplier set to %.2f", ec_target_multiplier_);
     }
 
     /**
-     * Get current override dose multiplier
+     * Get current EC target multiplier
      */
-    float getOverrideDoseMultiplier() const { return override_dose_multiplier_; }
+    float getEcTargetMultiplier() const { return ec_target_multiplier_; }
 
     /**
      * Enable or disable automatic feeding
@@ -583,7 +584,7 @@ private:
     // Runtime Dose Override (Phase 6)
     // ========================================================================
 
-    float override_dose_multiplier_{1.0f};  // Global dose scaling (1.0 = no override)
+    float ec_target_multiplier_{1.0f};  // Scales calendar EC target (1.0 = use calendar target as-is)
 
     // ========================================================================
     // EC Feeding State

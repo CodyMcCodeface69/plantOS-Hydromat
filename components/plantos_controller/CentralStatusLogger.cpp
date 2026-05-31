@@ -36,6 +36,8 @@ CentralStatusLogger::CentralStatusLogger()
       calendarNutrientB(0.0f),
       calendarNutrientC(0.0f),
       calendarSafeMode(false),
+      calendarEcTarget(0.0f),
+      ecTargetMultiplier(1.0f),
       calendarStatusUpdated(false),
       mode420_(true) {
 }
@@ -314,7 +316,7 @@ void CentralStatusLogger::updatePumpConfigurations(const std::vector<PumpConfigI
 
 void CentralStatusLogger::updateCalendarStatus(uint8_t currentDay, float phMin, float phMax,
                                                float nutrientA, float nutrientB, float nutrientC,
-                                               bool safeMode) {
+                                               bool safeMode, float ecTarget, float ecTargetMult) {
     calendarCurrentDay = currentDay;
     calendarPhMin = phMin;
     calendarPhMax = phMax;
@@ -322,6 +324,8 @@ void CentralStatusLogger::updateCalendarStatus(uint8_t currentDay, float phMin, 
     calendarNutrientB = nutrientB;
     calendarNutrientC = nutrientC;
     calendarSafeMode = safeMode;
+    calendarEcTarget = ecTarget;
+    ecTargetMultiplier = ecTargetMult;
     calendarStatusUpdated = true;
 }
 
@@ -468,6 +472,12 @@ void CentralStatusLogger::logStatus() {
                  calendarSafeMode ? "OFF" : "ON");
         ESP_LOGI(TAG, "  Nutrients (mL/L): A=%.2f; B=%.2f; C=%.2f",
                  calendarNutrientA, calendarNutrientB, calendarNutrientC);
+        if (calendarEcTarget > 0.0f) {
+            ESP_LOGI(TAG, "  EC Target: %.0f x %.2fx = %.0f uS/cm",
+                     calendarEcTarget, ecTargetMultiplier, calendarEcTarget * ecTargetMultiplier);
+        } else {
+            ESP_LOGI(TAG, "  EC Target: N/A (EC feeding disabled today)");
+        }
     } else {
         ESP_LOGW(TAG, "  Calendar not configured");
     }

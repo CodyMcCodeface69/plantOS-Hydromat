@@ -2582,10 +2582,10 @@ switch:
 # WARNING: Use only for hardware testing and calibration!
 ################################################################################
 number:
-  # === 04_14 - Dose Multiplier Override ===
+  # === 04_14 - EC Target Multiplier ===
   - platform: template
-    id: dose_multiplier_slider
-    name: "04_14_Dose Multiplier (0.1x – 2.0x)"
+    id: ec_target_multiplier_slider
+    name: "04_14_EC Target Multiplier (0.1x – 2.0x)"
     icon: "mdi:beaker-outline"
     optimistic: true
     min_value: 0.1
@@ -2597,8 +2597,8 @@ number:
     mode: slider
     set_action:
       - lambda: |-
-          ESP_LOGI("number", "Dose multiplier set to %.2fx", x);
-          id(unified_controller)->setOverrideDoseMultiplier(x);
+          ESP_LOGI("number", "EC target multiplier set to %.2fx", x);
+          id(unified_controller)->setEcTargetMultiplier(x);
 
   # === EC Calibration Target ===
   - platform: template

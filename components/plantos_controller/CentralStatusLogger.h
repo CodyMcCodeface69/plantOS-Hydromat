@@ -352,10 +352,12 @@ public:
      * @param nutrientB Nutrient B dose in mL/L
      * @param nutrientC Nutrient C dose in mL/L
      * @param safeMode Whether calendar automation is disabled
+     * @param ecTarget Calendar EC target in µS/cm (0 = EC feeding disabled today)
+     * @param ecTargetMultiplier Runtime EC target multiplier (effective target = ecTarget * multiplier)
      */
     void updateCalendarStatus(uint8_t currentDay, float phMin, float phMax,
                              float nutrientA, float nutrientB, float nutrientC,
-                             bool safeMode);
+                             bool safeMode, float ecTarget, float ecTargetMultiplier);
 
     /**
      * Set 420 mode for easter egg logging
@@ -487,6 +489,8 @@ private:
     float calendarNutrientB;
     float calendarNutrientC;
     bool calendarSafeMode;
+    float calendarEcTarget;        // Calendar EC target in µS/cm (0 = disabled)
+    float ecTargetMultiplier;      // Runtime EC target multiplier
     bool calendarStatusUpdated;
 
     // Easter egg mode

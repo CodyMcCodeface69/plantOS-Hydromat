@@ -17,7 +17,7 @@ esphome:
       - lambda: |-
           ESP_LOGI("esphome", "Configuring actuator safety gate max durations");
           id(actuator_safety)->setMaxDuration("WaterValve", 600);       // 10 min - water fill max
-          id(actuator_safety)->setMaxDuration("AcidPump", 10);          // 10 sec - pH dosing
+          id(actuator_safety)->setMaxDuration("AcidPump", 30);          // 30 sec - pH dosing (covers PH_MAX_DOSE_ML=10mL at lowered flow rate)
           id(actuator_safety)->setMaxDuration("NutrientPumpA", 10);     // 10 sec - nutrient A
           id(actuator_safety)->setMaxDuration("NutrientPumpB", 10);     // 10 sec - nutrient B
           id(actuator_safety)->setMaxDuration("NutrientPumpC", 10);     // 10 sec - nutrient C

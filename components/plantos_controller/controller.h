@@ -628,7 +628,7 @@ private:
     static constexpr float PH_K_MAX_CLAMP = 0.50f;
     static constexpr float PH_CORRECTION_TARGET = 5.85f;  // Biological target pH for injection
     static constexpr float PH_MIN_DOSE_ML = 0.5f;
-    static constexpr float PH_MAX_DOSE_ML = 5.0f;
+    static constexpr float PH_MAX_DOSE_ML = 10.0f;  // Raised from 5.0 for larger tank (27.4L delta); keep AcidPump max duration >= PH_MAX_DOSE_ML / pump_ph_flow_rate_ml_s
     float ph_cycle_start_ph_{0.0f};             // pH before first injection in cycle
     float ph_cycle_total_ml_{0.0f};             // Total mL dosed in correction cycle
     bool ph_cycle_water_filled_{false};         // Guard: water fill happened during cycle

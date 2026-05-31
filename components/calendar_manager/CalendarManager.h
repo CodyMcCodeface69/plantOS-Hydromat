@@ -238,6 +238,28 @@ public:
     bool advance_day();
 
     /**
+     * Sync the calendar day to the real-world calendar date.
+     *
+     * Compares today's local date (expressed as a days-since-epoch ordinal) to
+     * the last-synced date persisted in NVS and advances the grow day by the
+     * number of elapsed calendar days. This drives automatic midnight rollover
+     * during runtime AND catches up after the device was powered off across one
+     * or more midnights.
+     *
+     * Behavior:
+     *  - First ever call (no stored date): seeds the stored date, no advance.
+     *  - delta == 0 (same day): no-op.
+     *  - delta  < 0 (clock moved backwards): resyncs stored date, no rewind.
+     *  - delta  > 0: advances the grow day by delta (wrapping 1-120) and updates
+     *    the stored date. Manual day offset is preserved (delta is added on top).
+     *
+     * @param today_ordinal Local date as days since the Unix epoch (>0). 0 means
+     *                       time is not yet valid and the call is ignored.
+     * @return true if the grow day was advanced, false otherwise
+     */
+    bool sync_to_date(int32_t today_ordinal);
+
+    /**
      * Go back to the previous day (and save to NVS)
      *
      * Decrements current day and wraps around to day 120 if at day 1.
@@ -305,9 +327,15 @@ private:
     std::map<uint8_t, DailySchedule> schedule_map_; // Map of day -> schedule
     uint8_t current_day_{1};            // Current day (1-120)
 
+    // Last real-world date the grow day was synced to (local days since epoch).
+    // 0 = not yet seeded (no sync performed).
+    int32_t last_synced_date_{0};
+
     // NVS persistence
     ESPPreferenceObject pref_;
     static constexpr const char* NVS_KEY = "current_day";
+    ESPPreferenceObject date_pref_;
+    static constexpr const char* NVS_KEY_SYNC_DATE = "last_sync_date";
 
     // Status logging
     uint32_t last_status_log_time_{0};
@@ -316,6 +344,8 @@ private:
     bool parse_schedule_json();
     bool save_current_day();
     uint8_t load_current_day();
+    bool save_sync_date();
+    int32_t load_sync_date();
     void log_status();
 };
 

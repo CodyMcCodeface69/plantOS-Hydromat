@@ -21,6 +21,13 @@ void CalendarManager::setup() {
     this->current_day_ = this->load_current_day();
     ESP_LOGI(TAG, "Current day loaded from NVS: %d", this->current_day_);
 
+    // Initialize NVS preference for the last real-world synced date
+    this->date_pref_ = global_preferences->make_preference<int32_t>(
+        fnv1_hash(NVS_KEY_SYNC_DATE)
+    );
+    this->last_synced_date_ = this->load_sync_date();
+    ESP_LOGI(TAG, "Last synced date ordinal loaded from NVS: %d", this->last_synced_date_);
+
     // Parse the schedule JSON
     if (!this->parse_schedule_json()) {
         ESP_LOGE(TAG, "Failed to parse schedule JSON - using default values");
@@ -171,6 +178,51 @@ bool CalendarManager::advance_day() {
     return this->set_current_day(next_day);
 }
 
+bool CalendarManager::sync_to_date(int32_t today_ordinal) {
+    // Ignore if time is not yet valid
+    if (today_ordinal <= 0) {
+        return false;
+    }
+
+    // First ever sync: seed the stored date without advancing the grow day
+    if (this->last_synced_date_ == 0) {
+        this->last_synced_date_ = today_ordinal;
+        this->save_sync_date();
+        ESP_LOGI(TAG, "Calendar date sync seeded at ordinal %d (day %d, no advance)",
+                 today_ordinal, this->current_day_);
+        return false;
+    }
+
+    int32_t delta = today_ordinal - this->last_synced_date_;
+
+    // Same calendar day - nothing to do
+    if (delta == 0) {
+        return false;
+    }
+
+    // Clock moved backwards - resync stored date but never rewind the grow day
+    if (delta < 0) {
+        ESP_LOGW(TAG, "Calendar date moved backwards (%d days) - resyncing without rewind",
+                 delta);
+        this->last_synced_date_ = today_ordinal;
+        this->save_sync_date();
+        return false;
+    }
+
+    // delta > 0: advance the grow day by the number of elapsed calendar days,
+    // wrapping within 1-120. Manual offset is preserved (delta added on top).
+    uint8_t old_day = this->current_day_;
+    uint8_t new_day = static_cast<uint8_t>(((this->current_day_ - 1 + delta) % 120) + 1);
+
+    this->set_current_day(new_day);
+    this->last_synced_date_ = today_ordinal;
+    this->save_sync_date();
+
+    ESP_LOGI(TAG, "Calendar advanced %d day(s) from real time: day %d -> %d",
+             delta, old_day, new_day);
+    return true;
+}
+
 bool CalendarManager::go_back_day() {
     uint8_t prev_day = this->current_day_ - 1;
     if (prev_day < 1) {
@@ -220,6 +272,31 @@ uint8_t CalendarManager::load_current_day() {
     }
 
     return loaded_day;
+}
+
+bool CalendarManager::save_sync_date() {
+    if (this->date_pref_.save(&this->last_synced_date_)) {
+        if (this->verbose_) {
+            ESP_LOGD(TAG, "Last synced date ordinal %d saved to NVS", this->last_synced_date_);
+        }
+        return true;
+    } else {
+        ESP_LOGE(TAG, "Failed to save last synced date to NVS");
+        return false;
+    }
+}
+
+int32_t CalendarManager::load_sync_date() {
+    int32_t loaded = 0;  // Default: not yet seeded
+
+    if (this->date_pref_.load(&loaded)) {
+        ESP_LOGD(TAG, "Loaded last synced date ordinal %d from NVS", loaded);
+    } else {
+        ESP_LOGI(TAG, "No saved sync date in NVS - will seed on first sync");
+        loaded = 0;
+    }
+
+    return loaded;
 }
 
 void CalendarManager::log_status() {

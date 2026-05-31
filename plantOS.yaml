@@ -96,7 +96,12 @@ wifi:
     static_ip: 192.168.0.201
     gateway: 192.168.0.1
     subnet: 255.255.255.0
-  #   dns1: 192.168.0.104
+    # DNS is REQUIRED with a static IP: setting manual_ip stops DHCP, so without
+    # an explicit resolver the device has none (dns1 defaults to 0.0.0.0 = unset).
+    # NTP pool hostnames then never resolve and the SNTP clock never syncs, even
+    # though raw-IP traffic (Shelly, web UI, API) keeps working.
+    dns1: 192.168.0.1     # router/gateway resolver
+    dns2: 1.1.1.1         # public fallback
 
   # WiFi optimization for mesh networks (TP-Link Deco, etc.)
   # These settings improve compatibility with WiFi mesh systems

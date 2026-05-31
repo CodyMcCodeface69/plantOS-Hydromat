@@ -424,6 +424,13 @@ public:
     uint8_t getCurrentGrowDay();
 
 private:
+    /**
+     * Get today's LOCAL calendar date as a days-since-epoch ordinal.
+     * Uses the timezone-adjusted broken-down fields of time_source_->now().
+     * @return Local date ordinal (>0), or 0 if no valid time source.
+     */
+    int32_t getLocalDateOrdinal();
+
     // ========================================================================
     // Dependencies
     // ========================================================================
@@ -437,6 +444,10 @@ private:
 
     // Grow cycle configuration
     int64_t grow_start_timestamp_{0};  // Unix timestamp of day 1 (0 = not configured)
+
+    // Real-world calendar day auto-advance (delta catch-up via SNTP)
+    bool did_initial_date_sync_{false};  // Has the first post-NTP date sync run?
+    uint32_t last_date_check_ms_{0};     // millis() of last date-sync check
 
     // Night mode configuration
     bool night_mode_enabled_{true};        // Night mode ON by default (22:00–09:00)

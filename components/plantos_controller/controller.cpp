@@ -638,6 +638,25 @@ void PlantOSController::handleIdle() {
     }
 
     // ========================================================================
+    // CALENDAR DAY AUTO-ADVANCE - Sync grow day to real-world local date
+    // ========================================================================
+    // Runs once the first time NTP time is valid, then every 60s. The calendar
+    // manager advances the grow day by the number of local calendar days elapsed
+    // since its last-synced date (handles midnight rollover during runtime and
+    // catch-up after the device was powered off across one or more midnights).
+    if (calendar_manager_ && hal_->hasTime()) {
+        uint32_t nowMs = esphome::millis();
+        if (!did_initial_date_sync_ || (nowMs - last_date_check_ms_) >= 60000) {
+            int32_t today_ordinal = getLocalDateOrdinal();
+            if (today_ordinal > 0) {
+                calendar_manager_->sync_to_date(today_ordinal);
+                did_initial_date_sync_ = true;
+                last_date_check_ms_ = nowMs;
+            }
+        }
+    }
+
+    // ========================================================================
     // PERIODIC pH MONITORING - Time-based scheduling aligned to midnight
     // ========================================================================
     // Uses real-time clock to schedule pH checks at fixed intervals from 0:00
@@ -3802,6 +3821,34 @@ bool PlantOSController::hasPhValue() {
 // ============================================================================
 // Grow Cycle Helpers
 // ============================================================================
+
+int32_t PlantOSController::getLocalDateOrdinal() {
+    if (time_source_ == nullptr) {
+        return 0;
+    }
+
+    auto now = time_source_->now();
+    if (!now.is_valid()) {
+        return 0;
+    }
+
+    // now.year / now.month / now.day_of_month are in the configured local
+    // timezone (SNTP applies the TZ). Convert the local civil date to a
+    // days-since-epoch ordinal using Howard Hinnant's days_from_civil algorithm.
+    // This subtracts cleanly across month/year boundaries and is DST-robust.
+    int32_t y = static_cast<int32_t>(now.year);
+    uint32_t m = now.month;
+    uint32_t d = now.day_of_month;
+
+    y -= (m <= 2);
+    int32_t era = (y >= 0 ? y : y - 399) / 400;
+    uint32_t yoe = static_cast<uint32_t>(y - era * 400);                  // [0, 399]
+    uint32_t doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;       // [0, 365]
+    uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;                 // [0, 146096]
+    int32_t days = era * 146097 + static_cast<int32_t>(doe) - 719468;     // days since 1970-01-01
+
+    return days;
+}
 
 uint8_t PlantOSController::getCurrentGrowDay() {
     // Automatic day calculation if grow start date and time source are configured

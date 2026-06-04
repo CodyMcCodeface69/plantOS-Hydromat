@@ -194,6 +194,29 @@ api:
   reboot_timeout: 0s
 
 ################################################################################
+# MQTT - Time-Series Vitals Logging
+#
+# Publishes a clean JSON snapshot of all vitals (pH, EC, temps, water levels) to
+# `plantos/vitals` every 30s for off-device, long-term storage. Coexists with the
+# native `api:` above (both stay enabled) so OTA, web UI, and Home Assistant keep
+# working unchanged. Broker lives on Hetzner; the ESP32 connects OUTBOUND over TLS,
+# so no inbound ports need to be opened on the home router.
+#
+# `discovery: false` because consumers (Telegraf) read the raw `plantos/vitals`
+# topic, not Home Assistant MQTT discovery. Flip to true later if HA is added.
+# `reboot_timeout: 0s` keeps the device running normally if the broker is down.
+################################################################################
+mqtt:
+  broker: !secret mqtt_broker
+  port: 8883
+  username: !secret mqtt_user
+  password: !secret mqtt_password
+  topic_prefix: plantos
+  discovery: false
+  reboot_timeout: 0s
+  certificate_authority: !secret mqtt_ca_cert
+
+################################################################################
 # HTTP Request Component - For Online Connectivity Check
 #
 # Used to verify internet connectivity by attempting to fetch a known URL.
@@ -2846,6 +2869,24 @@ interval:
           // HAL now uses states endpoint and handles switch state sync internally
           // (consolidated from separate shelly_poll interval to prevent dual HTTP requests)
           id(hal).pingShellyDevice(nullptr);
+
+  # Time-Series Vitals Publish - one JSON snapshot to plantos/vitals every 30s.
+  # NaN-guards on numeric fields so a not-yet-read sensor never emits invalid JSON.
+  # Telegraf on the broker host parses this into the InfluxDB "vitals" measurement.
+  - interval: 30s
+    then:
+      - mqtt.publish_json:
+          topic: plantos/vitals
+          payload: |-
+            if (!isnan(id(ph_sensor_real).state))     root["ph"]         = id(ph_sensor_real).state;
+            if (!isnan(id(ec_sensor).state))          root["ec"]         = id(ec_sensor).state;
+            if (!isnan(id(water_temperature).state))  root["water_temp"] = id(water_temperature).state;
+            if (!isnan(id(bme280_temperature).state)) root["air_temp"]   = id(bme280_temperature).state;
+            if (!isnan(id(bme280_humidity).state))    root["humidity"]   = id(bme280_humidity).state;
+            if (!isnan(id(bme280_pressure).state))    root["pressure"]   = id(bme280_pressure).state;
+            root["water_high"]  = id(water_level_high_sensor).state;
+            root["water_low"]   = id(water_level_low_sensor).state;
+            root["water_empty"] = id(water_level_empty_sensor).state;
 
 ################################################################################
 # Scripts - Reusable Automation Sequences

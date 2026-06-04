@@ -374,6 +374,17 @@ void ESPHomeHAL::setPumpConfig(const std::string& pumpId, float flowRateMLPerSec
              pumpId.c_str(), flowRateMLPerSec, pwmIntensity * 100.0f);
 }
 
+void ESPHomeHAL::setPumpPwm(const std::string& pumpId, float pwmIntensity) {
+    pwmIntensity = std::clamp(pwmIntensity, 0.0f, 1.0f);
+    auto it = pump_configs_.find(pumpId);
+    if (it != pump_configs_.end()) {
+        it->second.pwm_intensity = pwmIntensity;   // preserve flow_rate_ml_s
+    } else {
+        pump_configs_[pumpId] = PumpConfig(pumpId, 1.0f, pwmIntensity);
+    }
+    ESP_LOGI(TAG, "setPumpPwm(%s) -> %.0f%%", pumpId.c_str(), pwmIntensity * 100.0f);
+}
+
 void ESPHomeHAL::setTankVolumeDelta(float volumeLiters) {
     tank_volume_delta_liters_ = volumeLiters;
     ESP_LOGI(TAG, "Tank volume delta set: %.1f liters (LOW→HIGH)", volumeLiters);

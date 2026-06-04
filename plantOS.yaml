@@ -29,6 +29,14 @@ esphome:
           id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // Default: 2 min ON, 1 min OFF
           id(actuator_safety)->enableCycling("AirPump", false);        // Default: Normal mode (24/7)
 
+          // Sync restored §15 PWM slider values into the HAL pump config so the
+          // slider is the single source of truth for pump duty cycle across reboots
+          ESP_LOGI("esphome", "Syncing PWM slider values into HAL pump config");
+          id(hal)->setPumpPwm("AcidPump",      id(pwm_gpio4_slider).state / 100.0f);
+          id(hal)->setPumpPwm("NutrientPumpA", id(pwm_gpio5_slider).state / 100.0f);
+          id(hal)->setPumpPwm("NutrientPumpB", id(pwm_gpio6_slider).state / 100.0f);
+          id(hal)->setPumpPwm("NutrientPumpC", id(pwm_gpio7_slider).state / 100.0f);
+
 esp32:
   board: esp32-c6-devkitc-1
   variant: esp32c6
@@ -1068,19 +1076,18 @@ button:
       # Maps to "AcidPump" actuator ID
       then:
         - lambda: |-
-            // Read current PWM slider value (0-100%)
-            float pwm_percent = id(pwm_gpio4_slider).state;
-            float pwm_intensity = pwm_percent / 100.0f;
+            // PWM comes from the configured value (set via the 15_02 slider)
+            float pwm_percent = id(hal)->getPumpConfig("AcidPump").pwm_intensity * 100.0f;
 
             // Log calibration instructions
             ESP_LOGI("button", "=== pH Pump Calibration Test ===");
             ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
             ESP_LOGI("button", "Please measure the volume in mL.");
             ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_ph_flow_rate_ml_s' and 'pump_ph_pwm_intensity' in plantOS.yaml.");
+            ESP_LOGI("button", "Update 'pump_ph_flow_rate_ml_s' and the 15_02 PWM slider.");
 
-            // Turn on pump with PWM intensity
-            id(hal)->setPump("AcidPump", true, pwm_intensity);
+            // Turn on pump (PWM intensity read from config inside HAL)
+            id(hal)->setPump("AcidPump", true);
 
         - delay: 10s
         - lambda: |-
@@ -1096,19 +1103,18 @@ button:
       # Maps to "NutrientPumpA" actuator ID
       then:
         - lambda: |-
-            // Read current PWM slider value (0-100%)
-            float pwm_percent = id(pwm_gpio5_slider).state;
-            float pwm_intensity = pwm_percent / 100.0f;
+            // PWM comes from the configured value (set via the 15_03 slider)
+            float pwm_percent = id(hal)->getPumpConfig("NutrientPumpA").pwm_intensity * 100.0f;
 
             // Log calibration instructions
             ESP_LOGI("button", "=== Grow Pump Calibration Test ===");
             ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
             ESP_LOGI("button", "Please measure the volume in mL.");
             ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_grow_flow_rate_ml_s' and 'pump_grow_pwm_intensity' in plantOS.yaml.");
+            ESP_LOGI("button", "Update 'pump_grow_flow_rate_ml_s' and the 15_03 PWM slider.");
 
-            // Turn on pump with PWM intensity
-            id(hal)->setPump("NutrientPumpA", true, pwm_intensity);
+            // Turn on pump (PWM intensity read from config inside HAL)
+            id(hal)->setPump("NutrientPumpA", true);
 
         - delay: 10s
         - lambda: |-
@@ -1124,19 +1130,18 @@ button:
       # Maps to "NutrientPumpB" actuator ID
       then:
         - lambda: |-
-            // Read current PWM slider value (0-100%)
-            float pwm_percent = id(pwm_gpio6_slider).state;
-            float pwm_intensity = pwm_percent / 100.0f;
+            // PWM comes from the configured value (set via the 15_04 slider)
+            float pwm_percent = id(hal)->getPumpConfig("NutrientPumpB").pwm_intensity * 100.0f;
 
             // Log calibration instructions
             ESP_LOGI("button", "=== Micro Pump Calibration Test ===");
             ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
             ESP_LOGI("button", "Please measure the volume in mL.");
             ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_micro_flow_rate_ml_s' and 'pump_micro_pwm_intensity' in plantOS.yaml.");
+            ESP_LOGI("button", "Update 'pump_micro_flow_rate_ml_s' and the 15_04 PWM slider.");
 
-            // Turn on pump with PWM intensity
-            id(hal)->setPump("NutrientPumpB", true, pwm_intensity);
+            // Turn on pump (PWM intensity read from config inside HAL)
+            id(hal)->setPump("NutrientPumpB", true);
 
         - delay: 10s
         - lambda: |-
@@ -1152,19 +1157,18 @@ button:
       # Maps to "NutrientPumpC" actuator ID
       then:
         - lambda: |-
-            // Read current PWM slider value (0-100%)
-            float pwm_percent = id(pwm_gpio7_slider).state;
-            float pwm_intensity = pwm_percent / 100.0f;
+            // PWM comes from the configured value (set via the 15_05 slider)
+            float pwm_percent = id(hal)->getPumpConfig("NutrientPumpC").pwm_intensity * 100.0f;
 
             // Log calibration instructions
             ESP_LOGI("button", "=== Bloom Pump Calibration Test ===");
             ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
             ESP_LOGI("button", "Please measure the volume in mL.");
             ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_bloom_flow_rate_ml_s' and 'pump_bloom_pwm_intensity' in plantOS.yaml.");
+            ESP_LOGI("button", "Update 'pump_bloom_flow_rate_ml_s' and the 15_05 PWM slider.");
 
-            // Turn on pump with PWM intensity
-            id(hal)->setPump("NutrientPumpC", true, pwm_intensity);
+            // Turn on pump (PWM intensity read from config inside HAL)
+            id(hal)->setPump("NutrientPumpC", true);
 
         - delay: 10s
         - lambda: |-
@@ -2667,27 +2671,12 @@ number:
           ESP_LOGI("number", "Auto Reservoir Change Day set to: %d (%s)", day, day_names[day]);
           id(unified_controller).setAutoReservoirChangeDay(day);
 
-  # === 15 - PWM Control Sliders ===
-  - platform: template
-    id: pwm_gpio1_slider
-    name: "15_01_GPIO1 - Water Valve PWM"
-    icon: "mdi:water-percent"
-    optimistic: true
-    min_value: 0
-    max_value: 100
-    step: 1
-    initial_value: 0
-    restore_value: false
-    unit_of_measurement: "%"
-    mode: slider
-    set_action:
-      - output.set_level:
-          id: mag_valve_output
-          level: !lambda 'return x / 100.0;'
-      - logger.log:
-          format: "PWM GPIO1 (Water Valve) set to %.0f%% (duty cycle: %.2f)"
-          args: ['x', 'x / 100.0']
-
+  # === 15 - PWM Configuration Sliders ===
+  # These sliders ONLY configure the pump duty cycle stored in the HAL pump
+  # config; they do NOT activate the pump. The configured PWM is applied on
+  # every controller activation and on the 12_xx test buttons. Direct GPIO
+  # (14_xx) ignores this and always runs at 100% for manual flushing.
+  # The water valve (GPIO1) is binary (on/off), so it has no PWM slider.
   - platform: template
     id: pwm_gpio4_slider
     name: "15_02_GPIO4 - Acid Pump PWM"
@@ -2696,17 +2685,15 @@ number:
     min_value: 0
     max_value: 100
     step: 1
-    initial_value: 0
-    restore_value: false
+    initial_value: 100
+    restore_value: true
     unit_of_measurement: "%"
     mode: slider
     set_action:
-      - output.set_level:
-          id: pump_ph_output
-          level: !lambda 'return x / 100.0;'
+      - lambda: 'id(hal)->setPumpPwm("AcidPump", x / 100.0f);'
       - logger.log:
-          format: "PWM GPIO4 (Acid Pump) set to %.0f%% (duty cycle: %.2f)"
-          args: ['x', 'x / 100.0']
+          format: "PWM config: AcidPump set to %.0f%% (not activated)"
+          args: ['x']
 
   - platform: template
     id: pwm_gpio5_slider
@@ -2716,17 +2703,15 @@ number:
     min_value: 0
     max_value: 100
     step: 1
-    initial_value: 0
-    restore_value: false
+    initial_value: 60
+    restore_value: true
     unit_of_measurement: "%"
     mode: slider
     set_action:
-      - output.set_level:
-          id: pump_grow_output
-          level: !lambda 'return x / 100.0;'
+      - lambda: 'id(hal)->setPumpPwm("NutrientPumpA", x / 100.0f);'
       - logger.log:
-          format: "PWM GPIO5 (Nutrient Pump A) set to %.0f%% (duty cycle: %.2f)"
-          args: ['x', 'x / 100.0']
+          format: "PWM config: NutrientPumpA set to %.0f%% (not activated)"
+          args: ['x']
 
   - platform: template
     id: pwm_gpio6_slider
@@ -2736,17 +2721,15 @@ number:
     min_value: 0
     max_value: 100
     step: 1
-    initial_value: 0
-    restore_value: false
+    initial_value: 100
+    restore_value: true
     unit_of_measurement: "%"
     mode: slider
     set_action:
-      - output.set_level:
-          id: pump_micro_output
-          level: !lambda 'return x / 100.0;'
+      - lambda: 'id(hal)->setPumpPwm("NutrientPumpB", x / 100.0f);'
       - logger.log:
-          format: "PWM GPIO6 (Nutrient Pump B) set to %.0f%% (duty cycle: %.2f)"
-          args: ['x', 'x / 100.0']
+          format: "PWM config: NutrientPumpB set to %.0f%% (not activated)"
+          args: ['x']
 
   - platform: template
     id: pwm_gpio7_slider
@@ -2756,17 +2739,15 @@ number:
     min_value: 0
     max_value: 100
     step: 1
-    initial_value: 0
-    restore_value: false
+    initial_value: 100
+    restore_value: true
     unit_of_measurement: "%"
     mode: slider
     set_action:
-      - output.set_level:
-          id: pump_bloom_output
-          level: !lambda 'return x / 100.0;'
+      - lambda: 'id(hal)->setPumpPwm("NutrientPumpC", x / 100.0f);'
       - logger.log:
-          format: "PWM GPIO7 (Nutrient Pump C) set to %.0f%% (duty cycle: %.2f)"
-          args: ['x', 'x / 100.0']
+          format: "PWM config: NutrientPumpC set to %.0f%% (not activated)"
+          args: ['x']
 
   # === 14 - Air Pump Cycling Period Configuration ===
   - platform: template

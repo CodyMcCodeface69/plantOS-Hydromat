@@ -123,6 +123,14 @@ public:
     virtual void setPumpConfig(const std::string& pumpId, float flowRateMLPerSec, float pwmIntensity) = 0;
 
     /**
+     * Update only the PWM intensity for a pump (preserves configured flow rate)
+     * Used by the §15 PWM sliders to configure duty cycle without activating the pump
+     * @param pumpId Pump identifier
+     * @param pwmIntensity PWM intensity (0.0-1.0)
+     */
+    virtual void setPumpPwm(const std::string& pumpId, float pwmIntensity) = 0;
+
+    /**
      * Set tank volume delta (volume from LOW to HIGH sensor)
      * Used for normal daily feeding operations
      * @param volumeLiters Tank volume delta in liters
@@ -641,6 +649,7 @@ public:
     float pumpflow(const std::string& pumpId, float targetML) override;
     PumpConfig getPumpConfig(const std::string& pumpId) const override;
     void setPumpConfig(const std::string& pumpId, float flowRateMLPerSec, float pwmIntensity) override;
+    void setPumpPwm(const std::string& pumpId, float pwmIntensity) override;
     void setTankVolumeDelta(float volumeLiters) override;
     float getTankVolumeDelta() const override;
     void setTotalTankVolume(float volumeLiters) override;

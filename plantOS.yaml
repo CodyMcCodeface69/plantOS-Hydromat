@@ -1446,20 +1446,20 @@ plantos_hal:
 
   # Magnetic Valve Flow Rate (for automated water addition)
   # IMPORTANT: Calibrate using 10s test button (even though valve is ON/OFF only)
-  mag_valve_flow_rate_ml_s: 50.0     # Magnetic valve: mL/second when OPEN (default: 50.0, approx 3L/min)
+  mag_valve_flow_rate_ml_s: 100.0    # Magnetic valve: mL/second when OPEN (CALIBRATED 2026-06-06: 300mL/3s)
 
   # Pump Calibration Configuration (flow rates and PWM intensities)
   # IMPORTANT: Update these values after calibration using 10s test buttons
   # Formula: flow_rate_ml_s = (measured_mL) / 10
   # Pump Mapping: Grow=NutrientPumpA, Micro=NutrientPumpB, Bloom=NutrientPumpC
-  pump_ph_flow_rate_ml_s: 0.48        # pH pump: mL/second @ configured PWM (default: 1.0 CALIBRATED: 4.8mL/10s @ 100%)
-  pump_ph_pwm_intensity: 100%        # pH pump: PWM intensity (0-100%, default: 100% CALIBRATED: 100%@5V)
-  pump_grow_flow_rate_ml_s: 0.45     # Grow pump (NutrientPumpA): mL/second @ configured PWM (CALIBRATED: 4.0mL/10s @ 60%)
-  pump_grow_pwm_intensity: 60%       # Grow pump (NutrientPumpA): PWM intensity (0-100%, CALIBRATED: 60%@5V)
-  pump_micro_flow_rate_ml_s: 1.0     # Micro pump (NutrientPumpB): mL/second @ configured PWM (default: 1.0)
-  pump_micro_pwm_intensity: 100%     # Micro pump (NutrientPumpB): PWM intensity (0-100%, default: 100%)
-  pump_bloom_flow_rate_ml_s: 1.0     # Bloom pump (NutrientPumpC): mL/second @ configured PWM (default: 1.0)
-  pump_bloom_pwm_intensity: 100%     # Bloom pump (NutrientPumpC): PWM intensity (0-100%, default: 100%)
+  pump_ph_flow_rate_ml_s: 2.35        # pH pump: mL/second @ configured PWM (CALIBRATED 2026-06-06: 23.5mL/10s @ 100%)
+  pump_ph_pwm_intensity: 100%        # pH pump: PWM intensity (0-100%, CALIBRATED: 100%@5V)
+  pump_grow_flow_rate_ml_s: 1.75     # Grow pump (NutrientPumpA): mL/second @ configured PWM (CALIBRATED 2026-06-06: 17.5mL/10s @ 100%)
+  pump_grow_pwm_intensity: 100%      # Grow pump (NutrientPumpA): PWM intensity (0-100%, CALIBRATED: 100%@5V)
+  pump_micro_flow_rate_ml_s: 0.75    # Micro pump (NutrientPumpB): mL/second @ configured PWM (CALIBRATED 2026-06-06: 7.5mL/10s @ 100%)
+  pump_micro_pwm_intensity: 100%     # Micro pump (NutrientPumpB): PWM intensity (0-100%, CALIBRATED: 100%@5V)
+  pump_bloom_flow_rate_ml_s: 0.75    # Bloom pump (NutrientPumpC): mL/second @ configured PWM (CALIBRATED 2026-06-06: 7.5mL/10s @ 100%)
+  pump_bloom_pwm_intensity: 100%     # Bloom pump (NutrientPumpC): PWM intensity (0-100%, CALIBRATED: 100%@5V)
 
   # pH Reading Configuration
   ph_reading_interval: 2h     # How often to check pH (default: 2 hours)
@@ -2562,42 +2562,42 @@ switch:
 
   - platform: template
     id: direct_gpio5_switch
-    name: "14_03_Set GPIO5 - Nutrient Pump A to HIGH"
+    name: "14_03_Set GPIO5 - Grow to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
     turn_on_action:
       - output.turn_on: pump_grow_output
-      - logger.log: "DIRECT GPIO5 (Nutrient Pump A) -> HIGH (bypassing all safety!)"
+      - logger.log: "DIRECT GPIO5 (Grow) -> HIGH (bypassing all safety!)"
     turn_off_action:
       - output.turn_off: pump_grow_output
-      - logger.log: "DIRECT GPIO5 (Nutrient Pump A) -> LOW"
+      - logger.log: "DIRECT GPIO5 (Grow) -> LOW"
 
   - platform: template
     id: direct_gpio6_switch
-    name: "14_04_Set GPIO6 - Nutrient Pump B to HIGH"
+    name: "14_04_Set GPIO6 - Micro to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
     turn_on_action:
       - output.turn_on: pump_micro_output
-      - logger.log: "DIRECT GPIO6 (Nutrient Pump B) -> HIGH (bypassing all safety!)"
+      - logger.log: "DIRECT GPIO6 (Micro) -> HIGH (bypassing all safety!)"
     turn_off_action:
       - output.turn_off: pump_micro_output
-      - logger.log: "DIRECT GPIO6 (Nutrient Pump B) -> LOW"
+      - logger.log: "DIRECT GPIO6 (Micro) -> LOW"
 
   - platform: template
     id: direct_gpio7_switch
-    name: "14_05_Set GPIO7 - Nutrient Pump C to HIGH"
+    name: "14_05_Set GPIO7 - Bloom to HIGH"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
     turn_on_action:
       - output.turn_on: pump_bloom_output
-      - logger.log: "DIRECT GPIO7 (Nutrient Pump C) -> HIGH (bypassing all safety!)"
+      - logger.log: "DIRECT GPIO7 (Bloom) -> HIGH (bypassing all safety!)"
     turn_off_action:
       - output.turn_off: pump_bloom_output
-      - logger.log: "DIRECT GPIO7 (Nutrient Pump C) -> LOW"
+      - logger.log: "DIRECT GPIO7 (Bloom) -> LOW"
 
 ################################################################################
 # Number Components: PWM Sliders for Direct GPIO Control
@@ -2720,13 +2720,13 @@ number:
 
   - platform: template
     id: pwm_gpio5_slider
-    name: "15_03_GPIO5 - Nutrient Pump A PWM"
+    name: "15_03_GPIO5 - Grow PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0
     max_value: 100
     step: 1
-    initial_value: 60
+    initial_value: 100
     restore_value: true
     unit_of_measurement: "%"
     mode: slider
@@ -2738,7 +2738,7 @@ number:
 
   - platform: template
     id: pwm_gpio6_slider
-    name: "15_04_GPIO6 - Nutrient Pump B PWM"
+    name: "15_04_GPIO6 - Micro PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0
@@ -2756,7 +2756,7 @@ number:
 
   - platform: template
     id: pwm_gpio7_slider
-    name: "15_05_GPIO7 - Nutrient Pump C PWM"
+    name: "15_05_GPIO7 - Bloom PWM"
     icon: "mdi:water-pump"
     optimistic: true
     min_value: 0
@@ -2835,9 +2835,9 @@ interval:
           // Actuators (Active HIGH outputs - top of PCB)
           log_gpio(1, "Water Valve (MagValve)");
           log_gpio(4, "Acid Pump (PP_1)");
-          log_gpio(5, "Nutrient Pump A (PP_2)");
-          log_gpio(6, "Nutrient Pump B (PP_3)");
-          log_gpio(7, "Nutrient Pump C (PP_4)");
+          log_gpio(5, "Grow (PP_2)");
+          log_gpio(6, "Micro (PP_3)");
+          log_gpio(7, "Bloom (PP_4)");
 
           // System LED
           log_gpio(8, "System LED (WS2812)");

@@ -215,6 +215,13 @@ public:
     void startFeeding();
 
     /**
+     * Dose nutrients for the mother plant into a separate container.
+     * Single-pass A→B→C at fixed rates (1.44/0.96/0.48 mL/L), no EC loop, no mixing wait.
+     * @param liters Volume of water in the target container (1–15 L)
+     */
+    void startMotherNutrients(float liters);
+
+    /**
      * Start water fill operation
      * Transitions to WATER_FILLING state
      */
@@ -537,6 +544,9 @@ private:
     /// When false: use getTankVolumeDelta() for nutrient dosing
     bool is_reservoir_change_{false};
 
+    /// True when running a mother plant nutrient mix — skips EC_MIXING and returns to IDLE directly
+    bool is_mother_mix_{false};
+
     // ========================================================================
     // Auto Reservoir Change (Weekly)
     // ========================================================================
@@ -585,6 +595,11 @@ private:
 
     /// Safety cap on installment cycles for manual feeding
     static constexpr uint8_t FEEDING_MANUAL_MAX_CYCLES = 20;
+
+    /// Fixed nutrient rates for mother plant mix (last grow-day values)
+    static constexpr float MOTHER_MIX_A_ML_PER_L = 1.44f;
+    static constexpr float MOTHER_MIX_B_ML_PER_L = 0.96f;
+    static constexpr float MOTHER_MIX_C_ML_PER_L = 0.48f;
 
     // ========================================================================
     // Runtime Dose Override (Phase 6)

@@ -2338,9 +2338,16 @@ void PlantOSController::handleEcFeeding() {
                 ec_total_ml_per_L_ += dosed_ml / tank_L;
             }
         }
-        ESP_LOGI(TAG, "[EC_FEEDING] Nutrient dosing complete (total so far: %.4f mL/L) - starting mixing",
-                 ec_total_ml_per_L_);
-        transitionTo(ControllerState::EC_MIXING);
+        if (is_mother_mix_) {
+            is_mother_mix_ = false;
+            ESP_LOGI(TAG, "[EC_FEEDING] Mother mix complete → IDLE");
+            if (psm_) psm_->clearEvent();
+            transitionTo(ControllerState::IDLE);
+        } else {
+            ESP_LOGI(TAG, "[EC_FEEDING] Nutrient dosing complete (total so far: %.4f mL/L) - starting mixing",
+                     ec_total_ml_per_L_);
+            transitionTo(ControllerState::EC_MIXING);
+        }
         return;
     }
 
@@ -3107,6 +3114,38 @@ void PlantOSController::startFeeding() {
     } else {
         ESP_LOGW(TAG, "Cannot start feeding - system busy");
     }
+}
+
+void PlantOSController::startMotherNutrients(float liters) {
+    if (current_state_ != ControllerState::IDLE) {
+        ESP_LOGW(TAG, "[MOTHER_MIX] Cannot start - system busy (state: %s)", getStateAsString().c_str());
+        return;
+    }
+    if (liters <= 0.0f || liters > 15.0f) {
+        ESP_LOGW(TAG, "[MOTHER_MIX] Invalid volume: %.1f L (must be 1-15)", liters);
+        return;
+    }
+
+    ec_dose_A_ml_ = MOTHER_MIX_A_ML_PER_L * liters;
+    ec_dose_B_ml_ = MOTHER_MIX_B_ML_PER_L * liters;
+    ec_dose_C_ml_ = MOTHER_MIX_C_ML_PER_L * liters;
+    ec_total_ml_per_L_ = 0.0f;
+    ec_attempt_count_ = 0;
+    feeding_manual_mode_ = false;
+    is_mother_mix_ = true;
+
+    ESP_LOGI(TAG, "===============================================");
+    ESP_LOGI(TAG, "  MOTHER PLANT NUTRIENT MIX");
+    ESP_LOGI(TAG, "===============================================");
+    ESP_LOGI(TAG, "  Volume : %.1f L", liters);
+    ESP_LOGI(TAG, "  Dose A : %.2f mL  (%.2f mL/L)", ec_dose_A_ml_, MOTHER_MIX_A_ML_PER_L);
+    ESP_LOGI(TAG, "  Dose B : %.2f mL  (%.2f mL/L)", ec_dose_B_ml_, MOTHER_MIX_B_ML_PER_L);
+    ESP_LOGI(TAG, "  Dose C : %.2f mL  (%.2f mL/L)", ec_dose_C_ml_, MOTHER_MIX_C_ML_PER_L);
+    ESP_LOGI(TAG, "  Sequence: A → B → C → IDLE (no EC loop, no mixing wait)");
+    ESP_LOGI(TAG, "===============================================");
+
+    if (psm_) psm_->logEvent("MOTHER_MIX", 0);
+    transitionTo(ControllerState::EC_FEEDING);
 }
 
 void PlantOSController::startFillTank() {

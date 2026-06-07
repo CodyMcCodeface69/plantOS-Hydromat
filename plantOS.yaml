@@ -975,6 +975,21 @@ button:
             ESP_LOGW("button", "========================================");
             id(unified_controller)->emergencyStop();
 
+  - platform: template
+    name: "04_18_Mother Plant Nutrients"
+    on_press:
+      then:
+        - lambda: |-
+            float vol = id(mother_volume_liters).state;
+            ESP_LOGI("button", "========================================");
+            ESP_LOGI("button", "MOTHER PLANT NUTRIENT MIX REQUESTED");
+            ESP_LOGI("button", "  Volume : %.1f L", vol);
+            ESP_LOGI("button", "  Dose A : %.2f mL", vol * 1.44f);
+            ESP_LOGI("button", "  Dose B : %.2f mL", vol * 0.96f);
+            ESP_LOGI("button", "  Dose C : %.2f mL", vol * 0.48f);
+            ESP_LOGI("button", "========================================");
+            id(unified_controller)->startMotherNutrients(vol);
+
   # === 05 - Logging & Cleanup ===
   - platform: template
     name: "05_01_Clear PSM Alerts"
@@ -2730,6 +2745,22 @@ number:
       - logger.log:
           format: "pH K-factor set to %.3f (dose = pH_delta x tank_L x K)"
           args: ['x']
+
+  # === Mother Plant Mix Volume ===
+  - platform: template
+    id: mother_volume_liters
+    name: "04_17_Mother Mix Volume (L)"
+    icon: "mdi:water-plus"
+    optimistic: true
+    min_value: 1
+    max_value: 15
+    step: 0.5
+    initial_value: 5
+    restore_value: true
+    unit_of_measurement: "L"
+    mode: box
+    set_action:
+      - lambda: 'ESP_LOGI("number", "Mother mix volume set to %.1f L", x);'
 
   # === 15 - PWM Configuration Sliders ===
   # These sliders ONLY configure the pump duty cycle stored in the HAL pump

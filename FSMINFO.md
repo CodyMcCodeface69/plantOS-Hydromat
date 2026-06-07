@@ -475,6 +475,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | setEcCalibrationTarget(x)  | Any state          | (no transition)      | Set target uS/cm for EC calibration (default: 1413) |
 | resetEcCalibration()       | Any state          | (no transition)      | Reset EC factor to 1.0 (factory default) |
 | startFeeding()             | Must be in IDLE    | FEEDING → EC_FEEDING | Manual EC-dependent nutrient dosing (web UI button)<br>Doses in installments of (calendar_total × multiplier) / 5<br>Loops via EC_MIXING → EC_MEASURING until EC target reached (max 20 installments)<br>Falls back to single-pass if no EC target configured<br>**Blocked in NIGHT state** |
+| startMotherNutrients(L)    | Must be in IDLE    | EC_FEEDING → IDLE    | Dose nutrients for mother plant into a separate container<br>Fixed rates: A=1.44 mL/L, B=0.96 mL/L, C=0.48 mL/L<br>Single pass A→B→C only — no EC loop, no EC_MIXING, no pH correction<br>Volume: user-specified 1–15 L (WebUI number input 04_17)<br>Sets `is_mother_mix_=true` to short-circuit EC_FEEDING→IDLE |
 | startFillTank()            | Must be in IDLE    | WATER_FILLING        | Fill tank → EC check → pH correction (post-fill sequence)<br>**Blocked in NIGHT state** |
 | startEmptyTank()           | N/A (info only)    | IDLE (no change)     | Info message (use manual drain) |
 | startFeed()                | Must be in IDLE<br>Tank must be empty | FEED_FILLING         | Complete feed: Fill→Nutrients→pH<br>(safety check: both sensors OFF)<br>**Blocked in NIGHT state** |

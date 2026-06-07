@@ -2369,6 +2369,7 @@ void PlantOSController::handleEcFeeding() {
         } else {
             ESP_LOGI(TAG, "[EC_FEEDING] %s dose=0 - skipping", pump_name);
             state_counter_++;
+            state_entry_executed_ = false;  // allow entry block to run for next pump
             state_start_time_ = hal_->getSystemTime();
         }
         return;
@@ -2387,6 +2388,7 @@ void PlantOSController::handleEcFeeding() {
 
     // Advance to next pump
     state_counter_++;
+    state_entry_executed_ = false;  // allow entry block to run for next pump
     state_start_time_ = hal_->getSystemTime();
 }
 

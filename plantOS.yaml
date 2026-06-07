@@ -18,9 +18,9 @@ esphome:
           ESP_LOGI("esphome", "Configuring actuator safety gate max durations");
           id(actuator_safety)->setMaxDuration("WaterValve", 600);       // 10 min - water fill max
           id(actuator_safety)->setMaxDuration("AcidPump", 30);          // 30 sec - pH dosing (covers PH_MAX_DOSE_ML=10mL at lowered flow rate)
-          id(actuator_safety)->setMaxDuration("NutrientPumpA", 10);     // 10 sec - nutrient A
-          id(actuator_safety)->setMaxDuration("NutrientPumpB", 10);     // 10 sec - nutrient B
-          id(actuator_safety)->setMaxDuration("NutrientPumpC", 10);     // 10 sec - nutrient C
+          id(actuator_safety)->setMaxDuration("NutrientPumpA", 120);    // 120 sec - nutrient A (large doses at peak grow days)
+          id(actuator_safety)->setMaxDuration("NutrientPumpB", 120);    // 120 sec - nutrient B
+          id(actuator_safety)->setMaxDuration("NutrientPumpC", 120);    // 120 sec - nutrient C
           id(actuator_safety)->setMaxDuration("AirPump", 0);            // 0 = unlimited (24/7 operation)
           id(actuator_safety)->setMaxDuration("WastewaterPump", 1800);  // 30 min - slow pump
 

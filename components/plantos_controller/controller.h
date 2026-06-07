@@ -150,6 +150,12 @@ public:
         grow_start_timestamp_ = timestamp;
     }
 
+    void set_ph_k_factor(float k) { ph_K_ = k; }
+    float get_ph_k_factor() const { return ph_K_; }
+    void set_ph_k_update_callback(std::function<void(float)> cb) {
+        ph_k_update_callback_ = std::move(cb);
+    }
+
     /**
      * Set Night Mode Configuration
      * @param enabled Enable/disable night mode
@@ -622,7 +628,8 @@ private:
     static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
 
     // Adaptive pH K-factor (pH_Regellogik.md Section 4)
-    float ph_K_{0.07f};                         // Current K-factor (EMA-smoothed)
+    float ph_K_{0.25f};                         // Current K-factor (EMA-smoothed)
+    std::function<void(float)> ph_k_update_callback_;
     static constexpr float PH_K_EMA_ALPHA = 0.20f;
     static constexpr float PH_K_MIN_CLAMP = 0.01f;
     static constexpr float PH_K_MAX_CLAMP = 0.50f;

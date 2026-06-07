@@ -3956,6 +3956,7 @@ void PlantOSController::updatePhKFactor(float ph_before, float ph_after, float m
              K_observed, K_new, ph_K_, ph_before, ph_after, ph_delta, ml_total, tank_volume_L);
 
     ph_K_ = K_new;
+    if (ph_k_update_callback_) ph_k_update_callback_(ph_K_);
 
     // Persist to NVS
     if (psm_) {

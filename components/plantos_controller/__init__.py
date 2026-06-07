@@ -48,6 +48,7 @@ CONF_NIGHT_MODE_START_HOUR = 'night_mode_start_hour'
 CONF_NIGHT_MODE_END_HOUR = 'night_mode_end_hour'
 CONF_ENHANCED_ERROR_HANDLING = 'enhanced_error_handling'
 CONF_ALERT_SERVICE = 'alert_service'
+CONF_PH_K_FACTOR = 'ph_k_factor'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -67,6 +68,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_NIGHT_MODE_END_HOUR, default=8): cv.int_range(min=0, max=23),
     cv.Optional(CONF_ENHANCED_ERROR_HANDLING, default=False): cv.boolean,
     cv.Optional(CONF_ALERT_SERVICE): cv.use_id(AlertService),
+    cv.Optional(CONF_PH_K_FACTOR, default=0.25): cv.float_range(min=0.01, max=0.50),
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -133,3 +135,6 @@ async def to_code(config):
     if CONF_ALERT_SERVICE in config:
         alert_svc = await cg.get_variable(config[CONF_ALERT_SERVICE])
         cg.add(var.setAlertService(alert_svc))
+
+    # pH K-factor (acid dose aggressiveness)
+    cg.add(var.set_ph_k_factor(config[CONF_PH_K_FACTOR]))

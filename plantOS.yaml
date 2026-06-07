@@ -37,6 +37,11 @@ esphome:
           id(hal)->setPumpPwm("NutrientPumpB", id(pwm_gpio6_slider).state / 100.0f);
           id(hal)->setPumpPwm("NutrientPumpC", id(pwm_gpio7_slider).state / 100.0f);
 
+          // Push EMA K-factor updates to the slider (only fires after a correction cycle, not on manual drag)
+          id(unified_controller)->set_ph_k_update_callback([](float k) {
+              id(ph_k_factor_slider).publish_state(k);
+          });
+
 esp32:
   board: esp32-c6-devkitc-1
   variant: esp32c6
@@ -508,6 +513,14 @@ sensor:
     # With 5 readings: rejects 0.5 from each end (rounds to nearest)
     reject_percentage: 0.10
 
+
+  - platform: template
+    name: "04_16_pH K-Factor (live EMA)"
+    id: ph_k_factor_sensor
+    icon: "mdi:ph"
+    accuracy_decimals: 4
+    update_interval: 30s
+    lambda: 'return id(unified_controller)->get_ph_k_factor();'
 
 ################################################################################
 # Binary Sensors: Water Level Sensors (XKC-Y23-V)
@@ -1522,6 +1535,12 @@ plantos_controller:
                                 # When enabled: duration adaptation, sensor retry with exponential
                                 # backoff, comprehensive 4-part error messages, and RESOLVED state
                                 # tracking. Disable for backward-compatible legacy behavior.
+
+  # pH Dosing K-Factor
+  # dose_ml = (current_pH - 5.85) × tank_L × K
+  # Increase if pH corrections are too small; decrease if overdosing.
+  # The EMA learning will refine this value automatically over time.
+  ph_k_factor: 0.25
 
 # Actuator Safety Gate (Layer 2) - Debouncing, Duration Limits, Soft-Start/Stop
 # See components/actuator_safety_gate/README.md for complete documentation.
@@ -2693,6 +2712,24 @@ number:
           uint8_t day = (uint8_t)x;
           ESP_LOGI("number", "Auto Reservoir Change Day set to: %d (%s)", day, day_names[day]);
           id(unified_controller).setAutoReservoirChangeDay(day);
+
+  # === pH K-Factor ===
+  - platform: template
+    id: ph_k_factor_slider
+    name: "04_15_pH K-Factor (acid dose aggressiveness)"
+    icon: "mdi:ph"
+    min_value: 0.01
+    max_value: 0.50
+    step: 0.005
+    mode: slider
+    optimistic: true
+    initial_value: 0.25
+    restore_value: true
+    set_action:
+      - lambda: 'id(unified_controller)->set_ph_k_factor(x);'
+      - logger.log:
+          format: "pH K-factor set to %.3f (dose = pH_delta x tank_L x K)"
+          args: ['x']
 
   # === 15 - PWM Configuration Sliders ===
   # These sliders ONLY configure the pump duty cycle stored in the HAL pump

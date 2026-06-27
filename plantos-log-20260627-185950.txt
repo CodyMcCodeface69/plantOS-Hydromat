@@ -1515,3 +1515,45 @@
 [19:18:29][D][mqtt:200]: Resolving MQTT broker IP address...
 [19:18:29][D][mqtt:229]: Resolved broker IP address to 178.104.79.122
 [19:18:29][I][mqtt:250]: Connecting to MQTT...
+[19:18:33][I][status.logger:604]: ================================================================================
+[19:18:33][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:18:32
+[19:18:33][I][status.logger:604]: ================================================================================
+[19:18:33][I][status.logger:362]: --- NETWORK ---
+[19:18:33][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:18:33][I][status.logger:367]: --- HARDWARE ---
+[19:18:33][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:18:33][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:18:33][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:18:33][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:18:33][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:18:33][I][status.logger:450]: --- SENSORS ---
+[19:18:33][I][status.logger:452]:   pH: 6.09
+[19:18:33][I][status.logger:457]:   Water Temp: 25.8°C
+[19:18:33][I][status.logger:462]:   EC: 1817 uS/cm / 1.817 mS/cm (TDS: 909 ppm)
+[19:18:33][I][status.logger:468]: --- CALENDAR ---
+[19:18:33][I][status.logger:501]: --- STATE ---
+[19:18:33][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:18:33][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2924 sec)
+[19:18:33][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:18:33][I][status.logger:604]: ================================================================================
+[19:18:33][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:18:33][I][status.logger:638]:   ┌─────────┐
+[19:18:33][I][status.logger:639]:   │█████████│ ← HIGH
+[19:18:33][I][status.logger:640]:   │█████████│
+[19:18:33][I][status.logger:641]:   │█████████│ ← LOW
+[19:18:33][I][status.logger:642]:   │█████████│
+[19:18:33][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:18:33][I][status.logger:644]:   └─────────┘
+[19:18:33][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:18:33][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:18:33][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:39][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:41][I][mqtt:291]: MQTT Connected!
+[19:18:44][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:47][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:53][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:58][D][ezo_ph_uart:219]: pH: 6.09
+[19:19:03][D][ezo_ph_uart:219]: pH: 6.09
+[19:19:09][D][ezo_ph_uart:219]: pH: 6.09
+[19:19:14][D][ezo_ph_uart:219]: pH: 6.09
+[19:19:17][D][ezo_ph_uart:219]: pH: 6.09

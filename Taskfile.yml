@@ -283,6 +283,51 @@ tasks:
         '
         {{end}}
 
+  log:
+    desc: Capture device logs to a timestamped file for a fixed duration. Usage - 'task log' (30 min default) or 'task log DURATION=1800' (seconds).
+    vars:
+      DURATION: '{{.DURATION | default "1800"}}'
+    cmds:
+      - |
+        bash -c '
+          DURATION="{{.DURATION}}"
+          LOGFILE="plantos-log-$(date +%Y%m%d-%H%M%S).txt"
+
+          # Try to find serial devices first, fall back to OTA
+          devices=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null))
+
+          if [ ${#devices[@]} -ge 1 ]; then
+            target=${devices[0]}
+            echo "Using serial device: $target"
+          else
+            echo "No serial devices found. Falling back to OTA..."
+            target="{{.DEVICE_IP}}"
+            if [ -z "$target" ]; then
+              STATIC_IP=$(grep -A 4 "manual_ip:" {{.ENTRY_POINT}} | grep "static_ip:" | sed "s/.*static_ip: *//;s/ *#.*//;s/\"//g" | head -n 1)
+              if [ -n "$STATIC_IP" ]; then
+                target="$STATIC_IP"
+              else
+                target="192.168.0.201"
+              fi
+            fi
+            echo "Using OTA device: $target"
+          fi
+
+          echo ""
+          echo "=============================================="
+          echo "Logging for ${DURATION}s to $LOGFILE"
+          echo "Press Ctrl+C to stop early."
+          echo "=============================================="
+          echo ""
+
+          # Live colored output to terminal; ANSI-stripped clean copy to file
+          timeout "$DURATION" esphome logs {{.ENTRY_POINT}} --device "$target" \
+            | tee >(sed -u "s/\x1b\[[0-9;]*m//g" > "$LOGFILE")
+
+          echo ""
+          echo "Log saved to $LOGFILE"
+        '
+
   push:
     desc: Push updated configuration to github.
     cmds:

@@ -1,0 +1,1105 @@
+[18:59:51][I][app:100]: ESPHome version 2025.4.2 compiled on Jan  1 1980, 00:00:00
+[18:59:51][C][wifi:600]: WiFi:
+[18:59:51][C][wifi:428]:   Local MAC: 40:4C:CA:57:A3:1C
+[18:59:51][C][wifi:433]:   SSID: 'Datenautobahn'
+[18:59:51][C][wifi:436]:   IP Address: 192.168.0.201
+[18:59:51][C][wifi:439]:   BSSID: AA:6E:84:2D:B7:86
+[18:59:51][C][wifi:441]:   Hostname: 'plantos'
+[18:59:51][C][wifi:443]:   Signal strength: -46 dB ▂▄▆█
+[18:59:51][V][wifi:445]:   Priority: 0.0
+[18:59:51][C][wifi:447]:   Channel: 10
+[18:59:51][C][wifi:448]:   Subnet: 255.255.255.0
+[18:59:51][C][wifi:449]:   Gateway: 192.168.0.1
+[18:59:51][C][wifi:450]:   DNS1: 1.1.1.1
+[18:59:51][C][wifi:451]:   DNS2: 192.168.0.1
+[18:59:51][C][logger:177]: Logger:
+[18:59:51][C][logger:178]:   Max Level: VERBOSE
+[18:59:51][C][logger:179]:   Initial Level: DEBUG
+[18:59:51][C][logger:181]:   Log Baud Rate: 115200
+[18:59:51][C][logger:182]:   Hardware UART: USB_SERIAL_JTAG
+[18:59:51][C][logger:186]:   Level for 'adc': NONE
+[18:59:51][C][logger:186]:   Level for 'component': ERROR
+[18:59:51][C][logger:186]:   Level for 'dallas.temp.sensor': WARN
+[18:59:51][C][logger:186]:   Level for 'esp-idf': WARN
+[18:59:51][C][logger:186]:   Level for 'esp32.preferences': WARN
+[18:59:51][C][logger:186]:   Level for 'ezo_ph_uart': DEBUG
+[18:59:51][C][logger:186]:   Level for 'gpio_status': WARN
+[18:59:51][C][logger:186]:   Level for 'http_request': VERBOSE
+[18:59:51][C][logger:186]:   Level for 'ledc.output': WARN
+[18:59:51][C][logger:186]:   Level for 'light': INFO
+[18:59:51][C][logger:186]:   Level for 'plantos_controller': WARN
+[18:59:51][C][logger:186]:   Level for 'plantos_hal': WARN
+[18:59:51][C][logger:186]:   Level for 'sensor': WARN
+[18:59:51][C][logger:186]:   Level for 'sensor_filter': WARN
+[18:59:51][C][logger:186]:   Level for 'shelly_poll': WARN
+[18:59:51][C][logger:186]:   Level for 'tds_sensor': WARN
+[18:59:51][C][logger:186]:   Level for 'template.number': INFO
+[18:59:51][C][logger:186]:   Level for 'text_sensor': WARN
+[18:59:51][C][logger:186]:   Level for 'time': VERBOSE
+[18:59:51][C][logger:186]:   Level for 'wifi': VERBOSE
+[18:59:51][C][i2c.idf:083]: I2C Bus:
+[18:59:51][C][i2c.idf:084]:   SDA Pin: GPIO20
+[18:59:51][C][i2c.idf:085]:   SCL Pin: GPIO21
+[18:59:51][C][i2c.idf:086]:   Frequency: 100000 Hz
+[18:59:51][C][i2c.idf:092]:   Recovery: bus successfully recovered
+[18:59:51][C][uart.idf:159]: UART Bus 0:
+[18:59:51][C][uart.idf:160]:   TX Pin: GPIO18
+[18:59:51][C][uart.idf:161]:   RX Pin: GPIO19
+[18:59:51][C][uart.idf:163]:   RX Buffer Size: 256
+[18:59:51][C][uart.idf:165]:   Baud Rate: 9600 baud
+[18:59:51][C][uart.idf:166]:   Data Bits: 8
+[18:59:51][C][uart.idf:167]:   Parity: NONE
+[18:59:51][C][uart.idf:168]:   Stop bits: 1
+[18:59:51][C][gpio.one_wire:020]: GPIO 1-wire bus:
+[18:59:51][C][gpio.one_wire:021]:   Pin: GPIO3
+[18:59:51][C][gpio.one_wire:080]:   Found devices:
+[18:59:51][C][gpio.one_wire:082]:     0x9a000000bb0c8d28 (DS18B20)
+[18:59:51][C][esp32_rmt_led_strip:250]: ESP32 RMT LED Strip:
+[18:59:51][C][esp32_rmt_led_strip:251]:   Pin: 8
+[18:59:51][C][esp32_rmt_led_strip:253]:   RMT Symbols: 96
+[18:59:51][C][esp32_rmt_led_strip:281]:   RGB Order: RGB
+[18:59:51][C][esp32_rmt_led_strip:282]:   Max refresh rate: 0
+[18:59:51][C][esp32_rmt_led_strip:283]:   Number of LEDs: 1
+[18:59:52][C][template.sensor:022]: Template Sensor '04_16_pH K-Factor (live EMA)'
+[18:59:52][C][template.sensor:022]:   State Class: ''
+[18:59:52][C][template.sensor:022]:   Unit of Measurement: ''
+[18:59:52][C][template.sensor:022]:   Accuracy Decimals: 4
+[18:59:52][C][template.sensor:022]:   Icon: 'mdi:ph'
+[18:59:52][C][template.sensor:023]:   Update Interval: 30.0s
+[18:59:52][C][gpio.binary_sensor:015]: GPIO Binary Sensor '00_07_Water Level HIGH'
+[18:59:52][C][gpio.binary_sensor:016]:   Pin: GPIO17
+[18:59:52][C][gpio.binary_sensor:015]: GPIO Binary Sensor '00_08_Water Level LOW'
+[18:59:52][C][gpio.binary_sensor:016]:   Pin: GPIO23
+[18:59:52][C][gpio.binary_sensor:015]: GPIO Binary Sensor '00_09_Water Level EMPTY'
+[18:59:52][C][gpio.binary_sensor:016]:   Pin: GPIO22
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_01_Controller State'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_01a_Alert State'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_02a_Uptime'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_04_Water Temperature - HAL'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_12_Air Temperature'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_13_Air Humidity'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_14_Air Pressure'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_15_EC (Electrical Conductivity)'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_16_TDS (Water Quality)'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_06_Tank Volume'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_02_Current Time'
+[18:59:52][C][template.text_sensor:020]: Template Sensor '00_03_Current CalMan Grow Day'
+[18:59:53][C][template.switch:068]: Template Switch '01_04_Air Pump Cycling'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:air-purifier'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '02_01_Enable Actuator Safety Gate'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to ON
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '04_11_Auto EC/Feeding Correction'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:flask-plus'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to ON
+[18:59:53][C][template.switch:057]:   Optimistic: NO
+[18:59:53][C][template.switch:068]: Template Switch '02_03_Auto Reservoir Change Enabled'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:calendar-sync'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: NO
+[18:59:53][C][template.switch:068]: Template Switch '04_10_Auto pH Correction'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:flask-outline'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to ON
+[18:59:53][C][template.switch:057]:   Optimistic: NO
+[18:59:53][C][template.switch:068]: Template Switch '04_12_Auto Water Level'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:water-auto'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: NO
+[18:59:53][C][template.switch:068]: Template Switch '10_01_Magnetic Valve'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '10_02_pH Pump'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '10_03_Grow Pump'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '10_04_Micro Pump'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '10_05_Bloom Pump'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '10_06_Air Pump (Shelly Socket 0)'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: NO
+[18:59:53][C][template.switch:068]: Template Switch '10_07_Wastewater Pump (Shelly Socket 2)'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: NO
+[18:59:53][C][template.switch:068]: Template Switch '10_08_Grow Light (Shelly Socket 3)'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: NO
+[18:59:53][C][template.switch:068]: Template Switch '07_03_Enable Continuous pH Reading'
+[18:59:53][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '01_01_Night Mode Enabled'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:weather-night'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to ON
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '01_07_Grow Light Schedule'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:lightbulb-auto'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '11_00_Verbose: ALL (Master Toggle)'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:bug'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '11_01_Verbose: Sensor State Updates'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '11_02_Verbose: Text Sensor Updates'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '11_03_Verbose: EZO pH UART'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:53][C][template.switch:068]: Template Switch '11_04_Verbose: Sensor Filter'
+[18:59:53][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:53][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:53][C][template.switch:057]:   Optimistic: YES
+[18:59:54][C][template.switch:068]: Template Switch '11_05_Verbose: Dallas Temp Sensor'
+[18:59:54][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:54][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:54][C][template.switch:057]:   Optimistic: YES
+[18:59:54][C][template.switch:068]: Template Switch '11_06_Verbose: PlantOS Controller'
+[18:59:54][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:54][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:54][C][template.switch:057]:   Optimistic: YES
+[18:59:54][C][template.switch:068]: Template Switch '11_07_Verbose: GPIO Status'
+[18:59:54][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:55][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '11_08_Verbose: Component Warnings'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:55][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '11_09_Verbose: ESP-IDF Framework'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:55][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '11_10_Enable System Status Reports'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:file-document-outline'
+[18:59:55][C][template.switch:090]:   Restore Mode: restore defaults to ON
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '11_11_Verbose: Time Synchronization'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:55][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '11_12_Verbose: http_request Component'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:55][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '11_12_Verbose: esp32.preferences Component'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:55][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][D][ezo_ph_uart:219]: pH: 6.08
+[18:59:55][C][template.switch:068]: Template Switch '11_13_Verbose: TDS Sensor'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:bug-outline'
+[18:59:55][C][template.switch:090]:   Restore Mode: restore defaults to OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '14_01_Set GPIO1 - Water Valve to HIGH'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:electric-switch'
+[18:59:55][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '14_02_Set GPIO4 - Acid Pump to HIGH'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:electric-switch'
+[18:59:55][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '14_03_Set GPIO5 - Grow to HIGH'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:electric-switch'
+[18:59:55][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '14_04_Set GPIO6 - Micro to HIGH'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:electric-switch'
+[18:59:55][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:55][C][template.switch:057]:   Optimistic: YES
+[18:59:55][C][template.switch:068]: Template Switch '14_05_Set GPIO7 - Bloom to HIGH'
+[18:59:55][C][template.switch:070]:   Icon: 'mdi:electric-switch'
+[18:59:55][C][template.switch:090]:   Restore Mode: always OFF
+[18:59:56][C][template.switch:057]:   Optimistic: YES
+[18:59:56][C][I2CScanner:042]: I²C Scanner:
+[18:59:56][C][I2CScanner:043]:   Address: 0x77
+[18:59:56][C][I2CScanner:044]:   Scan on boot: YES
+[18:59:56][C][I2CScanner:047]:   Scan interval: 60.0 seconds
+[18:59:56][C][I2CScanner:053]:   Critical devices (1):
+[18:59:56][C][I2CScanner:055]:     - 0x76: BME280 Air Sensor
+[18:59:56][C][bme280_i2c.sensor:025]:   Address: 0x76
+[18:59:56][C][bme280.sensor:182]: BME280:
+[18:59:56][C][bme280.sensor:194]:   IIR Filter: OFF
+[18:59:56][C][bme280.sensor:195]:   Update Interval: 60.0s
+[18:59:56][C][bme280.sensor:197]:   Temperature '00_12_Air Temperature - BME280'
+[18:59:56][C][bme280.sensor:197]:     Device Class: 'temperature'
+[18:59:56][C][bme280.sensor:197]:     State Class: 'measurement'
+[18:59:56][C][bme280.sensor:197]:     Unit of Measurement: '°C'
+[18:59:56][C][bme280.sensor:197]:     Accuracy Decimals: 1
+[18:59:56][C][bme280.sensor:198]:     Oversampling: 16x
+[18:59:56][C][bme280.sensor:199]:   Pressure '00_14_Air Pressure - BME280'
+[18:59:56][C][bme280.sensor:199]:     Device Class: 'pressure'
+[18:59:56][C][bme280.sensor:199]:     State Class: 'measurement'
+[18:59:56][C][bme280.sensor:199]:     Unit of Measurement: 'hPa'
+[18:59:56][C][bme280.sensor:199]:     Accuracy Decimals: 1
+[18:59:56][C][bme280.sensor:200]:     Oversampling: 16x
+[18:59:56][C][bme280.sensor:201]:   Humidity '00_13_Air Humidity - BME280'
+[18:59:56][C][bme280.sensor:201]:     Device Class: 'humidity'
+[18:59:56][C][bme280.sensor:201]:     State Class: 'measurement'
+[18:59:56][C][bme280.sensor:201]:     Unit of Measurement: '%'
+[18:59:56][C][bme280.sensor:201]:     Accuracy Decimals: 1
+[18:59:56][C][bme280.sensor:202]:     Oversampling: 16x
+[18:59:56][C][restart.button:017]: Restart Button '03_01_Reboot Device'
+[18:59:56][C][restart.button:017]:   Icon: 'mdi:restart'
+[18:59:56][C][ezo_ph_uart:228]: EZO pH Sensor (UART):
+[18:59:56][C][ezo_ph_uart:229]:   Update Interval: 5.0s
+[18:59:56][C][ezo_ph_uart:230]:   pH '00_05_Nutrient Solution pH'
+[18:59:56][C][ezo_ph_uart:230]:     State Class: ''
+[18:59:56][C][ezo_ph_uart:230]:     Unit of Measurement: 'pH'
+[18:59:56][C][ezo_ph_uart:230]:     Accuracy Decimals: 2
+[18:59:56][C][ezo_ph_uart:230]:     Icon: 'mdi:ph'
+[18:59:56][C][ezo_ph_uart:234]:   Temperature Compensation: Enabled
+[18:59:56][C][web_server:285]: Web Server:
+[18:59:56][C][web_server:286]:   Address: 192.168.0.201:80
+[18:59:56][C][sntp:042]: SNTP Time:
+[18:59:56][C][sntp:045]:   Server 0: '0.pool.ntp.org'
+[18:59:56][C][sntp:045]:   Server 1: '1.pool.ntp.org'
+[18:59:56][C][sntp:045]:   Server 2: '2.pool.ntp.org'
+[18:59:56][C][mdns:116]: mDNS:
+[18:59:56][C][mdns:117]:   Hostname: plantos
+[18:59:56][C][esphome.ota:073]: Over-The-Air updates:
+[18:59:56][C][esphome.ota:074]:   Address: 192.168.0.201:3232
+[18:59:56][C][esphome.ota:075]:   Version: 2
+[18:59:56][C][safe_mode:018]: Safe Mode:
+[18:59:56][C][safe_mode:019]:   Boot considered successful after 60 seconds
+[18:59:56][C][safe_mode:021]:   Invoke after 10 boot attempts
+[18:59:56][C][safe_mode:022]:   Remain in safe mode for 300 seconds
+[18:59:56][C][api:140]: API Server:
+[18:59:56][C][api:141]:   Address: 192.168.0.201:6053
+[18:59:56][C][api:145]:   Using noise encryption: NO
+[18:59:56][C][mqtt:148]: MQTT:
+[18:59:56][C][mqtt:149]:   Server Address: mqtt.kelsocorner.de:8883 (178.104.79.122)
+[18:59:56][C][mqtt:151]:   Username: 'plantos'
+[18:59:56][C][mqtt:152]:   Client ID: 'plantos-404cca57a31c'
+[18:59:56][C][mqtt:153]:   Clean Session: NO
+[18:59:56][C][mqtt:155]:   Discovery IP enabled
+[18:59:56][C][mqtt:161]:   Topic Prefix: 'plantos'
+[18:59:56][C][mqtt:163]:   Log Topic: 'plantos/debug'
+[18:59:56][C][mqtt:166]:   Availability: 'plantos/status'
+[18:59:56][C][http_request:013]: HTTP Request:
+[18:59:56][C][http_request:014]:   Timeout: 5000ms
+[18:59:56][C][http_request:015]:   User-Agent: esphome/plantOS
+[18:59:56][C][http_request:016]:   Follow redirects: YES
+[18:59:56][C][http_request:017]:   Redirect limit: 3
+[18:59:56][C][http_request.idf:024]:   Buffer Size RX: 512
+[18:59:56][C][http_request.idf:025]:   Buffer Size TX: 512
+[18:59:56][C][mqtt.light:078]: MQTT Light 'Built-in LED':
+[18:59:56][C][mqtt.light:079]:   State Topic: 'plantos/light/built-in_led/state'
+[18:59:56][C][mqtt.light:079]:   Command Topic: 'plantos/light/built-in_led/command'
+[18:59:56][C][mqtt.sensor:028]: MQTT Sensor 'Water Temperature - DS18B20':
+[18:59:56][C][mqtt.sensor:032]:   State Topic: 'plantos/sensor/water_temperature_-_ds18b20/state'
+[18:59:56][C][mqtt.sensor:028]: MQTT Sensor '00_12_Air Temperature - BME280':
+[18:59:56][C][mqtt.sensor:032]:   State Topic: 'plantos/sensor/00_12_air_temperature_-_bme280/state'
+[18:59:56][C][mqtt.sensor:028]: MQTT Sensor '00_14_Air Pressure - BME280':
+[18:59:56][C][mqtt.sensor:032]:   State Topic: 'plantos/sensor/00_14_air_pressure_-_bme280/state'
+[18:59:56][C][mqtt.sensor:028]: MQTT Sensor '00_13_Air Humidity - BME280':
+[18:59:56][C][mqtt.sensor:032]:   State Topic: 'plantos/sensor/00_13_air_humidity_-_bme280/state'
+[18:59:56][C][mqtt.sensor:028]: MQTT Sensor '00_15_EC (Electrical Conductivity)':
+[18:59:56][C][mqtt.sensor:032]:   State Topic: 'plantos/sensor/00_15_ec__electrical_conductivity_/state'
+[18:59:56][C][mqtt.sensor:028]: MQTT Sensor '00_05a_Filtered Sensor pH':
+[18:59:56][C][mqtt.sensor:032]:   State Topic: 'plantos/sensor/00_05a_filtered_sensor_ph/state'
+[18:59:57][C][mqtt.sensor:028]: MQTT Sensor '04_16_pH K-Factor (live EMA)':
+[18:59:57][C][mqtt.sensor:032]:   State Topic: 'plantos/sensor/04_16_ph_k-factor__live_ema_/state'
+[18:59:57][C][mqtt.binary_sensor:022]: MQTT Binary Sensor '00_07_Water Level HIGH':
+[18:59:57][C][mqtt.binary_sensor:023]:   State Topic: 'plantos/binary_sensor/00_07_water_level_high/state'
+[18:59:57][C][mqtt.binary_sensor:022]: MQTT Binary Sensor '00_08_Water Level LOW':
+[18:59:57][C][mqtt.binary_sensor:023]:   State Topic: 'plantos/binary_sensor/00_08_water_level_low/state'
+[18:59:57][C][mqtt.binary_sensor:022]: MQTT Binary Sensor '00_09_Water Level EMPTY':
+[18:59:57][C][mqtt.binary_sensor:023]:   State Topic: 'plantos/binary_sensor/00_09_water_level_empty/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_01_Controller State':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_01_controller_state/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_01a_Alert State':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_01a_alert_state/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_02a_Uptime':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_02a_uptime/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_04_Water Temperature - HAL':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_04_water_temperature_-_hal/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_12_Air Temperature':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_12_air_temperature/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_13_Air Humidity':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_13_air_humidity/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_14_Air Pressure':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_14_air_pressure/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_15_EC (Electrical Conductivity)':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_15_ec__electrical_conductivity_/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_16_TDS (Water Quality)':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_16_tds__water_quality_/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_06_Tank Volume':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_06_tank_volume/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_02_Current Time':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_02_current_time/state'
+[18:59:57][C][mqtt.text_sensor:027]: MQTT Text Sensor '00_03_Current CalMan Grow Day':
+[18:59:57][C][mqtt.text_sensor:028]:   State Topic: 'plantos/sensor/00_03_current_calman_grow_day/state'
+[18:59:57][C][mqtt.button:029]: MQTT Button '03_01_Reboot Device': 
+[18:59:57][C][mqtt.button:030]:   State Topic: 'plantos/button/03_01_reboot_device/state'
+[18:59:57][C][mqtt.button:030]:   Command Topic: 'plantos/button/03_01_reboot_device/command'
+[18:59:57][C][mqtt.button:029]: MQTT Button '03_02_Reconnect WiFi': 
+[18:59:57][C][mqtt.button:030]:   State Topic: 'plantos/button/03_02_reconnect_wifi/state'
+[18:59:57][C][mqtt.button:030]:   Command Topic: 'plantos/button/03_02_reconnect_wifi/command'
+[18:59:57][C][mqtt.button:029]: MQTT Button '03_03_Wifi Scan': 
+[18:59:57][C][mqtt.button:030]:   State Topic: 'plantos/button/03_03_wifi_scan/state'
+[18:59:57][C][mqtt.button:030]:   Command Topic: 'plantos/button/03_03_wifi_scan/command'
+[18:59:57][C][mqtt.button:029]: MQTT Button '06_01_Force NTP Sync': 
+[18:59:57][C][mqtt.button:030]:   State Topic: 'plantos/button/06_01_force_ntp_sync/state'
+[18:59:57][C][mqtt.button:030]:   Command Topic: 'plantos/button/06_01_force_ntp_sync/command'
+[18:59:57][C][mqtt.sensor:028]: MQTT Sensor '00_05_Nutrient Solution pH':
+[18:59:57][C][mqtt.sensor:032]:   State Topic: 'plantos/sensor/00_05_nutrient_solution_ph/state'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '01_04_Air Pump Cycling': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/01_04_air_pump_cycling/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/01_04_air_pump_cycling/command'
+[18:59:57][I][actuator.safety:141]: APPROVED: NutrientPumpC OFF (ran for 14 seconds)
+[18:59:57][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpC, OFF)
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '02_01_Enable Actuator Safety Gate': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/02_01_enable_actuator_safety_gate/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/02_01_enable_actuator_safety_gate/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '04_11_Auto EC/Feeding Correction': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/04_11_auto_ec_feeding_correction/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/04_11_auto_ec_feeding_correction/command'
+[18:59:57][I][led_behavior:204]: LED: Blue Pulse (EC Mixing)
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '02_03_Auto Reservoir Change Enabled': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/02_03_auto_reservoir_change_enabled/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/02_03_auto_reservoir_change_enabled/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '04_10_Auto pH Correction': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/04_10_auto_ph_correction/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/04_10_auto_ph_correction/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '04_12_Auto Water Level': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/04_12_auto_water_level/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/04_12_auto_water_level/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '10_01_Magnetic Valve': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/10_01_magnetic_valve/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/10_01_magnetic_valve/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '10_02_pH Pump': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/10_02_ph_pump/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/10_02_ph_pump/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '10_03_Grow Pump': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/10_03_grow_pump/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/10_03_grow_pump/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '10_04_Micro Pump': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/10_04_micro_pump/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/10_04_micro_pump/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '10_05_Bloom Pump': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/10_05_bloom_pump/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/10_05_bloom_pump/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '10_06_Air Pump (Shelly Socket 0)': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/10_06_air_pump__shelly_socket_0_/state'
+[18:59:57][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/10_06_air_pump__shelly_socket_0_/command'
+[18:59:57][C][mqtt.switch:041]: MQTT Switch '10_07_Wastewater Pump (Shelly Socket 2)': 
+[18:59:57][C][mqtt.switch:042]:   State Topic: 'plantos/switch/10_07_wastewater_pump__shelly_socket_2_/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/10_07_wastewater_pump__shelly_socket_2_/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '10_08_Grow Light (Shelly Socket 3)': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/10_08_grow_light__shelly_socket_3_/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/10_08_grow_light__shelly_socket_3_/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '07_03_Enable Continuous pH Reading': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/07_03_enable_continuous_ph_reading/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/07_03_enable_continuous_ph_reading/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '01_01_Night Mode Enabled': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/01_01_night_mode_enabled/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/01_01_night_mode_enabled/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '01_07_Grow Light Schedule': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/01_07_grow_light_schedule/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/01_07_grow_light_schedule/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_00_Verbose: ALL (Master Toggle)': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_00_verbose__all__master_toggle_/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_00_verbose__all__master_toggle_/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_01_Verbose: Sensor State Updates': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_01_verbose__sensor_state_updates/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_01_verbose__sensor_state_updates/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_02_Verbose: Text Sensor Updates': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_02_verbose__text_sensor_updates/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_02_verbose__text_sensor_updates/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_03_Verbose: EZO pH UART': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_03_verbose__ezo_ph_uart/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_03_verbose__ezo_ph_uart/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_04_Verbose: Sensor Filter': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_04_verbose__sensor_filter/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_04_verbose__sensor_filter/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_05_Verbose: Dallas Temp Sensor': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_05_verbose__dallas_temp_sensor/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_05_verbose__dallas_temp_sensor/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_06_Verbose: PlantOS Controller': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_06_verbose__plantos_controller/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_06_verbose__plantos_controller/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_07_Verbose: GPIO Status': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_07_verbose__gpio_status/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_07_verbose__gpio_status/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_08_Verbose: Component Warnings': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_08_verbose__component_warnings/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_08_verbose__component_warnings/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_09_Verbose: ESP-IDF Framework': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_09_verbose__esp-idf_framework/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_09_verbose__esp-idf_framework/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_10_Enable System Status Reports': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_10_enable_system_status_reports/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_10_enable_system_status_reports/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_11_Verbose: Time Synchronization': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_11_verbose__time_synchronization/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_11_verbose__time_synchronization/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_12_Verbose: http_request Component': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_12_verbose__http_request_component/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_12_verbose__http_request_component/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_12_Verbose: esp32.preferences Component': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_12_verbose__esp32_preferences_component/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_12_verbose__esp32_preferences_component/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '11_13_Verbose: TDS Sensor': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/11_13_verbose__tds_sensor/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/11_13_verbose__tds_sensor/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '14_01_Set GPIO1 - Water Valve to HIGH': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/14_01_set_gpio1_-_water_valve_to_high/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/14_01_set_gpio1_-_water_valve_to_high/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '14_02_Set GPIO4 - Acid Pump to HIGH': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/14_02_set_gpio4_-_acid_pump_to_high/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/14_02_set_gpio4_-_acid_pump_to_high/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '14_03_Set GPIO5 - Grow to HIGH': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/14_03_set_gpio5_-_grow_to_high/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/14_03_set_gpio5_-_grow_to_high/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '14_04_Set GPIO6 - Micro to HIGH': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/14_04_set_gpio6_-_micro_to_high/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/14_04_set_gpio6_-_micro_to_high/command'
+[18:59:58][C][mqtt.switch:041]: MQTT Switch '14_05_Set GPIO7 - Bloom to HIGH': 
+[18:59:58][C][mqtt.switch:042]:   State Topic: 'plantos/switch/14_05_set_gpio7_-_bloom_to_high/state'
+[18:59:58][C][mqtt.switch:042]:   Command Topic: 'plantos/switch/14_05_set_gpio7_-_bloom_to_high/command'
+[18:59:58][C][mqtt.number:033]: MQTT Number '04_14_EC Target Multiplier (0.1x – 2.0x)':
+[18:59:58][C][mqtt.number:034]:   State Topic: 'plantos/number/04_14_ec_target_multiplier__0_1x_____2_0x_/state'
+[18:59:58][C][mqtt.number:033]: MQTT Number '07_20_EC Calibration Target (uS/cm)':
+[18:59:58][C][mqtt.number:034]:   State Topic: 'plantos/number/07_20_ec_calibration_target__us_cm_/state'
+[18:59:58][C][mqtt.number:033]: MQTT Number '01_02_Night Mode Start Hour':
+[18:59:58][C][mqtt.number:034]:   State Topic: 'plantos/number/01_02_night_mode_start_hour/state'
+[18:59:58][C][mqtt.number:033]: MQTT Number '01_03_Night Mode End Hour':
+[18:59:58][C][mqtt.number:034]:   State Topic: 'plantos/number/01_03_night_mode_end_hour/state'
+[18:59:58][C][mqtt.number:033]: MQTT Number '02_04_Auto Reservoir Change Day':
+[18:59:58][C][mqtt.number:034]:   State Topic: 'plantos/number/02_04_auto_reservoir_change_day/state'
+[18:59:58][C][mqtt.number:033]: MQTT Number '04_15_pH K-Factor (acid dose aggressiveness)':
+[18:59:58][C][mqtt.number:034]:   State Topic: 'plantos/number/04_15_ph_k-factor__acid_dose_aggressiveness_/state'
+[18:59:58][C][mqtt.number:033]: MQTT Number '04_17_Mother Mix Volume (L)':
+[18:59:58][C][mqtt.number:034]:   State Topic: 'plantos/number/04_17_mother_mix_volume__l_/state'
+[18:59:58][C][mqtt.number:033]: MQTT Number '15_02_GPIO4 - Acid Pump PWM':
+[18:59:58][C][mqtt.number:034]:   State Topic: 'plantos/number/15_02_gpio4_-_acid_pump_pwm/state'
+[18:59:58][C][mqtt.number:033]: MQTT Number '15_03_GPIO5 - Grow PWM':
+[18:59:59][C][mqtt.number:034]:   State Topic: 'plantos/number/15_03_gpio5_-_grow_pwm/state'
+[18:59:59][C][mqtt.number:033]: MQTT Number '15_04_GPIO6 - Micro PWM':
+[18:59:59][C][mqtt.number:034]:   State Topic: 'plantos/number/15_04_gpio6_-_micro_pwm/state'
+[18:59:59][C][mqtt.number:033]: MQTT Number '15_05_GPIO7 - Bloom PWM':
+[18:59:59][C][mqtt.number:034]:   State Topic: 'plantos/number/15_05_gpio7_-_bloom_pwm/state'
+[18:59:59][C][mqtt.number:033]: MQTT Number '01_05_Air Pump ON Period (seconds)':
+[18:59:59][C][mqtt.number:034]:   State Topic: 'plantos/number/01_05_air_pump_on_period__seconds_/state'
+[18:59:59][C][mqtt.number:033]: MQTT Number '01_06_Air Pump OFF Period (seconds)':
+[18:59:59][C][mqtt.number:034]:   State Topic: 'plantos/number/01_06_air_pump_off_period__seconds_/state'
+[18:59:59][C][mqtt.button:029]: MQTT Button '04_04_Set to INIT': 
+[18:59:59][C][mqtt.button:030]:   State Topic: 'plantos/button/04_04_set_to_init/state'
+[18:59:59][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_04_set_to_init/command'
+[18:59:59][C][mqtt.button:029]: MQTT Button '04_05_Add Nutrients (FEEDING)': 
+[18:59:59][C][mqtt.button:030]:   State Topic: 'plantos/button/04_05_add_nutrients__feeding_/state'
+[18:59:59][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_05_add_nutrients__feeding_/command'
+[18:59:59][C][mqtt.button:029]: MQTT Button '04_06_Fill Tank (WATER_FILLING → pH)': 
+[18:59:59][C][mqtt.button:030]:   State Topic: 'plantos/button/04_06_fill_tank__water_filling_____ph_/state'
+[18:59:59][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_06_fill_tank__water_filling_____ph_/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_07_Empty Tank (WATER_EMPTYING)': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_07_empty_tank__water_emptying_/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_07_empty_tank__water_emptying_/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_08_Feed (FEED_FILLING → FEEDING → pH)': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_08_feed__feed_filling_____feeding_____ph_/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_08_feed__feed_filling_____feeding_____ph_/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_09_Reservoir Change (WATER_EMPTYING → FEED_FILLING → FEEDING → pH)': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_09_reservoir_change__water_emptying_____feed_filling_____feeding_____ph_/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_09_reservoir_change__water_emptying_____feed_filling_____feeding_____ph_/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_01_Set to SHUTDOWN (All Actuators OFF, Cal OFF)': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_01_set_to_shutdown__all_actuators_off__cal_off_/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_01_set_to_shutdown__all_actuators_off__cal_off_/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_02_Set to PAUSE (Actuators ON, Cal OFF)': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_02_set_to_pause__actuators_on__cal_off_/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_02_set_to_pause__actuators_on__cal_off_/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_03_Set to IDLE': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_03_set_to_idle/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_03_set_to_idle/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_12_EC Correction (EC_PROCESSING → EC_FEEDING → pH)': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_12_ec_correction__ec_processing_____ec_feeding_____ph_/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_12_ec_correction__ec_processing_____ec_feeding_____ph_/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_13_Emergency Stop (alle Pumpen AUS → SHUTDOWN)': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_13_emergency_stop__alle_pumpen_aus_____shutdown_/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_13_emergency_stop__alle_pumpen_aus_____shutdown_/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '04_18_Mother Plant Nutrients': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/04_18_mother_plant_nutrients/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/04_18_mother_plant_nutrients/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '05_01_Clear PSM Alerts': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/05_01_clear_psm_alerts/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/05_01_clear_psm_alerts/command'
+[19:00:00][C][mqtt.button:029]: MQTT Button '07_01_Start pH Calibration': 
+[19:00:00][C][mqtt.button:030]:   State Topic: 'plantos/button/07_01_start_ph_calibration/state'
+[19:00:00][C][mqtt.button:030]:   Command Topic: 'plantos/button/07_01_start_ph_calibration/command'
+[19:00:01][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:01][C][mqtt.button:029]: MQTT Button '07_02_Start pH Correction': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/07_02_start_ph_correction/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/07_02_start_ph_correction/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '07_07_Temperature Compensation (Auto)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/07_07_temperature_compensation__auto_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/07_07_temperature_compensation__auto_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '07_08_Temperature Compensation (Manual)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/07_08_temperature_compensation__manual_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/07_08_temperature_compensation__manual_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '07_09_Check pH Calibration Status': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/07_09_check_ph_calibration_status/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/07_09_check_ph_calibration_status/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '07_20_Start EC Calibration': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/07_20_start_ec_calibration/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/07_20_start_ec_calibration/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '07_21_Reset EC Calibration (factor=1.0)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/07_21_reset_ec_calibration__factor_1_0_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/07_21_reset_ec_calibration__factor_1_0_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '12_01_Test Magnetic Valve (3s)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/12_01_test_magnetic_valve__3s_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/12_01_test_magnetic_valve__3s_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '12_02_Test pH Pump (10s)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/12_02_test_ph_pump__10s_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/12_02_test_ph_pump__10s_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '12_03_Test Grow Pump (10s)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/12_03_test_grow_pump__10s_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/12_03_test_grow_pump__10s_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '12_04_Test Micro Pump (10s)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/12_04_test_micro_pump__10s_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/12_04_test_micro_pump__10s_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '12_05_Test Bloom Pump (10s)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/12_05_test_bloom_pump__10s_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/12_05_test_bloom_pump__10s_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '13_01_Test Grow Pump (2cl = 20mL)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/13_01_test_grow_pump__2cl___20ml_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/13_01_test_grow_pump__2cl___20ml_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '13_02_Test pH Pump (2cl = 20mL)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/13_02_test_ph_pump__2cl___20ml_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/13_02_test_ph_pump__2cl___20ml_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '13_03_Test Micro Pump (2cl = 20mL)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/13_03_test_micro_pump__2cl___20ml_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/13_03_test_micro_pump__2cl___20ml_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '13_04_Test Bloom Pump (2cl = 20mL)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/13_04_test_bloom_pump__2cl___20ml_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/13_04_test_bloom_pump__2cl___20ml_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '12_06_Test Air Pump (Shelly Socket 0)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/12_06_test_air_pump__shelly_socket_0_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/12_06_test_air_pump__shelly_socket_0_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '12_07_Test Wastewater Pump (Shelly Socket 2)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/12_07_test_wastewater_pump__shelly_socket_2_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/12_07_test_wastewater_pump__shelly_socket_2_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '12_08_Test Grow Light (Shelly Socket 3)': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/12_08_test_grow_light__shelly_socket_3_/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/12_08_test_grow_light__shelly_socket_3_/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '06_09_Calendar Day +1': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/06_09_calendar_day__1/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/06_09_calendar_day__1/command'
+[19:00:01][C][mqtt.button:029]: MQTT Button '06_10_Calendar Day -1': 
+[19:00:01][C][mqtt.button:030]:   State Topic: 'plantos/button/06_10_calendar_day_-1/state'
+[19:00:01][C][mqtt.button:030]:   Command Topic: 'plantos/button/06_10_calendar_day_-1/command'
+[19:00:06][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:09][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:15][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:20][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:25][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:31][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:31][I][status.logger:604]: ================================================================================
+[19:00:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:00:29
+[19:00:31][I][status.logger:604]: ================================================================================
+[19:00:31][I][status.logger:362]: --- NETWORK ---
+[19:00:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:00:31][I][status.logger:367]: --- HARDWARE ---
+[19:00:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:00:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:00:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.6°C
+[19:00:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:00:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:00:31][I][status.logger:450]: --- SENSORS ---
+[19:00:31][I][status.logger:452]:   pH: 6.08
+[19:00:31][I][status.logger:457]:   Water Temp: 25.6°C
+[19:00:31][I][status.logger:462]:   EC: 1607 uS/cm / 1.607 mS/cm (TDS: 804 ppm)
+[19:00:31][I][status.logger:468]: --- CALENDAR ---
+[19:00:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:00:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:00:31][I][status.logger:501]: --- STATE ---
+[19:00:31][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:00:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 1842 sec)
+[19:00:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:00:31][I][status.logger:604]: ================================================================================
+[19:00:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:00:31][I][status.logger:638]:   ┌─────────┐
+[19:00:31][I][status.logger:640]:   │█████████│
+[19:00:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:00:31][I][status.logger:642]:   │█████████│
+[19:00:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:00:31][I][status.logger:644]:   └─────────┘
+[19:00:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:00:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:00:36][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:41][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:45][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:50][D][ezo_ph_uart:219]: pH: 6.08
+[19:00:55][D][ezo_ph_uart:219]: pH: 6.08
+[19:01:01][D][ezo_ph_uart:219]: pH: 6.08
+[19:01:06][D][ezo_ph_uart:219]: pH: 6.08
+[19:01:11][D][ezo_ph_uart:219]: pH: 6.08
+[19:01:15][D][ezo_ph_uart:219]: pH: 6.08
+[19:01:20][D][ezo_ph_uart:219]: pH: 6.07
+[19:01:25][D][ezo_ph_uart:219]: pH: 6.07
+[19:01:31][D][ezo_ph_uart:219]: pH: 6.07
+[19:01:31][I][status.logger:604]: ================================================================================
+[19:01:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:01:29
+[19:01:31][I][status.logger:604]: ================================================================================
+[19:01:31][I][status.logger:362]: --- NETWORK ---
+[19:01:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:01:31][I][status.logger:367]: --- HARDWARE ---
+[19:01:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:01:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:01:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.7°C
+[19:01:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:01:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:01:31][I][status.logger:450]: --- SENSORS ---
+[19:01:31][I][status.logger:452]:   pH: 6.07
+[19:01:31][I][status.logger:457]:   Water Temp: 25.7°C
+[19:01:31][I][status.logger:462]:   EC: 1645 uS/cm / 1.645 mS/cm (TDS: 823 ppm)
+[19:01:31][I][status.logger:468]: --- CALENDAR ---
+[19:01:31][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:01:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:01:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:01:31][I][status.logger:501]: --- STATE ---
+[19:01:31][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:01:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 1902 sec)
+[19:01:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:01:31][I][status.logger:604]: ================================================================================
+[19:01:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:01:31][I][status.logger:638]:   ┌─────────┐
+[19:01:31][I][status.logger:639]:   │█████████│ ← HIGH
+[19:01:31][I][status.logger:640]:   │█████████│
+[19:01:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:01:31][I][status.logger:642]:   │█████████│
+[19:01:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:01:31][I][status.logger:644]:   └─────────┘
+[19:01:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:01:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:01:35][D][switch:012]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning ON.
+[19:01:35][D][main:2867]: DIRECT GPIO4 (Acid Pump) -> HIGH (bypassing all safety!)
+[19:01:35][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state ON
+[19:01:36][D][ezo_ph_uart:219]: pH: 6.07
+[19:01:37][D][switch:016]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning OFF.
+[19:01:37][D][main:2861]: DIRECT GPIO4 (Acid Pump) -> LOW
+[19:01:37][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state OFF
+[19:01:41][D][ezo_ph_uart:219]: pH: 6.07
+[19:01:45][D][ezo_ph_uart:219]: pH: 6.07
+[19:01:50][D][ezo_ph_uart:219]: pH: 6.07
+[19:01:55][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:01][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:06][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:12][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:15][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:15][D][switch:012]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning ON.
+[19:02:15][D][main:2867]: DIRECT GPIO4 (Acid Pump) -> HIGH (bypassing all safety!)
+[19:02:15][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state ON
+[19:02:17][D][switch:016]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning OFF.
+[19:02:17][D][main:2861]: DIRECT GPIO4 (Acid Pump) -> LOW
+[19:02:17][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state OFF
+[19:02:20][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:25][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:31][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:31][I][status.logger:604]: ================================================================================
+[19:02:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:02:30
+[19:02:31][I][status.logger:604]: ================================================================================
+[19:02:31][I][status.logger:362]: --- NETWORK ---
+[19:02:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:02:31][I][status.logger:367]: --- HARDWARE ---
+[19:02:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:02:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:02:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.7°C
+[19:02:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:02:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:02:31][I][status.logger:450]: --- SENSORS ---
+[19:02:31][I][status.logger:452]:   pH: 6.07
+[19:02:31][I][status.logger:457]:   Water Temp: 25.7°C
+[19:02:31][I][status.logger:462]:   EC: 1644 uS/cm / 1.644 mS/cm (TDS: 822 ppm)
+[19:02:31][I][status.logger:468]: --- CALENDAR ---
+[19:02:31][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:02:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:02:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:02:31][I][status.logger:501]: --- STATE ---
+[19:02:31][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:02:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 1963 sec)
+[19:02:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:02:31][I][status.logger:604]: ================================================================================
+[19:02:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:02:31][I][status.logger:638]:   ┌─────────┐
+[19:02:31][I][status.logger:639]:   │█████████│ ← HIGH
+[19:02:31][I][status.logger:640]:   │█████████│
+[19:02:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:02:31][I][status.logger:642]:   │█████████│
+[19:02:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:02:31][I][status.logger:644]:   └─────────┘
+[19:02:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:02:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:02:32][D][switch:012]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning ON.
+[19:02:32][D][main:2867]: DIRECT GPIO4 (Acid Pump) -> HIGH (bypassing all safety!)
+[19:02:32][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state ON
+[19:02:36][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:42][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:44][D][switch:016]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning OFF.
+[19:02:44][D][main:2861]: DIRECT GPIO4 (Acid Pump) -> LOW
+[19:02:44][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state OFF
+[19:02:45][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:50][D][ezo_ph_uart:219]: pH: 6.07
+[19:02:56][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:01][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:06][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:12][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:15][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:20][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:23][D][switch:012]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning ON.
+[19:03:23][D][main:2867]: DIRECT GPIO4 (Acid Pump) -> HIGH (bypassing all safety!)
+[19:03:24][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state ON
+[19:03:25][D][switch:016]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning OFF.
+[19:03:25][D][main:2861]: DIRECT GPIO4 (Acid Pump) -> LOW
+[19:03:25][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state OFF
+[19:03:26][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:31][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:31][I][status.logger:604]: ================================================================================
+[19:03:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:03:30
+[19:03:31][I][status.logger:604]: ================================================================================
+[19:03:31][I][status.logger:362]: --- NETWORK ---
+[19:03:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:03:31][I][status.logger:367]: --- HARDWARE ---
+[19:03:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:03:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:03:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.7°C
+[19:03:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:03:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:03:31][I][status.logger:450]: --- SENSORS ---
+[19:03:31][I][status.logger:452]:   pH: 6.07
+[19:03:31][I][status.logger:457]:   Water Temp: 25.7°C
+[19:03:31][I][status.logger:462]:   EC: 1644 uS/cm / 1.644 mS/cm (TDS: 822 ppm)
+[19:03:31][I][status.logger:468]: --- CALENDAR ---
+[19:03:31][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:03:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:03:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:03:31][I][status.logger:501]: --- STATE ---
+[19:03:31][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:03:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2023 sec)
+[19:03:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:03:31][I][status.logger:604]: ================================================================================
+[19:03:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:03:31][I][status.logger:638]:   ┌─────────┐
+[19:03:31][I][status.logger:639]:   │█████████│ ← HIGH
+[19:03:31][I][status.logger:640]:   │█████████│
+[19:03:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:03:31][I][status.logger:642]:   │█████████│
+[19:03:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:03:31][I][status.logger:644]:   └─────────┘
+[19:03:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:03:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:03:33][D][switch:012]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning ON.
+[19:03:33][D][main:2867]: DIRECT GPIO4 (Acid Pump) -> HIGH (bypassing all safety!)
+[19:03:33][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state ON
+[19:03:35][D][switch:016]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning OFF.
+[19:03:35][D][main:2861]: DIRECT GPIO4 (Acid Pump) -> LOW
+[19:03:35][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state OFF
+[19:03:36][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:42][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:45][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:50][D][ezo_ph_uart:219]: pH: 6.07
+[19:03:56][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:01][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:06][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:12][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:15][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:15][D][switch:012]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning ON.
+[19:04:15][D][main:2867]: DIRECT GPIO4 (Acid Pump) -> HIGH (bypassing all safety!)
+[19:04:15][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state ON
+[19:04:16][D][switch:016]: '14_02_Set GPIO4 - Acid Pump to HIGH' Turning OFF.
+[19:04:16][D][main:2861]: DIRECT GPIO4 (Acid Pump) -> LOW
+[19:04:16][D][switch:055]: '14_02_Set GPIO4 - Acid Pump to HIGH': Sending state OFF
+[19:04:20][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:26][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:31][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:31][I][status.logger:604]: ================================================================================
+[19:04:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:04:30
+[19:04:31][I][status.logger:604]: ================================================================================
+[19:04:31][I][status.logger:362]: --- NETWORK ---
+[19:04:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:04:31][I][status.logger:367]: --- HARDWARE ---
+[19:04:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:04:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:04:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.7°C
+[19:04:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:04:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:04:31][I][status.logger:450]: --- SENSORS ---
+[19:04:31][I][status.logger:452]:   pH: 6.07
+[19:04:31][I][status.logger:457]:   Water Temp: 25.7°C
+[19:04:31][I][status.logger:462]:   EC: 1645 uS/cm / 1.645 mS/cm (TDS: 823 ppm)
+[19:04:31][I][status.logger:468]: --- CALENDAR ---
+[19:04:31][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:04:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:04:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:04:31][I][status.logger:501]: --- STATE ---
+[19:04:31][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:04:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2083 sec)
+[19:04:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:04:31][I][status.logger:604]: ================================================================================
+[19:04:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:04:31][I][status.logger:638]:   ┌─────────┐
+[19:04:31][I][status.logger:639]:   │█████████│ ← HIGH
+[19:04:31][I][status.logger:640]:   │█████████│
+[19:04:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:04:31][I][status.logger:642]:   │█████████│
+[19:04:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:04:31][I][status.logger:644]:   └─────────┘
+[19:04:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:04:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:04:36][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:42][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:45][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:50][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:56][D][ezo_ph_uart:219]: pH: 6.07
+[19:04:57][I][led_behavior:209]: LED: Yellow Pulse (EC Measuring)
+[19:05:01][D][ezo_ph_uart:219]: pH: 6.07
+[19:05:06][D][ezo_ph_uart:219]: pH: 6.08
+[19:05:12][D][ezo_ph_uart:219]: pH: 6.08
+[19:05:15][D][ezo_ph_uart:219]: pH: 6.08
+[19:05:20][D][ezo_ph_uart:219]: pH: 6.08
+[19:05:26][D][ezo_ph_uart:219]: pH: 6.08
+[19:05:27][D][psm:271]: Float saved to NVS: EcKv2 = 0.0004
+[19:05:27][I][led_behavior:199]: LED: Orange Pulse (EC Feeding)
+[19:05:27][I][actuator.safety:817]: APPROVED: NutrientPumpA ON (max duration: 3 seconds)
+[19:05:27][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpA, ON)
+[19:05:30][I][actuator.safety:141]: APPROVED: NutrientPumpA OFF (ran for 3 seconds)
+[19:05:30][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpA, OFF)
+[19:05:30][I][actuator.safety:817]: APPROVED: NutrientPumpB ON (max duration: 10 seconds)
+[19:05:30][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpB, ON)
+[19:05:31][D][ezo_ph_uart:219]: pH: 6.09
+[19:05:31][I][status.logger:604]: ================================================================================
+[19:05:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:05:30
+[19:05:31][I][status.logger:604]: ================================================================================
+[19:05:31][I][status.logger:362]: --- NETWORK ---
+[19:05:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:05:31][I][status.logger:367]: --- HARDWARE ---
+[19:05:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:05:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:05:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.7°C
+[19:05:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:05:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:05:31][I][status.logger:450]: --- SENSORS ---
+[19:05:31][I][status.logger:452]:   pH: 6.08
+[19:05:31][I][status.logger:457]:   Water Temp: 25.7°C
+[19:05:31][I][status.logger:462]:   EC: 1708 uS/cm / 1.708 mS/cm (TDS: 854 ppm)
+[19:05:31][I][status.logger:468]: --- CALENDAR ---
+[19:05:31][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:05:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:05:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:05:31][I][status.logger:501]: --- STATE ---
+[19:05:31][I][status.logger:502]:   Controller: EC_FEEDING | Maintenance: OFF
+[19:05:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2143 sec)
+[19:05:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:05:31][I][status.logger:604]: ================================================================================
+[19:05:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:05:31][I][status.logger:638]:   ┌─────────┐
+[19:05:31][I][status.logger:639]:   │█████████│ ← HIGH
+[19:05:31][I][status.logger:640]:   │█████████│
+[19:05:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:05:31][I][status.logger:642]:   │█████████│
+[19:05:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:05:31][I][status.logger:644]:   └─────────┘
+[19:05:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:05:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:05:37][D][ezo_ph_uart:219]: pH: 6.09
+[19:05:41][I][actuator.safety:141]: APPROVED: NutrientPumpB OFF (ran for 9 seconds)
+[19:05:41][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpB, OFF)
+[19:05:41][I][actuator.safety:817]: APPROVED: NutrientPumpC ON (max duration: 15 seconds)
+[19:05:41][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpC, ON)
+[19:05:42][D][ezo_ph_uart:219]: pH: 6.08
+[19:05:45][D][ezo_ph_uart:219]: pH: 6.08
+[19:05:50][D][ezo_ph_uart:219]: pH: 6.08
+[19:05:55][I][actuator.safety:141]: APPROVED: NutrientPumpC OFF (ran for 15 seconds)
+[19:05:55][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpC, OFF)
+[19:05:55][I][led_behavior:204]: LED: Blue Pulse (EC Mixing)
+[19:05:56][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:01][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:06][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:12][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:15][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:20][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:26][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:31][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:31][I][status.logger:604]: ================================================================================
+[19:06:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:06:30
+[19:06:31][I][status.logger:604]: ================================================================================
+[19:06:31][I][status.logger:362]: --- NETWORK ---
+[19:06:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:06:31][I][status.logger:367]: --- HARDWARE ---
+[19:06:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:06:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:06:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.7°C
+[19:06:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:06:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:06:31][I][status.logger:450]: --- SENSORS ---
+[19:06:31][I][status.logger:452]:   pH: 6.08
+[19:06:31][I][status.logger:457]:   Water Temp: 25.7°C
+[19:06:31][I][status.logger:462]:   EC: 1688 uS/cm / 1.688 mS/cm (TDS: 844 ppm)
+[19:06:31][I][status.logger:468]: --- CALENDAR ---
+[19:06:31][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:06:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:06:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:06:31][I][status.logger:501]: --- STATE ---
+[19:06:31][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:06:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2203 sec)
+[19:06:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:06:31][I][status.logger:604]: ================================================================================
+[19:06:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:06:31][I][status.logger:638]:   ┌─────────┐
+[19:06:31][I][status.logger:639]:   │█████████│ ← HIGH
+[19:06:31][I][status.logger:640]:   │█████████│
+[19:06:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:06:31][I][status.logger:642]:   │█████████│
+[19:06:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:06:31][I][status.logger:644]:   └─────────┘
+[19:06:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:06:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:06:37][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:42][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:45][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:51][D][ezo_ph_uart:219]: pH: 6.08
+[19:06:56][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:01][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:07][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:12][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:15][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:21][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:26][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:31][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:31][I][status.logger:604]: ================================================================================
+[19:07:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:07:30
+[19:07:31][I][status.logger:604]: ================================================================================
+[19:07:31][I][status.logger:362]: --- NETWORK ---
+[19:07:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:07:31][I][status.logger:367]: --- HARDWARE ---
+[19:07:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:07:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:07:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.7°C
+[19:07:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:07:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:07:31][I][status.logger:450]: --- SENSORS ---
+[19:07:31][I][status.logger:452]:   pH: 6.07
+[19:07:31][I][status.logger:457]:   Water Temp: 25.7°C
+[19:07:31][I][status.logger:462]:   EC: 1710 uS/cm / 1.710 mS/cm (TDS: 855 ppm)
+[19:07:31][I][status.logger:468]: --- CALENDAR ---
+[19:07:31][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:07:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:07:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:07:31][I][status.logger:501]: --- STATE ---
+[19:07:31][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:07:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2263 sec)
+[19:07:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:07:31][I][status.logger:604]: ================================================================================
+[19:07:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:07:31][I][status.logger:638]:   ┌─────────┐
+[19:07:31][I][status.logger:639]:   │█████████│ ← HIGH
+[19:07:31][I][status.logger:640]:   │█████████│
+[19:07:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:07:31][I][status.logger:642]:   │█████████│
+[19:07:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:07:31][I][status.logger:644]:   └─────────┘
+[19:07:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:07:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:07:37][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:42][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:45][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:51][D][ezo_ph_uart:219]: pH: 6.07
+[19:07:56][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:01][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:07][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:12][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:15][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:21][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:26][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:31][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:31][I][status.logger:604]: ================================================================================
+[19:08:31][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:08:30
+[19:08:31][I][status.logger:604]: ================================================================================
+[19:08:31][I][status.logger:362]: --- NETWORK ---
+[19:08:31][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:08:31][I][status.logger:367]: --- HARDWARE ---
+[19:08:31][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:08:31][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:08:31][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.7°C
+[19:08:31][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:08:31][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:08:31][I][status.logger:450]: --- SENSORS ---
+[19:08:31][I][status.logger:452]:   pH: 6.07
+[19:08:31][I][status.logger:457]:   Water Temp: 25.7°C
+[19:08:31][I][status.logger:462]:   EC: 1732 uS/cm / 1.732 mS/cm (TDS: 866 ppm)
+[19:08:31][I][status.logger:468]: --- CALENDAR ---
+[19:08:31][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:08:31][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:08:31][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:08:31][I][status.logger:501]: --- STATE ---
+[19:08:31][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:08:31][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2323 sec)
+[19:08:31][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:08:31][I][status.logger:604]: ================================================================================
+[19:08:31][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:08:31][I][status.logger:638]:   ┌─────────┐
+[19:08:31][I][status.logger:639]:   │█████████│ ← HIGH
+[19:08:31][I][status.logger:640]:   │█████████│
+[19:08:31][I][status.logger:641]:   │█████████│ ← LOW
+[19:08:31][I][status.logger:642]:   │█████████│
+[19:08:31][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:08:31][I][status.logger:644]:   └─────────┘
+[19:08:31][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:08:31][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:08:37][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:42][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:45][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:52][D][ezo_ph_uart:219]: pH: 6.07
+[19:08:57][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:03][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:08][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:13][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:17][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:22][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:27][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:32][I][status.logger:604]: ================================================================================
+[19:09:32][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:09:31
+[19:09:32][I][status.logger:604]: ================================================================================
+[19:09:32][I][status.logger:362]: --- NETWORK ---
+[19:09:32][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:09:32][I][status.logger:367]: --- HARDWARE ---
+[19:09:32][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:09:32][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:09:32][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:09:32][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:09:32][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:09:32][I][status.logger:450]: --- SENSORS ---
+[19:09:32][I][status.logger:452]:   pH: 6.07
+[19:09:32][I][status.logger:457]:   Water Temp: 25.8°C
+[19:09:32][I][status.logger:462]:   EC: 1750 uS/cm / 1.750 mS/cm (TDS: 875 ppm)
+[19:09:32][I][status.logger:468]: --- CALENDAR ---
+[19:09:32][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:09:32][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:09:32][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:09:32][I][status.logger:501]: --- STATE ---
+[19:09:32][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:09:32][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2384 sec)
+[19:09:32][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:09:32][I][status.logger:604]: ================================================================================
+[19:09:32][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:09:32][I][status.logger:638]:   ┌─────────┐
+[19:09:32][I][status.logger:639]:   │█████████│ ← HIGH
+[19:09:32][I][status.logger:640]:   │█████████│
+[19:09:32][I][status.logger:641]:   │█████████│ ← LOW
+[19:09:32][I][status.logger:642]:   │█████████│
+[19:09:32][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:09:32][I][status.logger:644]:   └─────────┘
+[19:09:32][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:09:32][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:09:33][D][ezo_ph_uart:219]: pH: 6.07

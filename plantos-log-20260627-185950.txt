@@ -1103,3 +1103,415 @@
 [19:09:32][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
 [19:09:32][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
 [19:09:33][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:38][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:43][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:47][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:52][D][ezo_ph_uart:219]: pH: 6.07
+[19:09:57][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:03][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:08][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:13][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:17][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:22][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:27][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:32][I][status.logger:604]: ================================================================================
+[19:10:32][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:10:31
+[19:10:32][I][status.logger:604]: ================================================================================
+[19:10:32][I][status.logger:362]: --- NETWORK ---
+[19:10:32][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:10:32][I][status.logger:367]: --- HARDWARE ---
+[19:10:32][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:10:32][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:10:32][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:10:32][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:10:32][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:10:32][I][status.logger:450]: --- SENSORS ---
+[19:10:32][I][status.logger:452]:   pH: 6.07
+[19:10:32][I][status.logger:457]:   Water Temp: 25.8°C
+[19:10:32][I][status.logger:462]:   EC: 1751 uS/cm / 1.751 mS/cm (TDS: 875 ppm)
+[19:10:32][I][status.logger:468]: --- CALENDAR ---
+[19:10:32][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:10:32][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:10:32][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:10:32][I][status.logger:501]: --- STATE ---
+[19:10:32][I][status.logger:640]:   │█████████│
+[19:10:32][I][status.logger:641]:   │█████████│ ← LOW
+[19:10:32][I][status.logger:642]:   │█████████│
+[19:10:32][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:10:32][I][status.logger:644]:   └─────────┘
+[19:10:32][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:10:32][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:10:33][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:38][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:43][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:47][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:52][D][ezo_ph_uart:219]: pH: 6.07
+[19:10:55][I][led_behavior:209]: LED: Yellow Pulse (EC Measuring)
+[19:10:57][D][ezo_ph_uart:219]: pH: 6.07
+[19:11:03][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:08][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:14][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:17][D][ezo_ph_uart:219]: pH: 6.07
+[19:11:22][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:25][D][psm:271]: Float saved to NVS: EcKv2 = 0.0004
+[19:11:25][I][led_behavior:199]: LED: Orange Pulse (EC Feeding)
+[19:11:25][I][actuator.safety:817]: APPROVED: NutrientPumpA ON (max duration: 3 seconds)
+[19:11:25][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpA, ON)
+[19:11:27][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:27][I][actuator.safety:141]: APPROVED: NutrientPumpA OFF (ran for 2 seconds)
+[19:11:27][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpA, OFF)
+[19:11:27][I][actuator.safety:817]: APPROVED: NutrientPumpB ON (max duration: 10 seconds)
+[19:11:27][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpB, ON)
+[19:11:32][I][status.logger:604]: ================================================================================
+[19:11:32][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:11:31
+[19:11:32][I][status.logger:604]: ================================================================================
+[19:11:32][I][status.logger:362]: --- NETWORK ---
+[19:11:32][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:11:32][I][status.logger:367]: --- HARDWARE ---
+[19:11:32][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:11:32][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:11:32][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:11:32][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:11:32][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:11:32][I][status.logger:450]: --- SENSORS ---
+[19:11:32][I][status.logger:452]:   pH: 6.08
+[19:11:32][I][status.logger:457]:   Water Temp: 25.8°C
+[19:11:32][I][status.logger:462]:   EC: 1727 uS/cm / 1.727 mS/cm (TDS: 864 ppm)
+[19:11:32][I][status.logger:468]: --- CALENDAR ---
+[19:11:32][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:11:32][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:11:32][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:11:32][I][status.logger:501]: --- STATE ---
+[19:11:32][I][status.logger:502]:   Controller: EC_FEEDING | Maintenance: OFF
+[19:11:32][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2504 sec)
+[19:11:32][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:11:32][I][status.logger:604]: ================================================================================
+[19:11:32][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:11:32][I][status.logger:638]:   ┌─────────┐
+[19:11:32][I][status.logger:639]:   │█████████│ ← HIGH
+[19:11:32][I][status.logger:640]:   │█████████│
+[19:11:32][I][status.logger:641]:   │█████████│ ← LOW
+[19:11:32][I][status.logger:642]:   │█████████│
+[19:11:32][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:11:32][I][status.logger:644]:   └─────────┘
+[19:11:32][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:11:32][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:11:33][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:38][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:38][I][actuator.safety:141]: APPROVED: NutrientPumpB OFF (ran for 10 seconds)
+[19:11:38][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpB, OFF)
+[19:11:38][I][actuator.safety:817]: APPROVED: NutrientPumpC ON (max duration: 15 seconds)
+[19:11:38][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpC, ON)
+[19:11:44][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:47][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:51][I][actuator.safety:141]: APPROVED: NutrientPumpC OFF (ran for 14 seconds)
+[19:11:51][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpC, OFF)
+[19:11:51][I][led_behavior:204]: LED: Blue Pulse (EC Mixing)
+[19:11:52][D][ezo_ph_uart:219]: pH: 6.08
+[19:11:57][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:03][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:08][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:14][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:17][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:22][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:28][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:32][I][status.logger:604]: ================================================================================
+[19:12:32][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:12:31
+[19:12:32][I][status.logger:604]: ================================================================================
+[19:12:32][I][status.logger:362]: --- NETWORK ---
+[19:12:32][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:12:32][I][status.logger:367]: --- HARDWARE ---
+[19:12:32][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:12:32][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:12:32][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:12:32][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:12:32][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:12:32][I][status.logger:450]: --- SENSORS ---
+[19:12:32][I][status.logger:452]:   pH: 6.08
+[19:12:32][I][status.logger:457]:   Water Temp: 25.8°C
+[19:12:32][I][status.logger:462]:   EC: 1729 uS/cm / 1.729 mS/cm (TDS: 864 ppm)
+[19:12:32][I][status.logger:468]: --- CALENDAR ---
+[19:12:32][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:12:32][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:12:32][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:12:32][I][status.logger:501]: --- STATE ---
+[19:12:32][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:12:32][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2564 sec)
+[19:12:32][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:12:32][I][status.logger:604]: ================================================================================
+[19:12:32][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:12:32][I][status.logger:638]:   ┌─────────┐
+[19:12:32][I][status.logger:639]:   │█████████│ ← HIGH
+[19:12:32][I][status.logger:640]:   │█████████│
+[19:12:32][I][status.logger:641]:   │█████████│ ← LOW
+[19:12:32][I][status.logger:642]:   │█████████│
+[19:12:32][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:12:32][I][status.logger:644]:   └─────────┘
+[19:12:32][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:12:32][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:12:33][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:38][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:44][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:47][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:52][D][ezo_ph_uart:219]: pH: 6.08
+[19:12:58][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:03][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:08][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:14][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:17][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:22][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:28][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:32][I][status.logger:604]: ================================================================================
+[19:13:32][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:13:31
+[19:13:32][I][status.logger:604]: ================================================================================
+[19:13:32][I][status.logger:362]: --- NETWORK ---
+[19:13:32][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:13:32][I][status.logger:367]: --- HARDWARE ---
+[19:13:32][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:13:32][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:13:32][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:13:32][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:13:32][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:13:32][I][status.logger:450]: --- SENSORS ---
+[19:13:32][I][status.logger:452]:   pH: 6.08
+[19:13:32][I][status.logger:457]:   Water Temp: 25.8°C
+[19:13:32][I][status.logger:462]:   EC: 1727 uS/cm / 1.727 mS/cm (TDS: 864 ppm)
+[19:13:32][I][status.logger:468]: --- CALENDAR ---
+[19:13:32][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:13:32][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:13:32][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:13:32][I][status.logger:501]: --- STATE ---
+[19:13:32][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:13:32][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2624 sec)
+[19:13:32][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:13:32][I][status.logger:604]: ================================================================================
+[19:13:32][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:13:32][I][status.logger:638]:   ┌─────────┐
+[19:13:32][I][status.logger:639]:   │█████████│ ← HIGH
+[19:13:32][I][status.logger:640]:   │█████████│
+[19:13:32][I][status.logger:641]:   │█████████│ ← LOW
+[19:13:32][I][status.logger:642]:   │█████████│
+[19:13:32][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:13:32][I][status.logger:644]:   └─────────┘
+[19:13:32][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:13:32][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:13:33][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:38][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:44][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:47][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:52][D][ezo_ph_uart:219]: pH: 6.08
+[19:13:58][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:03][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:08][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:14][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:17][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:22][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:28][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:32][I][status.logger:604]: ================================================================================
+[19:14:32][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:14:31
+[19:14:32][I][status.logger:604]: ================================================================================
+[19:14:32][I][status.logger:362]: --- NETWORK ---
+[19:14:32][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:14:32][I][status.logger:367]: --- HARDWARE ---
+[19:14:32][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:14:32][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:14:32][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:14:32][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:14:32][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:14:32][I][status.logger:450]: --- SENSORS ---
+[19:14:32][I][status.logger:452]:   pH: 6.08
+[19:14:32][I][status.logger:457]:   Water Temp: 25.8°C
+[19:14:32][I][status.logger:462]:   EC: 1727 uS/cm / 1.727 mS/cm (TDS: 864 ppm)
+[19:14:32][I][status.logger:468]: --- CALENDAR ---
+[19:14:32][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:14:32][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:14:32][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:14:32][I][status.logger:501]: --- STATE ---
+[19:14:32][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:14:32][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2684 sec)
+[19:14:32][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:14:32][I][status.logger:604]: ================================================================================
+[19:14:32][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:14:32][I][status.logger:638]:   ┌─────────┐
+[19:14:32][I][status.logger:639]:   │█████████│ ← HIGH
+[19:14:32][I][status.logger:640]:   │█████████│
+[19:14:32][I][status.logger:641]:   │█████████│ ← LOW
+[19:14:32][I][status.logger:642]:   │█████████│
+[19:14:32][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:14:32][I][status.logger:644]:   └─────────┘
+[19:14:32][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:14:32][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:14:33][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:38][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:44][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:47][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:52][D][ezo_ph_uart:219]: pH: 6.08
+[19:14:58][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:03][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:08][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:14][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:17][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:22][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:28][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:32][I][status.logger:604]: ================================================================================
+[19:15:32][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:15:31
+[19:15:32][I][status.logger:604]: ================================================================================
+[19:15:32][I][status.logger:362]: --- NETWORK ---
+[19:15:32][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:15:32][I][status.logger:367]: --- HARDWARE ---
+[19:15:32][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:15:32][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:15:32][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:15:32][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:15:32][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:15:32][I][status.logger:450]: --- SENSORS ---
+[19:15:32][I][status.logger:452]:   pH: 6.08
+[19:15:32][I][status.logger:457]:   Water Temp: 25.8°C
+[19:15:32][I][status.logger:462]:   EC: 1771 uS/cm / 1.771 mS/cm (TDS: 885 ppm)
+[19:15:32][I][status.logger:468]: --- CALENDAR ---
+[19:15:32][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:15:32][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:15:32][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:15:32][I][status.logger:501]: --- STATE ---
+[19:15:32][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:15:32][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2744 sec)
+[19:15:32][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:15:33][I][status.logger:604]: ================================================================================
+[19:15:33][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:15:33][I][status.logger:638]:   ┌─────────┐
+[19:15:33][I][status.logger:639]:   │█████████│ ← HIGH
+[19:15:33][I][status.logger:640]:   │█████████│
+[19:15:33][I][status.logger:641]:   │█████████│ ← LOW
+[19:15:33][I][status.logger:642]:   │█████████│
+[19:15:33][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:15:33][I][status.logger:644]:   └─────────┘
+[19:15:33][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:15:33][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:15:33][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:39][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:44][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:47][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:52][D][ezo_ph_uart:219]: pH: 6.08
+[19:15:58][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:03][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:09][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:14][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:17][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:22][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:28][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:32][I][status.logger:604]: ================================================================================
+[19:16:32][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:16:31
+[19:16:32][I][status.logger:604]: ================================================================================
+[19:16:32][I][status.logger:362]: --- NETWORK ---
+[19:16:32][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:16:32][I][status.logger:367]: --- HARDWARE ---
+[19:16:32][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:16:32][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:16:32][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:16:32][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:16:32][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:16:32][I][status.logger:450]: --- SENSORS ---
+[19:16:32][I][status.logger:452]:   pH: 6.08
+[19:16:32][I][status.logger:457]:   Water Temp: 25.8°C
+[19:16:32][I][status.logger:462]:   EC: 1798 uS/cm / 1.798 mS/cm (TDS: 899 ppm)
+[19:16:32][I][status.logger:468]: --- CALENDAR ---
+[19:16:32][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:16:32][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:16:32][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:16:32][I][status.logger:501]: --- STATE ---
+[19:16:32][I][status.logger:502]:   Controller: EC_MIXING | Maintenance: OFF
+[19:16:32][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2804 sec)
+[19:16:32][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:16:32][I][status.logger:604]: ================================================================================
+[19:16:32][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:16:32][I][status.logger:638]:   ┌─────────┐
+[19:16:32][I][status.logger:639]:   │█████████│ ← HIGH
+[19:16:32][I][status.logger:640]:   │█████████│
+[19:16:32][I][status.logger:641]:   │█████████│ ← LOW
+[19:16:32][I][status.logger:642]:   │█████████│
+[19:16:32][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:16:32][I][status.logger:644]:   └─────────┘
+[19:16:32][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:16:32][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:16:33][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:39][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:44][D][ezo_ph_uart:219]: pH: 6.08
+[19:16:47][D][ezo_ph_uart:219]: pH: 6.09
+[19:16:52][I][led_behavior:209]: LED: Yellow Pulse (EC Measuring)
+[19:16:53][D][ezo_ph_uart:219]: pH: 6.09
+[19:16:58][D][ezo_ph_uart:219]: pH: 6.09
+[19:17:03][D][ezo_ph_uart:219]: pH: 6.08
+[19:17:09][D][ezo_ph_uart:219]: pH: 6.08
+[19:17:14][D][ezo_ph_uart:219]: pH: 6.08
+[19:17:17][D][ezo_ph_uart:219]: pH: 6.08
+[19:17:22][D][psm:271]: Float saved to NVS: EcKv2 = 0.0004
+[19:17:22][I][led_behavior:199]: LED: Orange Pulse (EC Feeding)
+[19:17:22][I][actuator.safety:817]: APPROVED: NutrientPumpA ON (max duration: 3 seconds)
+[19:17:22][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpA, ON)
+[19:17:23][D][ezo_ph_uart:219]: pH: 6.08
+[19:17:24][I][actuator.safety:141]: APPROVED: NutrientPumpA OFF (ran for 2 seconds)
+[19:17:24][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpA, OFF)
+[19:17:24][I][actuator.safety:817]: APPROVED: NutrientPumpB ON (max duration: 10 seconds)
+[19:17:24][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpB, ON)
+[19:17:28][D][ezo_ph_uart:219]: pH: 6.08
+[19:17:33][I][status.logger:604]: ================================================================================
+[19:17:33][I][status.logger:340]:   PLANTOS STATUS - 2026-06-27 19:17:31
+[19:17:33][I][status.logger:604]: ================================================================================
+[19:17:33][I][status.logger:362]: --- NETWORK ---
+[19:17:33][I][status.logger:364]:   IP: 192.168.0.201 | Web: Online
+[19:17:33][I][status.logger:367]: --- HARDWARE ---
+[19:17:33][I][status.logger:373]:   [✓ 0x76: BME280 Air Sensor
+[19:17:33][I][status.logger:399]:   [✓ EZO pH Sensor (TX=GPIO18, RX=GPIO19 (uart_bus))
+[19:17:33][I][status.logger:413]:   [✓ DS18B20 Temperature (GPIO23) - 25.8°C
+[19:17:33][I][status.logger:427]:   [✓ Shelly Plus 4PM (192.168.0.130) - up 486h20m
+[19:17:33][I][status.logger:439]:   [✓ Water Level: FULL (H=ON, L=ON)
+[19:17:33][I][status.logger:450]: --- SENSORS ---
+[19:17:33][I][status.logger:452]:   pH: 6.08
+[19:17:33][I][status.logger:457]:   Water Temp: 25.8°C
+[19:17:33][I][status.logger:462]:   EC: 1799 uS/cm / 1.799 mS/cm (TDS: 899 ppm)
+[19:17:33][I][status.logger:468]: --- CALENDAR ---
+[19:17:33][I][status.logger:470]:   Day: 62/120 | pH: 6.0-6.4 | Auto: ON
+[19:17:33][I][status.logger:473]:   Nutrients (mL/L): A=0.64; B=1.28; C=1.92
+[19:17:33][I][status.logger:476]:   EC Target: 2200 x 1.00x = 2200 uS/cm
+[19:17:33][I][status.logger:501]: --- STATE ---
+[19:17:33][I][status.logger:502]:   Controller: EC_FEEDING | Maintenance: OFF
+[19:17:33][I][status.logger:505]:   PSM: EC_FEEDING (Status: 0, Age: 2864 sec)
+[19:17:33][I][status.logger:523]:   Alerts: ALL CLEAR
+[19:17:33][I][status.logger:604]: ================================================================================
+[19:17:33][I][status.logger:623]: --- WATER LEVEL STATUS ---
+[19:17:33][I][status.logger:638]:   ┌─────────┐
+[19:17:33][I][status.logger:639]:   │█████████│ ← HIGH
+[19:17:33][I][status.logger:640]:   │█████████│
+[19:17:33][I][status.logger:641]:   │█████████│ ← LOW
+[19:17:33][I][status.logger:642]:   │█████████│
+[19:17:33][I][status.logger:643]:   │█████████│ ← EMPTY
+[19:17:33][I][status.logger:644]:   └─────────┘
+[19:17:33][I][status.logger:696]:   Water Level: FULL (above HIGH sensor)
+[19:17:33][I][status.logger:697]:   Sensors: HIGH=ON, LOW=ON, EMPTY=ON
+[19:17:33][D][ezo_ph_uart:219]: pH: 6.08
+[19:17:34][I][actuator.safety:141]: APPROVED: NutrientPumpB OFF (ran for 9 seconds)
+[19:17:34][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpB, OFF)
+[19:17:34][I][actuator.safety:817]: APPROVED: NutrientPumpC ON (max duration: 15 seconds)
+[19:17:34][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpC, ON)
+[19:17:39][D][ezo_ph_uart:219]: pH: 6.09
+[19:17:44][D][ezo_ph_uart:219]: pH: 6.09
+[19:17:47][D][ezo_ph_uart:219]: pH: 6.09
+[19:17:48][I][actuator.safety:141]: APPROVED: NutrientPumpC OFF (ran for 14 seconds)
+[19:17:48][D][actuator.safety:916]: Executing via HAL: setPump(NutrientPumpC, OFF)
+[19:17:48][I][led_behavior:204]: LED: Blue Pulse (EC Mixing)
+[19:17:53][D][ezo_ph_uart:219]: pH: 6.08
+[19:17:58][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:03][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:09][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:14][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:17][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:23][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:28][D][ezo_ph_uart:219]: pH: 6.09
+[19:18:29][E][mqtt.idf:162]: MQTT_EVENT_ERROR
+[19:18:29][E][mqtt.idf:164]: Last error code reported from esp-tls: 0x8008
+[19:18:29][E][mqtt.idf:165]: Last tls stack error number: 0x0
+[19:18:29][E][mqtt.idf:166]: Last captured errno : 0 (Success)
+[19:18:29][W][mqtt:340]: MQTT Disconnected: TCP disconnected.
+[19:18:29][D][mqtt:200]: Resolving MQTT broker IP address...
+[19:18:29][D][mqtt:229]: Resolved broker IP address to 178.104.79.122
+[19:18:29][I][mqtt:250]: Connecting to MQTT...

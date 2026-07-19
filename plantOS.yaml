@@ -72,25 +72,25 @@ logger:
   hardware_uart: USB_SERIAL_JTAG
 
   # Component-specific log level overrides
-  # Use web UI switches (section 11) to toggle verbose logging for these components
+  # Use the "Debug: Logging" web UI switches to toggle verbose logging for these components
   logs:
     adc: NONE              # Suppress ADC component messages
     light: INFO            # Suppress LED brightness/color debug messages
-    sensor: INFO           # Suppress sensor state updates (toggle via 11_01)
-    text_sensor: INFO      # Suppress text sensor state updates (toggle via 11_02)
-    ezo_ph_uart: DEBUG      # Suppress EZO pH UART debug logs (toggle via 11_03)
-    sensor_filter: WARN    # Suppress sensor filter buffer logs (toggle via 11_04)
-    dallas.temp.sensor: INFO  # Suppress Dallas temp sensor logs (toggle via 11_05)
-    plantos_controller: INFO  # Suppress controller PSM check logs (toggle via 11_06)
-    plantos_hal: WARN       # Suppress HAL debug logs (toggle via 11_12)
-    gpio_status: INFO      # Suppress GPIO status logs (toggle via 11_07)
-    component: ERROR       # Suppress component timing warnings (toggle via 11_08)
-    esp-idf: INFO          # Suppress ESP-IDF GPIO logs (toggle via 11_09)
-    time: WARN             # Suppress time synchronization logs (toggle via 11_11)
+    sensor: INFO           # Suppress sensor state updates (web UI verbose toggle)
+    text_sensor: INFO      # Suppress text sensor state updates (web UI verbose toggle)
+    ezo_ph_uart: DEBUG      # Suppress EZO pH UART debug logs (web UI verbose toggle)
+    sensor_filter: WARN    # Suppress sensor filter buffer logs (web UI verbose toggle)
+    dallas.temp.sensor: INFO  # Suppress Dallas temp sensor logs (web UI verbose toggle)
+    plantos_controller: INFO  # Suppress controller PSM check logs (web UI verbose toggle)
+    plantos_hal: WARN       # Suppress HAL debug logs
+    gpio_status: INFO      # Suppress GPIO status logs (web UI verbose toggle)
+    component: ERROR       # Suppress component timing warnings (web UI verbose toggle)
+    esp-idf: INFO          # Suppress ESP-IDF GPIO logs (web UI verbose toggle)
+    time: WARN             # Suppress time synchronization logs (web UI verbose toggle)
     http_request: VERBOSE  # Socket lifecycle logging for debugging HTTP issues
-    wifi: VERBOSE       # Verbose WiFi logs for connection issues (toggle via 11_10)
-    shelly_poll: WARN   # Suppress Shelly polling logs (toggle via 11_13)
-    ledc.output: WARN  # Suppress LEDC output logs (toggle via 11_14)
+    wifi: VERBOSE       # Verbose WiFi logs for connection issues
+    shelly_poll: WARN   # Suppress Shelly polling logs
+    ledc.output: WARN  # Suppress LEDC output logs
     tds_sensor: INFO   # TDS/EC sensor logs
     template.number: INFO  # Suppress template number logs
 
@@ -191,6 +191,39 @@ web_server:
   # css_url: "/local/www/webserver-v2.min.css"
   # js_url: "/local/www/webserver-v2.min.js"
   # local: true  # Embed all JS/CSS locally for offline operation
+  # UI categories - every entity is assigned via web_server.sorting_group_id.
+  # Lower sorting_weight appears first. Debug groups sit at the bottom.
+  sorting_groups:
+    - id: sg_status
+      name: "Status"
+      sorting_weight: 10
+    - id: sg_sensors
+      name: "Sensors"
+      sorting_weight: 20
+    - id: sg_controller_actions
+      name: "Controller"
+      sorting_weight: 30
+    - id: sg_controller_settings
+      name: "Controller Settings"
+      sorting_weight: 40
+    - id: sg_calendar
+      name: "Calendar"
+      sorting_weight: 50
+    - id: sg_actuators
+      name: "Actuators"
+      sorting_weight: 60
+    - id: sg_system
+      name: "System"
+      sorting_weight: 70
+    - id: sg_debug_logging
+      name: "Debug: Logging"
+      sorting_weight: 80
+    - id: sg_debug_gpio
+      name: "Debug: GPIO Bypass & PWM"
+      sorting_weight: 90
+    - id: sg_debug_hal
+      name: "Debug: HAL Mirrors"
+      sorting_weight: 100
 
 # API for Home Assistant integration and external service calls
 # reboot_timeout: 0s disables the "no API client connected" reboot behavior
@@ -318,6 +351,9 @@ light:
     name: "Built-in LED"
     id: system_led
     chipset: WS2812
+    web_server:
+      sorting_group_id: sg_system
+      sorting_weight: 50
 
     # default_transition_length: 0s disables automatic color smoothing
     # WHY: The FSM controller implements its own timing and animations
@@ -412,10 +448,13 @@ sensor:
   - platform: dallas_temp
     one_wire_id: one_wire_bus
     id: water_temperature
-    name: "Water Temperature - DS18B20"
+    name: "Water Temperature"
     update_interval: 60s     # Update temperature every 60 seconds
     accuracy_decimals: 2     # Display 2 decimal places (e.g., 24.50°C)
     resolution: 12           # 12-bit resolution (0.0625°C per bit, ~750ms conversion)
+    web_server:
+      sorting_group_id: sg_sensors
+      sorting_weight: 30
 
   # Environmental Sensor: BME280 Temperature/Humidity/Pressure Sensor
   #
@@ -443,21 +482,30 @@ sensor:
 
     temperature:
       id: bme280_temperature
-      name: "00_12_Air Temperature - BME280"
+      name: "Air Temperature"
       accuracy_decimals: 1
       oversampling: 16x     # High oversampling for accuracy
+      web_server:
+        sorting_group_id: sg_sensors
+        sorting_weight: 60
 
     humidity:
       id: bme280_humidity
-      name: "00_13_Air Humidity - BME280"
+      name: "Air Humidity"
       accuracy_decimals: 1
       oversampling: 16x
+      web_server:
+        sorting_group_id: sg_sensors
+        sorting_weight: 70
 
     pressure:
       id: bme280_pressure
-      name: "00_14_Air Pressure - BME280"
+      name: "Air Pressure"
       accuracy_decimals: 1
       oversampling: 16x
+      web_server:
+        sorting_group_id: sg_sensors
+        sorting_weight: 80
 
   # TDS/EC Sensor: KS0429 TDS Meter V1.0 via ADC
   #
@@ -483,13 +531,16 @@ sensor:
   # EC (uS/cm) = 133.42*V^3 - 255.86*V^2 + 857.39*V (compensated for temperature)
   - platform: tds_sensor
     id: ec_sensor
-    name: "00_15_EC (Electrical Conductivity)"
+    name: "EC"
     sensor_source: tds_adc_raw
     temperature_sensor: water_temperature
     sample_count: 30
     default_temperature: 25.0
     update_interval: 5s
     accuracy_decimals: 1
+    web_server:
+      sorting_group_id: sg_sensors
+      sorting_weight: 40
 
   # Sensor Filter: Robust Averaging with Outlier Rejection
   #
@@ -497,8 +548,11 @@ sensor:
   # This improves data quality by removing sensor spikes, noise, and glitches.
   - id: sensor_filtered_id
     platform: sensor_filter
-    name: "00_05a_Filtered Sensor pH"
+    name: "Filtered pH"
     accuracy_decimals: 3  # Display 3 decimal places (e.g., 2.936)
+    web_server:
+      sorting_group_id: sg_sensors
+      sorting_weight: 20
 
     # sensor_source: The raw sensor to filter
     sensor_source: ph_sensor_real
@@ -514,13 +568,17 @@ sensor:
     reject_percentage: 0.10
 
 
+  # Live EMA-adapted K-factor used by the acid dosing formula
   - platform: template
-    name: "04_16_pH K-Factor (live EMA)"
+    name: "pH K-Factor (live)"
     id: ph_k_factor_sensor
     icon: "mdi:ph"
     accuracy_decimals: 4
     update_interval: 30s
     lambda: 'return id(unified_controller)->get_ph_k_factor();'
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 160
 
 ################################################################################
 # Binary Sensors: Water Level Sensors (XKC-Y23-V)
@@ -543,7 +601,10 @@ binary_sensor:
   # Triggers when water reaches high level (tank near full)
   - platform: gpio
     id: water_level_high_sensor
-    name: "00_07_Water Level HIGH"
+    name: "Water Level HIGH"
+    web_server:
+      sorting_group_id: sg_sensors
+      sorting_weight: 90
     pin:
       number: GPIO17
       mode:
@@ -565,7 +626,10 @@ binary_sensor:
   # When OFF (with EMPTY=ON), triggers automatic feeding once per day
   - platform: gpio
     id: water_level_low_sensor
-    name: "00_08_Water Level LOW"
+    name: "Water Level LOW"
+    web_server:
+      sorting_group_id: sg_sensors
+      sorting_weight: 100
     pin:
       number: GPIO23
       mode:
@@ -587,7 +651,10 @@ binary_sensor:
   # Prevents pump dry-running during drain operations
   - platform: gpio
     id: water_level_empty_sensor
-    name: "00_09_Water Level EMPTY"
+    name: "Water Level EMPTY"
+    web_server:
+      sorting_group_id: sg_sensors
+      sorting_weight: 110
     pin:
       number: GPIO22
       mode:
@@ -615,26 +682,35 @@ binary_sensor:
 ################################################################################
 text_sensor:
   - platform: template
-    name: "00_01_Controller State"
+    name: "Controller State"
     id: controller_state_text
     # Lambda returns current controller state as string
     lambda: |-
       return id(unified_controller)->getStateAsString();
     # Update every 5s to show real-time state changes
     update_interval: 5s
+    web_server:
+      sorting_group_id: sg_status
+      sorting_weight: 10
 
   - platform: template
-    name: "00_01a_Alert State"
+    name: "Alert State"
     id: alert_state_text
     # Lambda returns current alert state in short form (Clear, pH Critical, etc.)
     lambda: |-
       return id(unified_controller)->getStatusLogger()->getAlertStateShort();
     # Update every 5s to show real-time alert changes
     update_interval: 5s
+    web_server:
+      sorting_group_id: sg_status
+      sorting_weight: 20
 
   - platform: template
-    name: "00_02a_Uptime"
+    name: "Uptime"
     id: uptime_text
+    web_server:
+      sorting_group_id: sg_status
+      sorting_weight: 40
     lambda: |-
       uint32_t sec = millis() / 1000;
       uint32_t h = sec / 3600;
@@ -645,9 +721,13 @@ text_sensor:
       return {buf};
     update_interval: 1s
 
+  # [DEBUG] HAL mirror - duplicates the DS18B20 sensor value for HAL verification
   - platform: template
-    name: "00_04_Water Temperature - HAL"
+    name: "Water Temperature (HAL)"
     id: water_temperature_text
+    web_server:
+      sorting_group_id: sg_debug_hal
+      sorting_weight: 10
     # Lambda returns current water temperature value from HAL
     lambda: |-
       if (id(hal)->hasTemperature()) {
@@ -660,9 +740,13 @@ text_sensor:
     # Update every 10 seconds to match sensor update interval
     update_interval: 10s
 
+  # [DEBUG] HAL mirror - duplicates the BME280 temperature sensor value
   - platform: template
-    name: "00_12_Air Temperature"
+    name: "Air Temperature (HAL)"
     id: air_temperature_text
+    web_server:
+      sorting_group_id: sg_debug_hal
+      sorting_weight: 20
     # Lambda returns current air temperature from BME280
     lambda: |-
       if (id(bme280_temperature).has_state()) {
@@ -675,9 +759,13 @@ text_sensor:
     # Update every 10 seconds to match sensor update interval
     update_interval: 10s
 
+  # [DEBUG] HAL mirror - duplicates the BME280 humidity sensor value
   - platform: template
-    name: "00_13_Air Humidity"
+    name: "Air Humidity (HAL)"
     id: air_humidity_text
+    web_server:
+      sorting_group_id: sg_debug_hal
+      sorting_weight: 30
     # Lambda returns current relative humidity from BME280
     lambda: |-
       if (id(bme280_humidity).has_state()) {
@@ -690,9 +778,13 @@ text_sensor:
     # Update every 10 seconds to match sensor update interval
     update_interval: 10s
 
+  # [DEBUG] HAL mirror - duplicates the BME280 pressure sensor value
   - platform: template
-    name: "00_14_Air Pressure"
+    name: "Air Pressure (HAL)"
     id: air_pressure_text
+    web_server:
+      sorting_group_id: sg_debug_hal
+      sorting_weight: 40
     # Lambda returns current barometric pressure from BME280
     lambda: |-
       if (id(bme280_pressure).has_state()) {
@@ -705,9 +797,13 @@ text_sensor:
     # Update every 10 seconds to match sensor update interval
     update_interval: 10s
 
+  # [DEBUG] HAL mirror - duplicates the EC sensor value read through the HAL
   - platform: template
-    name: "00_15_EC (Electrical Conductivity)"
+    name: "EC (HAL)"
     id: ec_text
+    web_server:
+      sorting_group_id: sg_debug_hal
+      sorting_weight: 50
     lambda: |-
       if (id(hal)->hasECValue()) {
         char buf[32];
@@ -718,9 +814,13 @@ text_sensor:
       }
     update_interval: 10s
 
+  # TDS in ppm derived from EC (EC * 0.5) - only exists as this text sensor
   - platform: template
-    name: "00_16_TDS (Water Quality)"
+    name: "TDS"
     id: tds_ppm_text
+    web_server:
+      sorting_group_id: sg_sensors
+      sorting_weight: 50
     lambda: |-
       if (id(hal)->hasECValue()) {
         char buf[32];
@@ -732,8 +832,11 @@ text_sensor:
     update_interval: 10s
 
   - platform: template
-    name: "00_06_Tank Volume"
+    name: "Tank Volume"
     id: tank_volume_text
+    web_server:
+      sorting_group_id: sg_status
+      sorting_weight: 50
     # Lambda returns configured tank volumes from HAL
     # Delta: Volume from LOW to HIGH (for normal daily feeding)
     # Total: Volume from EMPTY to HIGH (for reservoir change)
@@ -747,8 +850,11 @@ text_sensor:
     update_interval: 60s
 
   - platform: template
-    name: "00_02_Current Time"
+    name: "Current Time"
     id: current_time_text
+    web_server:
+      sorting_group_id: sg_status
+      sorting_weight: 30
     # Lambda returns current time from SNTP
     lambda: |-
       auto time = id(sntp_time)->now();
@@ -765,8 +871,11 @@ text_sensor:
     update_interval: 1s
 
   - platform: template
-    name: "00_03_Current CalMan Grow Day"
+    name: "Current Grow Day"
     id: current_grow_day_text
+    web_server:
+      sorting_group_id: sg_calendar
+      sorting_weight: 10
     # Lambda returns current grow day from calendar manager
     lambda: |-
       uint8_t day = id(plant_calendar)->get_current_day();
@@ -782,13 +891,19 @@ text_sensor:
 # Provides manual control over the system controller and PlantOS routines.
 ################################################################################
 button:
-  # === 03 - System Control & Restart ===
+  # === System Control & Restart ===
   - platform: restart
-    name: "03_01_Reboot Device"
+    name: "Reboot Device"
     id: restart_button
+    web_server:
+      sorting_group_id: sg_system
+      sorting_weight: 10
 
   - platform: template
-    name: "04_04_Set to INIT"
+    name: "Set to INIT"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 40
     on_press:
       # Lambda action calls the unified controller's resetToInit() method
       # This triggers an immediate transition to INIT state (clears errors, resets FSM)
@@ -797,9 +912,13 @@ button:
             ESP_LOGI("button", "Reset Controller button pressed");
             id(unified_controller)->resetToInit();
 
-  # === 04_05-04_09 - Operation Sequences ===
+  # === Operation Sequences ===
+  # State: FEEDING
   - platform: template
-    name: "04_05_Add Nutrients (FEEDING)"
+    name: "Add Nutrients"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 50
     on_press:
       # Start nutrient dosing only (assumes tank is already filled)
       # State: FEEDING
@@ -812,8 +931,12 @@ button:
             ESP_LOGI("button", "========================================");
             id(unified_controller)->startFeeding();
 
+  # States: WATER_FILLING -> PH_PROCESSING
   - platform: template
-    name: "04_06_Fill Tank (WATER_FILLING → pH)"
+    name: "Fill Tank"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 60
     on_press:
       # Fill tank then check/correct pH
       # States: WATER_FILLING → PH_PROCESSING
@@ -825,8 +948,12 @@ button:
             ESP_LOGI("button", "========================================");
             id(unified_controller)->startFillTank();
 
+  # State: WATER_EMPTYING
   - platform: template
-    name: "04_07_Empty Tank (WATER_EMPTYING)"
+    name: "Empty Tank"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 70
     on_press:
       # Drain tank until EMPTY sensor triggers
       # State: WATER_EMPTYING
@@ -838,8 +965,12 @@ button:
             ESP_LOGI("button", "========================================");
             id(unified_controller)->startEmptyTank();
 
+  # States: FEED_FILLING -> FEEDING -> PH_PROCESSING
   - platform: template
-    name: "04_08_Feed (FEED_FILLING → FEEDING → pH)"
+    name: "Feed"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 80
     on_press:
       # Complete feeding operation: fill tank, add nutrients, correct pH
       # States: FEED_FILLING → FEEDING → PH_PROCESSING
@@ -853,8 +984,12 @@ button:
             ESP_LOGI("button", "========================================");
             id(unified_controller)->startFeed();
 
+  # States: WATER_EMPTYING -> FEED_FILLING -> FEEDING -> PH_PROCESSING
   - platform: template
-    name: "04_09_Reservoir Change (WATER_EMPTYING → FEED_FILLING → FEEDING → pH)"
+    name: "Reservoir Change"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 90
     on_press:
       # Complete reservoir change: empty, fill, add nutrients, correct pH
       # States: WATER_EMPTYING → FEED_FILLING → FEEDING → PH_PROCESSING
@@ -869,7 +1004,10 @@ button:
             id(unified_controller)->startReservoirChange();
 
   - platform: template
-    name: "03_02_Reconnect WiFi"
+    name: "Reconnect WiFi"
+    web_server:
+      sorting_group_id: sg_system
+      sorting_weight: 20
     on_press:
       # Force WiFi to disconnect and reconnect
       # Useful for troubleshooting mesh network connectivity issues
@@ -881,7 +1019,10 @@ button:
         - logger.log: "WiFi reconnection initiated"
 
   - platform: template
-    name: "03_03_Wifi Scan"
+    name: "WiFi Scan"
+    web_server:
+      sorting_group_id: sg_system
+      sorting_weight: 30
     on_press:
       then:
         - lambda: |-
@@ -913,9 +1054,13 @@ button:
             free(ap_list);
             ESP_LOGI("wifi_scan", "=== WiFi Scan complete ===");
 
-  # === 04 - System State Control ===
+  # === System State Control ===
+  # All actuators OFF, calendar disabled
   - platform: template
-    name: "04_01_Set to SHUTDOWN (All Actuators OFF, Cal OFF)"
+    name: "Set to SHUTDOWN"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 10
     on_press:
       # Transition to SHUTDOWN state
       # - Turns off all actuators
@@ -927,8 +1072,12 @@ button:
             ESP_LOGI("button", "Set to SHUTDOWN button pressed");
             id(unified_controller)->setToShutdown();
 
+  # Actuator states kept, calendar disabled
   - platform: template
-    name: "04_02_Set to PAUSE (Actuators ON, Cal OFF)"
+    name: "Set to PAUSE"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 20
     on_press:
       # Transition to PAUSE state
       # - Maintains actuator states
@@ -941,7 +1090,10 @@ button:
             id(unified_controller)->setToPause();
 
   - platform: template
-    name: "04_03_Set to IDLE"
+    name: "Set to IDLE"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 30
     on_press:
       # Transition to IDLE state
       # - Only way to exit SHUTDOWN or PAUSE states
@@ -952,9 +1104,13 @@ button:
             ESP_LOGI("button", "Set to IDLE button pressed");
             id(unified_controller)->setToIdle();
 
-  # === 04_12-04_14 - Operations & Override ===
+  # === Operations & Override ===
+  # States: EC_PROCESSING -> EC_CALCULATING -> EC_FEEDING -> EC_MIXING -> EC_MEASURING -> PH_PROCESSING
   - platform: template
-    name: "04_12_EC Correction (EC_PROCESSING → EC_FEEDING → pH)"
+    name: "EC Correction"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 100
     on_press:
       then:
         - lambda: |-
@@ -964,8 +1120,12 @@ button:
             ESP_LOGI("button", "========================================");
             id(unified_controller)->startEcCheck();
 
+  # All pumps OFF immediately, then SHUTDOWN
   - platform: template
-    name: "04_13_Emergency Stop (alle Pumpen AUS → SHUTDOWN)"
+    name: "Emergency Stop"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 110
     on_press:
       then:
         - lambda: |-
@@ -975,8 +1135,12 @@ button:
             ESP_LOGW("button", "========================================");
             id(unified_controller)->emergencyStop();
 
+  # Nutrient mix for the mother plant, volume set via "Mother Mix Volume"
   - platform: template
-    name: "04_18_Mother Plant Nutrients"
+    name: "Mother Plant Nutrients"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 120
     on_press:
       then:
         - lambda: |-
@@ -990,9 +1154,12 @@ button:
             ESP_LOGI("button", "========================================");
             id(unified_controller)->startMotherNutrients(vol);
 
-  # === 05 - Logging & Cleanup ===
+  # === Logging & Cleanup ===
   - platform: template
-    name: "05_01_Clear PSM Alerts"
+    name: "Clear PSM Alerts"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 140
     on_press:
       # Lambda action calls the PSM's clearEvent() method
       # This clears any critical events logged to NVS
@@ -1000,9 +1167,12 @@ button:
         - lambda: |-
             id(psm)->clearEvent();
 
-  # === 06 - Time & NTP ===
+  # === Time & NTP ===
   - platform: template
-    name: "06_01_Force NTP Sync"
+    name: "Force NTP Sync"
+    web_server:
+      sorting_group_id: sg_system
+      sorting_weight: 40
     on_press:
       then:
         - lambda: |-
@@ -1014,9 +1184,12 @@ button:
             id(sntp_time)->setup();
             ESP_LOGW("ntp", "  SNTP restarted — on_time_sync callback will fire when synced");
 
-  # === 07 - pH & Measurement ===
+  # === pH & Measurement ===
   - platform: template
-    name: "07_01_Start pH Calibration"
+    name: "Start pH Calibration"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 200
     on_press:
       # Start 3-point pH calibration sequence
       # Calibration points: 4.00 (low), 7.00 (mid), 10.01 (high)
@@ -1027,7 +1200,10 @@ button:
             id(unified_controller)->startPhCalibration();
 
   - platform: template
-    name: "07_02_Start pH Correction"
+    name: "Start pH Correction"
+    web_server:
+      sorting_group_id: sg_controller_actions
+      sorting_weight: 130
     on_press:
       # Start the full pH correction sequence
       # Includes measurement, calculation, dosing, and mixing
@@ -1035,9 +1211,12 @@ button:
         - lambda: |-
             id(unified_controller)->startPhCorrection();
 
-  # === 07 - pH Temperature Compensation ===
+  # === pH Temperature Compensation ===
   - platform: template
-    name: "07_07_Temperature Compensation (Auto)"
+    name: "pH Temp Compensation (Auto)"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 220
     on_press:
       # Read current water temperature and send to EZO pH sensor
       # This ensures pH readings are compensated for current temperature
@@ -1057,7 +1236,10 @@ button:
             }
 
   - platform: template
-    name: "07_08_Temperature Compensation (Manual)"
+    name: "pH Temp Compensation (Manual)"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 230
     on_press:
       # Manual temperature compensation for testing or when temp sensor fails
       # Default: 19.5°C (typical hydroponic solution temperature)
@@ -1072,9 +1254,11 @@ button:
               ESP_LOGE("button", "Manual temperature compensation failed");
             }
 
-  # === 07_09 - Check pH Calibration Status ===
   - platform: template
-    name: "07_09_Check pH Calibration Status"
+    name: "Check pH Calibration Status"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 210
     on_press:
       # Query EZO pH sensor calibration status
       # Returns number of calibration points: 0, 1, 2, or 3
@@ -1084,25 +1268,34 @@ button:
         - lambda: |-
             id(hal)->queryPhCalibrationStatus();
 
-  # === 07_10 - EZO Continuous Reading Mode ===
-  # === 07_20 - EC Calibration ===
+  # === EC Calibration ===
   - platform: template
-    name: "07_20_Start EC Calibration"
+    name: "Start EC Calibration"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 240
     on_press:
       then:
         - lambda: |-
             id(unified_controller)->setEcCalibrationTarget(id(ec_calibration_target).state);
             id(unified_controller)->startEcCalibration();
 
+  # Resets the EC calibration factor back to 1.0
   - platform: template
-    name: "07_21_Reset EC Calibration (factor=1.0)"
+    name: "Reset EC Calibration"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 260
     on_press:
       then:
         - lambda: id(unified_controller)->resetEcCalibration();
 
-  # === 12 - Actuator Timed Tests ===
+  # === Actuator Timed Tests ===
   - platform: template
-    name: "12_01_Test Magnetic Valve (3s)"
+    name: "Test Magnetic Valve (3s)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 110
     on_press:
       # Turn ON magnetic valve for 3 seconds, then auto turn OFF
       # Maps to "WaterValve" actuator ID
@@ -1121,13 +1314,16 @@ button:
             }
 
   - platform: template
-    name: "12_02_Test pH Pump (10s)"
+    name: "Test pH Pump (10s)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 120
     on_press:
       # Turn ON pH pump for 10 seconds at current PWM slider value
       # Maps to "AcidPump" actuator ID
       then:
         - lambda: |-
-            // PWM comes from the configured value (set via the 15_02 slider)
+            // PWM comes from the configured value (set via the "Acid Pump PWM" slider)
             float pwm_percent = id(hal)->getPumpConfig("AcidPump").pwm_intensity * 100.0f;
 
             // Log calibration instructions
@@ -1135,7 +1331,7 @@ button:
             ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
             ESP_LOGI("button", "Please measure the volume in mL.");
             ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_ph_flow_rate_ml_s' and the 15_02 PWM slider.");
+            ESP_LOGI("button", "Update 'pump_ph_flow_rate_ml_s' and the 'Acid Pump PWM' slider.");
 
             // Turn on pump (PWM intensity read from config inside HAL)
             id(hal)->setPump("AcidPump", true);
@@ -1148,13 +1344,16 @@ button:
             ESP_LOGI("button", "================================");
 
   - platform: template
-    name: "12_03_Test Grow Pump (10s)"
+    name: "Test Grow Pump (10s)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 130
     on_press:
       # Turn ON grow pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpA" actuator ID
       then:
         - lambda: |-
-            // PWM comes from the configured value (set via the 15_03 slider)
+            // PWM comes from the configured value (set via the "Grow Pump PWM" slider)
             float pwm_percent = id(hal)->getPumpConfig("NutrientPumpA").pwm_intensity * 100.0f;
 
             // Log calibration instructions
@@ -1162,7 +1361,7 @@ button:
             ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
             ESP_LOGI("button", "Please measure the volume in mL.");
             ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_grow_flow_rate_ml_s' and the 15_03 PWM slider.");
+            ESP_LOGI("button", "Update 'pump_grow_flow_rate_ml_s' and the 'Grow Pump PWM' slider.");
 
             // Turn on pump (PWM intensity read from config inside HAL)
             id(hal)->setPump("NutrientPumpA", true);
@@ -1175,13 +1374,16 @@ button:
             ESP_LOGI("button", "===================================");
 
   - platform: template
-    name: "12_04_Test Micro Pump (10s)"
+    name: "Test Micro Pump (10s)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 140
     on_press:
       # Turn ON micro pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpB" actuator ID
       then:
         - lambda: |-
-            // PWM comes from the configured value (set via the 15_04 slider)
+            // PWM comes from the configured value (set via the "Micro Pump PWM" slider)
             float pwm_percent = id(hal)->getPumpConfig("NutrientPumpB").pwm_intensity * 100.0f;
 
             // Log calibration instructions
@@ -1189,7 +1391,7 @@ button:
             ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
             ESP_LOGI("button", "Please measure the volume in mL.");
             ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_micro_flow_rate_ml_s' and the 15_04 PWM slider.");
+            ESP_LOGI("button", "Update 'pump_micro_flow_rate_ml_s' and the 'Micro Pump PWM' slider.");
 
             // Turn on pump (PWM intensity read from config inside HAL)
             id(hal)->setPump("NutrientPumpB", true);
@@ -1202,13 +1404,16 @@ button:
             ESP_LOGI("button", "====================================");
 
   - platform: template
-    name: "12_05_Test Bloom Pump (10s)"
+    name: "Test Bloom Pump (10s)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 150
     on_press:
       # Turn ON bloom pump for 10 seconds at current PWM slider value
       # Maps to "NutrientPumpC" actuator ID
       then:
         - lambda: |-
-            // PWM comes from the configured value (set via the 15_05 slider)
+            // PWM comes from the configured value (set via the "Bloom Pump PWM" slider)
             float pwm_percent = id(hal)->getPumpConfig("NutrientPumpC").pwm_intensity * 100.0f;
 
             // Log calibration instructions
@@ -1216,7 +1421,7 @@ button:
             ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
             ESP_LOGI("button", "Please measure the volume in mL.");
             ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_bloom_flow_rate_ml_s' and the 15_05 PWM slider.");
+            ESP_LOGI("button", "Update 'pump_bloom_flow_rate_ml_s' and the 'Bloom Pump PWM' slider.");
 
             // Turn on pump (PWM intensity read from config inside HAL)
             id(hal)->setPump("NutrientPumpC", true);
@@ -1228,9 +1433,12 @@ button:
             ESP_LOGI("button", "Bloom Pump auto-OFF after 10s");
             ESP_LOGI("button", "====================================");
 
-  # === 13 - Precision Dosing Tests (2cl/20mL) ===
+  # === Precision Dosing Tests (2cl/20mL) ===
   - platform: template
-    name: "13_01_Test Grow Pump (2cl = 20mL)"
+    name: "Test Grow Pump (2cl = 20mL)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 210
     on_press:
       # Test precise volume output: 2cl (20mL) from Grow Pump
       # Uses HAL pumpflow() to convert mL to seconds based on calibration
@@ -1259,7 +1467,10 @@ button:
             ESP_LOGI("button", "==========================");
 
   - platform: template
-    name: "13_02_Test pH Pump (2cl = 20mL)"
+    name: "Test pH Pump (2cl = 20mL)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 220
     on_press:
       # Test precise volume output: 2cl (20mL) from pH Pump
       # Uses HAL pumpflow() to convert mL to seconds based on calibration
@@ -1288,7 +1499,10 @@ button:
             ESP_LOGI("button", "==========================");
 
   - platform: template
-    name: "13_03_Test Micro Pump (2cl = 20mL)"
+    name: "Test Micro Pump (2cl = 20mL)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 230
     on_press:
       # Test precise volume output: 2cl (20mL) from Micro Pump
       # Uses HAL pumpflow() to convert mL to seconds based on calibration
@@ -1317,7 +1531,10 @@ button:
             ESP_LOGI("button", "==========================");
 
   - platform: template
-    name: "13_04_Test Bloom Pump (2cl = 20mL)"
+    name: "Test Bloom Pump (2cl = 20mL)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 240
     on_press:
       # Test precise volume output: 2cl (20mL) from Bloom Pump
       # Uses HAL pumpflow() to convert mL to seconds based on calibration
@@ -1345,8 +1562,12 @@ button:
             ESP_LOGI("button", "Please verify 20mL was dispensed");
             ESP_LOGI("button", "==========================");
 
+  # Air pump via Shelly Plus 4PM Socket 0
   - platform: template
-    name: "12_06_Test Air Pump (Shelly Socket 0)"
+    name: "Test Air Pump (5s)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 160
     on_press:
       # Turn ON air pump via Shelly for 5 seconds
       # Tests HTTP communication and Shelly socket control
@@ -1361,8 +1582,12 @@ button:
             ESP_LOGI("button", "Air Pump OFF - 5s test complete");
             ESP_LOGI("button", "========================================");
 
+  # Wastewater pump via Shelly Plus 4PM Socket 2
   - platform: template
-    name: "12_07_Test Wastewater Pump (Shelly Socket 2)"
+    name: "Test Wastewater Pump (5s)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 170
     on_press:
       # Turn ON wastewater pump via Shelly for 5 seconds
       # Tests HTTP communication and Shelly socket control
@@ -1377,8 +1602,12 @@ button:
             ESP_LOGI("button", "Wastewater Pump OFF - 5s test complete");
             ESP_LOGI("button", "==============================================");
 
+  # Grow light via Shelly Plus 4PM Socket 3
   - platform: template
-    name: "12_08_Test Grow Light (Shelly Socket 3)"
+    name: "Test Grow Light (3s)"
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 180
     on_press:
       # Turn ON grow light via Shelly for 3 seconds
       # Tests HTTP communication and Shelly socket control
@@ -1393,9 +1622,12 @@ button:
             ESP_LOGI("button", "Grow Light OFF - 3s test complete");
             ESP_LOGI("button", "=========================================");
 
-  # === 15 - Calendar Day Control ===
+  # === Calendar Day Control ===
   - platform: template
-    name: "06_09_Calendar Day +1"
+    name: "Calendar Day +1"
+    web_server:
+      sorting_group_id: sg_calendar
+      sorting_weight: 20
     on_press:
       # Advance calendar to next day
       # Useful for manually advancing grow cycle or skipping days
@@ -1411,7 +1643,10 @@ button:
             }
 
   - platform: template
-    name: "06_10_Calendar Day -1"
+    name: "Calendar Day -1"
+    web_server:
+      sorting_group_id: sg_calendar
+      sorting_weight: 30
     on_press:
       # Go back to previous calendar day
       # Useful for extending a growth phase or correcting accidental advances
@@ -1536,7 +1771,7 @@ plantos_controller:
                                 # During night mode: no pH correction, feeding, or water filling
 
   # Status Logger Configuration
-  enable_status_reports: false  # Enable/disable periodic status reports (default: false, use switch 11_10)
+  enable_status_reports: false  # Enable/disable periodic status reports (default: false, use "System Status Reports" switch)
   status_report_interval: 60s   # How often to print status reports (default: 30s)
   verbose_mode: false           # Enable instant verbose logging of all events (default: false)
                                 # Verbose mode logs state changes, sensor readings, and actuator
@@ -1597,9 +1832,12 @@ ezo_ph_uart:
   update_interval: 5s
   verbose: false
   ph:
-    name: "00_05_Nutrient Solution pH"
+    name: "Nutrient Solution pH"
     id: ph_sensor_real
     accuracy_decimals: 2
+    web_server:
+      sorting_group_id: sg_sensors
+      sorting_weight: 10
     filters:
       - sliding_window_moving_average:
           window_size: 5
@@ -1829,16 +2067,19 @@ calendar_manager:
     ]
 ################################################################################
 switch:
-  # === 01 - Air Pump Control ===
+  # === Air Pump Control ===
   - platform: template
     id: air_pump_cycling_switch
-    name: "01_04_Air Pump Cycling"
+    name: "Air Pump Cycling"
     restore_mode: RESTORE_DEFAULT_OFF  # Default to Normal mode (24/7 ON)
     optimistic: true
     icon: "mdi:air-purifier"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 40
     turn_on_action:
       # Enable intermittent cycling for air pump
-      # Uses periods configured via number sliders (01_05 and 01_06)
+      # Uses periods configured via the "Air Pump ON/OFF Period" numbers
       # Starts with ON cycle immediately
       - lambda: |-
           uint32_t on_period = (uint32_t)id(air_pump_on_period).state;
@@ -1863,12 +2104,15 @@ switch:
           ESP_LOGI("switch", "Controller will turn ON pump within 30 seconds");
           ESP_LOGI("switch", "========================================");
 
-  # === 02 - Safety Gate Control ===
+  # === Safety Gate Control ===
   - platform: template
     id: safety_gate_enabled
-    name: "02_01_Enable Actuator Safety Gate"
+    name: "Enable Actuator Safety Gate"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON  # Safety gate enabled by default
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 80
     turn_on_action:
       - lambda: |-
           ESP_LOGI("switch", "Actuator Safety Gate ENABLED");
@@ -1878,11 +2122,14 @@ switch:
           ESP_LOGW("switch", "Actuator Safety Gate DISABLED - manual control mode");
           id(actuator_safety)->setEnabled(false);
 
-  # === 02 - Automatic EC/Feeding Control ===
+  # === Automatic EC/Feeding Control ===
   - platform: template
     id: auto_feeding_enabled_switch
-    name: "04_11_Auto EC/Feeding Correction"
+    name: "Auto EC/Feeding Correction"
     icon: "mdi:flask-plus"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 120
     restore_mode: RESTORE_DEFAULT_ON  # Auto-feeding enabled by default
     optimistic: false  # State determined by lambda return value
     turn_on_action:
@@ -1920,11 +2167,14 @@ switch:
       // DO NOT call loadState() here - it allocates memory on each call!
       return id(unified_controller).isAutoFeedingEnabled();
 
-  # === 02 - Automatic Weekly Reservoir Change Control ===
+  # === Automatic Weekly Reservoir Change Control ===
   - platform: template
     id: auto_reservoir_change_enabled_switch
-    name: "02_03_Auto Reservoir Change Enabled"
+    name: "Auto Reservoir Change"
     icon: "mdi:calendar-sync"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 90
     restore_mode: RESTORE_DEFAULT_OFF  # Disabled by default (manual control preferred)
     optimistic: false  # State determined by lambda return value
     turn_on_action:
@@ -1961,11 +2211,14 @@ switch:
       // Return cached value from controller (loaded from NVS at setup)
       return id(unified_controller).isAutoReservoirChangeEnabled();
 
-  # === 04_10 - Auto pH Correction Toggle ===
+  # === Auto pH Correction Toggle ===
   - platform: template
     id: auto_ph_correction_switch
-    name: "04_10_Auto pH Correction"
+    name: "Auto pH Correction"
     icon: "mdi:flask-outline"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 110
     restore_mode: RESTORE_DEFAULT_ON
     optimistic: false
     turn_on_action:
@@ -1981,11 +2234,14 @@ switch:
     lambda: |-
       return id(unified_controller)->isAutoPhCorrectionEnabled();
 
-  # === 04_12 - Auto Water Level Toggle ===
+  # === Auto Water Level Toggle ===
   - platform: template
     id: auto_water_level_switch
-    name: "04_12_Auto Water Level"
+    name: "Auto Water Level"
     icon: "mdi:water-auto"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 130
     restore_mode: RESTORE_DEFAULT_OFF
     optimistic: false
     turn_on_action:
@@ -2007,9 +2263,12 @@ switch:
   # Note: optimistic=true, switches show intended state (not actual hardware state)
   - platform: template
     id: mag_valve_switch
-    name: "10_01_Magnetic Valve"
+    name: "Magnetic Valve"
     optimistic: true
     restore_mode: ALWAYS_OFF
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 10
     turn_on_action:
       - lambda: |-
           if (!id(actuator_safety)->executeCommand("WaterValve", true, 0)) {
@@ -2023,9 +2282,12 @@ switch:
 
   - platform: template
     id: pump_ph_switch
-    name: "10_02_pH Pump"
+    name: "pH Pump"
     optimistic: true
     restore_mode: ALWAYS_OFF
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 20
     turn_on_action:
       - lambda: |-
           if (!id(actuator_safety)->executeCommand("AcidPump", true, 0)) {
@@ -2040,9 +2302,12 @@ switch:
   # Nutrient Pump Switches (Grow = NutrientPumpA, Micro = NutrientPumpB, Bloom = NutrientPumpC)
   - platform: template
     id: pump_grow_switch
-    name: "10_03_Grow Pump"    # NutrientPumpA → nutrient_A_ml_per_liter (GPIO20)
+    name: "Grow Pump"    # NutrientPumpA → nutrient_A_ml_per_liter (GPIO20)
     optimistic: true
     restore_mode: ALWAYS_OFF
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 30
     turn_on_action:
       - lambda: |-
           if (!id(actuator_safety)->executeCommand("NutrientPumpA", true, 0)) {
@@ -2056,9 +2321,12 @@ switch:
 
   - platform: template
     id: pump_micro_switch
-    name: "10_04_Micro Pump"   # NutrientPumpB → nutrient_B_ml_per_liter (GPIO21)
+    name: "Micro Pump"   # NutrientPumpB → nutrient_B_ml_per_liter (GPIO21)
     optimistic: true
     restore_mode: ALWAYS_OFF
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 40
     turn_on_action:
       - lambda: |-
           if (!id(actuator_safety)->executeCommand("NutrientPumpB", true, 0)) {
@@ -2072,9 +2340,12 @@ switch:
 
   - platform: template
     id: pump_bloom_switch
-    name: "10_05_Bloom Pump"   # NutrientPumpC → nutrient_C_ml_per_liter (GPIO22)
+    name: "Bloom Pump"   # NutrientPumpC → nutrient_C_ml_per_liter (GPIO22)
     optimistic: true
     restore_mode: ALWAYS_OFF
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 50
     turn_on_action:
       - lambda: |-
           if (!id(actuator_safety)->executeCommand("NutrientPumpC", true, 0)) {
@@ -2091,10 +2362,14 @@ switch:
   # Socket 1 reserved for future expansion
   # Uses ASG for debouncing based on actual Shelly state (polled every 5s)
 
+  # Air pump via Shelly Plus 4PM Socket 0
   - platform: template
     id: air_pump_shelly_switch
-    name: "10_06_Air Pump (Shelly Socket 0)"
+    name: "Air Pump"
     restore_mode: ALWAYS_OFF
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 60
     lambda: |-
       // Return actual state from HAL (synced via polling)
       return id(hal).getShellySwitchState(0);
@@ -2114,10 +2389,14 @@ switch:
             ESP_LOGD("switch", "Air Pump (Shelly Socket 0): ASG rejected (already OFF or debounced)");
           }
 
+  # Wastewater pump via Shelly Plus 4PM Socket 2
   - platform: template
     id: wastewater_pump_shelly_switch
-    name: "10_07_Wastewater Pump (Shelly Socket 2)"
+    name: "Wastewater Pump"
     restore_mode: ALWAYS_OFF
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 70
     lambda: |-
       // Return actual state from HAL (synced via polling)
       return id(hal).getShellySwitchState(2);
@@ -2137,10 +2416,14 @@ switch:
             ESP_LOGD("switch", "Wastewater Pump (Shelly Socket 2): ASG rejected (already OFF or debounced)");
           }
 
+  # Grow light via Shelly Plus 4PM Socket 3
   - platform: template
     id: grow_light_shelly_switch
-    name: "10_08_Grow Light (Shelly Socket 3)"
+    name: "Grow Light"
     restore_mode: ALWAYS_OFF
+    web_server:
+      sorting_group_id: sg_actuators
+      sorting_weight: 80
     lambda: |-
       // Return actual state from HAL (synced via polling)
       return id(hal).getShellySwitchState(3);
@@ -2162,9 +2445,12 @@ switch:
 
   # === pH Sensor Control ===
   - platform: template
-    name: "07_03_Enable Continuous pH Reading"
+    name: "Continuous pH Reading"
     id: continuous_ph_reading_switch
     optimistic: true
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 180
     turn_on_action:
       then:
         - lambda: |-
@@ -2179,11 +2465,14 @@ switch:
   # === Night Mode Configuration ===
 
   - platform: template
-    name: "01_01_Night Mode Enabled"
+    name: "Night Mode"
     id: night_mode_switch
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     icon: "mdi:weather-night"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 10
     turn_on_action:
       - lambda: |-
           ESP_LOGI("switch", "Night Mode ENABLED - no pH correction, feeding, or filling during night hours");
@@ -2198,11 +2487,14 @@ switch:
   # When disabled (default), use Shelly scripts for direct light cycle control - more fail-proof.
 
   - platform: template
-    name: "01_07_Grow Light Schedule"
+    name: "Grow Light Schedule"
     id: grow_light_schedule_switch
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:lightbulb-auto"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 70
     turn_on_action:
       - lambda: |-
           ESP_LOGI("switch", "Grow Light Schedule ENABLED - controller will manage light based on calendar");
@@ -2212,17 +2504,21 @@ switch:
           ESP_LOGI("switch", "Grow Light Schedule DISABLED - use Shelly scripts for direct control");
           id(unified_controller)->setGrowLightScheduleEnabled(false);
 
-  # === 11 - Verbose Logging Toggles ===
+  # === Verbose Logging Toggles ===
   # These switches control debug log output for specific components
   # Turning ON enables DEBUG level (verbose), turning OFF sets to INFO level (quiet)
   # Helps reduce log clutter during calibration and normal operation
 
+  # [DEBUG] Master toggle for all per-component verbose switches
   - platform: template
-    name: "11_00_Verbose: ALL (Master Toggle)"
+    name: "Verbose: ALL"
     id: verbose_all
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 10
     turn_on_action:
       - logger.log:
           format: "Enabling ALL verbose logging"
@@ -2256,12 +2552,16 @@ switch:
 # Turning ON enables VERBOSE level (most detailed), turning OFF sets to WARN level (quiet)
 # See: https://esphome.io/components/logger/#loggerset_level-action
 
+  # [DEBUG] Verbose log toggle - tag: sensor
   - platform: template
-    name: "11_01_Verbose: Sensor State Updates"
+    name: "Verbose: Sensor State Updates"
     id: verbose_sensor
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 20
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: sensor"
@@ -2277,12 +2577,16 @@ switch:
           level: WARN
           tag: sensor
 
+  # [DEBUG] Verbose log toggle - tag: text_sensor
   - platform: template
-    name: "11_02_Verbose: Text Sensor Updates"
+    name: "Verbose: Text Sensor Updates"
     id: verbose_text_sensor
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 30
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: text_sensor"
@@ -2298,12 +2602,16 @@ switch:
           level: WARN
           tag: text_sensor
 
+  # [DEBUG] Verbose log toggle - tag: ezo_ph_uart
   - platform: template
-    name: "11_03_Verbose: EZO pH UART"
+    name: "Verbose: EZO pH UART"
     id: verbose_ezo_ph
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 40
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: ezo_ph_uart"
@@ -2319,12 +2627,16 @@ switch:
           level: DEBUG
           tag: ezo_ph_uart
 
+  # [DEBUG] Verbose log toggle - tag: sensor_filter
   - platform: template
-    name: "11_04_Verbose: Sensor Filter"
+    name: "Verbose: Sensor Filter"
     id: verbose_sensor_filter
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 50
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: sensor_filter"
@@ -2340,12 +2652,16 @@ switch:
           level: WARN
           tag: sensor_filter
 
+  # [DEBUG] Verbose log toggle - tag: dallas.temp.sensor
   - platform: template
-    name: "11_05_Verbose: Dallas Temp Sensor"
+    name: "Verbose: Dallas Temp Sensor"
     id: verbose_dallas
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 60
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: dallas.temp.sensor"
@@ -2361,12 +2677,16 @@ switch:
           level: WARN
           tag: dallas.temp.sensor
 
+  # [DEBUG] Verbose log toggle - tag: plantos_controller
   - platform: template
-    name: "11_06_Verbose: PlantOS Controller"
+    name: "Verbose: PlantOS Controller"
     id: verbose_controller
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 70
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: plantos_controller"
@@ -2382,12 +2702,16 @@ switch:
           level: WARN
           tag: plantos_controller
 
+  # [DEBUG] Verbose log toggle - tag: gpio_status
   - platform: template
-    name: "11_07_Verbose: GPIO Status"
+    name: "Verbose: GPIO Status"
     id: verbose_gpio_status
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 80
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: gpio_status"
@@ -2403,12 +2727,16 @@ switch:
           level: WARN
           tag: gpio_status
 
+  # [DEBUG] Verbose log toggle - tag: component
   - platform: template
-    name: "11_08_Verbose: Component Warnings"
+    name: "Verbose: Component Warnings"
     id: verbose_component
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 90
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: component"
@@ -2424,12 +2752,16 @@ switch:
           level: ERROR # Reduced to ERROR only to minimize noise from blocking operations
           tag: component
 
+  # [DEBUG] Verbose log toggle - tag: esp-idf
   - platform: template
-    name: "11_09_Verbose: ESP-IDF Framework"
+    name: "Verbose: ESP-IDF Framework"
     id: verbose_esp_idf
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 100
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: esp-idf"
@@ -2445,12 +2777,16 @@ switch:
           level: WARN
           tag: esp-idf
 
+  # [DEBUG] Periodic system status reports in the log (60s interval)
   - platform: template
-    name: "11_10_Enable System Status Reports"
+    name: "System Status Reports"
     id: enable_status_reports
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     icon: "mdi:file-document-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 110
     turn_on_action:
       - logger.log:
           format: "Enabling periodic system status reports"
@@ -2472,12 +2808,16 @@ switch:
             logger->configure(false, 60000, false);
           }
 
+  # [DEBUG] Verbose log toggle - tag: time
   - platform: template
-    name: "11_11_Verbose: Time Synchronization"
+    name: "Verbose: Time Synchronization"
     id: verbose_time
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 120
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: time synchronization"
@@ -2493,12 +2833,16 @@ switch:
           level: WARN
           tag: time
 
+  # [DEBUG] Verbose log toggle - tag: http_request
   - platform: template
-    name: "11_12_Verbose: http_request Component"
+    name: "Verbose: HTTP Request"
     id: verbose_http_request
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 130
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: http_request"
@@ -2514,12 +2858,16 @@ switch:
           level: WARN
           tag: http_request
 
+  # [DEBUG] Verbose log toggle - tag: esp32.preferences
   - platform: template
-    name: "11_12_Verbose: esp32.preferences Component"
+    name: "Verbose: ESP32 Preferences"
     id: verbose_esp32_preferences
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 140
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: esp32.preferences"
@@ -2535,12 +2883,16 @@ switch:
           level: WARN
           tag: esp32.preferences
 
+  # [DEBUG] Verbose log toggle - tag: tds_sensor
   - platform: template
-    name: "11_13_Verbose: TDS Sensor"
+    name: "Verbose: TDS Sensor"
     id: verbose_tds_sensor
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:bug-outline"
+    web_server:
+      sorting_group_id: sg_debug_logging
+      sorting_weight: 150
     turn_on_action:
       - logger.log:
           format: "Enabling verbose logging for: tds_sensor"
@@ -2557,7 +2909,7 @@ switch:
           tag: tds_sensor
 
   ################################################################################
-  # === 12 - DIRECT GPIO CONTROL (HARDWARE TESTING ONLY) ===
+  # === DIRECT GPIO CONTROL (HARDWARE TESTING ONLY) ===
   #
   # WARNING: These switches bypass ALL safety and abstraction layers!
   # - NO SafetyGate validation
@@ -2568,12 +2920,16 @@ switch:
   # PURPOSE: Hardware testing and wiring validation only
   ################################################################################
 
+  # [DEBUG] Bypasses SafetyGate and HAL - hardware bring-up only
   - platform: template
     id: direct_gpio1_switch
-    name: "14_01_Set GPIO1 - Water Valve to HIGH"
+    name: "Direct GPIO1 - Water Valve"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 10
     turn_on_action:
       - output.turn_on: mag_valve_output
       - logger.log: "DIRECT GPIO1 (Water Valve) -> HIGH (bypassing all safety!)"
@@ -2581,12 +2937,16 @@ switch:
       - output.turn_off: mag_valve_output
       - logger.log: "DIRECT GPIO1 (Water Valve) -> LOW"
 
+  # [DEBUG] Bypasses SafetyGate and HAL - hardware bring-up only
   - platform: template
     id: direct_gpio4_switch
-    name: "14_02_Set GPIO4 - Acid Pump to HIGH"
+    name: "Direct GPIO4 - Acid Pump"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 20
     turn_on_action:
       - output.turn_on: pump_ph_output
       - logger.log: "DIRECT GPIO4 (Acid Pump) -> HIGH (bypassing all safety!)"
@@ -2594,12 +2954,16 @@ switch:
       - output.turn_off: pump_ph_output
       - logger.log: "DIRECT GPIO4 (Acid Pump) -> LOW"
 
+  # [DEBUG] Bypasses SafetyGate and HAL - hardware bring-up only
   - platform: template
     id: direct_gpio5_switch
-    name: "14_03_Set GPIO5 - Grow to HIGH"
+    name: "Direct GPIO5 - Grow Pump"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 30
     turn_on_action:
       - output.turn_on: pump_grow_output
       - logger.log: "DIRECT GPIO5 (Grow) -> HIGH (bypassing all safety!)"
@@ -2607,12 +2971,16 @@ switch:
       - output.turn_off: pump_grow_output
       - logger.log: "DIRECT GPIO5 (Grow) -> LOW"
 
+  # [DEBUG] Bypasses SafetyGate and HAL - hardware bring-up only
   - platform: template
     id: direct_gpio6_switch
-    name: "14_04_Set GPIO6 - Micro to HIGH"
+    name: "Direct GPIO6 - Micro Pump"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 40
     turn_on_action:
       - output.turn_on: pump_micro_output
       - logger.log: "DIRECT GPIO6 (Micro) -> HIGH (bypassing all safety!)"
@@ -2620,12 +2988,16 @@ switch:
       - output.turn_off: pump_micro_output
       - logger.log: "DIRECT GPIO6 (Micro) -> LOW"
 
+  # [DEBUG] Bypasses SafetyGate and HAL - hardware bring-up only
   - platform: template
     id: direct_gpio7_switch
-    name: "14_05_Set GPIO7 - Bloom to HIGH"
+    name: "Direct GPIO7 - Bloom Pump"
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:electric-switch"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 50
     turn_on_action:
       - output.turn_on: pump_bloom_output
       - logger.log: "DIRECT GPIO7 (Bloom) -> HIGH (bypassing all safety!)"
@@ -2643,11 +3015,14 @@ switch:
 # WARNING: Use only for hardware testing and calibration!
 ################################################################################
 number:
-  # === 04_14 - EC Target Multiplier ===
+  # === EC Target Multiplier ===
   - platform: template
     id: ec_target_multiplier_slider
-    name: "04_14_EC Target Multiplier (0.1x – 2.0x)"
+    name: "EC Target Multiplier"
     icon: "mdi:beaker-outline"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 140
     optimistic: true
     min_value: 0.1
     max_value: 2.0
@@ -2663,8 +3038,12 @@ number:
 
   # === EC Calibration Target ===
   - platform: template
-    name: "07_20_EC Calibration Target (uS/cm)"
+    name: "EC Calibration Target"
     id: ec_calibration_target
+    unit_of_measurement: "uS/cm"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 250
     min_value: 100
     max_value: 5000
     step: 1
@@ -2677,8 +3056,11 @@ number:
   # === Night Mode Time Configuration ===
   - platform: template
     id: night_start_hour
-    name: "01_02_Night Mode Start Hour"
+    name: "Night Mode Start Hour"
     icon: "mdi:clock-start"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 20
     optimistic: true
     min_value: 0
     max_value: 23
@@ -2694,8 +3076,11 @@ number:
 
   - platform: template
     id: night_end_hour
-    name: "01_03_Night Mode End Hour"
+    name: "Night Mode End Hour"
     icon: "mdi:clock-end"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 30
     optimistic: true
     min_value: 0
     max_value: 23
@@ -2710,10 +3095,14 @@ number:
           id(unified_controller)->setNightModeConfig(id(night_mode_switch).state, id(night_start_hour).state, x);
 
   # === Auto Reservoir Change Day of Week ===
+  # Day of week: 0=Sunday ... 6=Saturday
   - platform: template
     id: auto_reservoir_change_day
-    name: "02_04_Auto Reservoir Change Day"
+    name: "Auto Reservoir Change Day"
     icon: "mdi:calendar-week"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 100
     optimistic: true
     min_value: 0
     max_value: 6
@@ -2729,10 +3118,14 @@ number:
           id(unified_controller).setAutoReservoirChangeDay(day);
 
   # === pH K-Factor ===
+  # Acid dose aggressiveness: dose = pH_delta x tank_L x K
   - platform: template
     id: ph_k_factor_slider
-    name: "04_15_pH K-Factor (acid dose aggressiveness)"
+    name: "pH K-Factor"
     icon: "mdi:ph"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 150
     min_value: 0.01
     max_value: 0.50
     step: 0.005
@@ -2749,8 +3142,11 @@ number:
   # === Mother Plant Mix Volume ===
   - platform: template
     id: mother_volume_liters
-    name: "04_17_Mother Mix Volume (L)"
+    name: "Mother Mix Volume"
     icon: "mdi:water-plus"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 170
     optimistic: true
     min_value: 1
     max_value: 15
@@ -2762,16 +3158,21 @@ number:
     set_action:
       - lambda: 'ESP_LOGI("number", "Mother mix volume set to %.1f L", x);'
 
-  # === 15 - PWM Configuration Sliders ===
+  # === PWM Configuration Sliders ===
   # These sliders ONLY configure the pump duty cycle stored in the HAL pump
   # config; they do NOT activate the pump. The configured PWM is applied on
-  # every controller activation and on the 12_xx test buttons. Direct GPIO
-  # (14_xx) ignores this and always runs at 100% for manual flushing.
+  # every controller activation and on the actuator test buttons. Direct GPIO
+  # switches ignore this and always run at 100% for manual flushing.
   # The water valve (GPIO1) is binary (on/off), so it has no PWM slider.
+
+  # [DEBUG] Pump PWM duty-cycle config - calibration/testing only
   - platform: template
     id: pwm_gpio4_slider
-    name: "15_02_GPIO4 - Acid Pump PWM"
+    name: "Acid Pump PWM"
     icon: "mdi:flask-percent"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 60
     optimistic: true
     min_value: 0
     max_value: 100
@@ -2786,10 +3187,14 @@ number:
           format: "PWM config: AcidPump set to %.0f%% (not activated)"
           args: ['x']
 
+  # [DEBUG] Pump PWM duty-cycle config - calibration/testing only
   - platform: template
     id: pwm_gpio5_slider
-    name: "15_03_GPIO5 - Grow PWM"
+    name: "Grow Pump PWM"
     icon: "mdi:water-pump"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 70
     optimistic: true
     min_value: 0
     max_value: 100
@@ -2804,10 +3209,14 @@ number:
           format: "PWM config: NutrientPumpA set to %.0f%% (not activated)"
           args: ['x']
 
+  # [DEBUG] Pump PWM duty-cycle config - calibration/testing only
   - platform: template
     id: pwm_gpio6_slider
-    name: "15_04_GPIO6 - Micro PWM"
+    name: "Micro Pump PWM"
     icon: "mdi:water-pump"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 80
     optimistic: true
     min_value: 0
     max_value: 100
@@ -2822,10 +3231,14 @@ number:
           format: "PWM config: NutrientPumpB set to %.0f%% (not activated)"
           args: ['x']
 
+  # [DEBUG] Pump PWM duty-cycle config - calibration/testing only
   - platform: template
     id: pwm_gpio7_slider
-    name: "15_05_GPIO7 - Bloom PWM"
+    name: "Bloom Pump PWM"
     icon: "mdi:water-pump"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 90
     optimistic: true
     min_value: 0
     max_value: 100
@@ -2840,11 +3253,14 @@ number:
           format: "PWM config: NutrientPumpC set to %.0f%% (not activated)"
           args: ['x']
 
-  # === 14 - Air Pump Cycling Period Configuration ===
+  # === Air Pump Cycling Period Configuration ===
   - platform: template
     id: air_pump_on_period
-    name: "01_05_Air Pump ON Period (seconds)"
+    name: "Air Pump ON Period"
     icon: "mdi:timer-play-outline"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 50
     optimistic: true
     min_value: 10       # Minimum 10 seconds ON
     max_value: 3600     # Maximum 1 hour ON
@@ -2861,8 +3277,11 @@ number:
 
   - platform: template
     id: air_pump_off_period
-    name: "01_06_Air Pump OFF Period (seconds)"
+    name: "Air Pump OFF Period"
     icon: "mdi:timer-stop-outline"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 60
     optimistic: true
     min_value: 10       # Minimum 10 seconds OFF
     max_value: 3600     # Maximum 1 hour OFF

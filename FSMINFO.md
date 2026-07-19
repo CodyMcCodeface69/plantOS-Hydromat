@@ -298,14 +298,24 @@ WATER FILLING (standalone)
      ┌──────────────────────┐
      │   WATER_FILLING      │
      │  Blue solid          │
+     │                      │
+     │  SAFETY CHECK:       │
+     │  Water level sensors │
+     │  must be available   │
+     │  (no blind fill)     │
+     │                      │
      │  Turn ON WaterValve  │
-     │  (max 30s duration)  │
+     │  (ASG backstop 600s) │
      │                      │
      │  Monitor:            │
      │  - Water level HIGH  │
      │    sensor            │
-     │  - Timeout (30s)     │
+     │  - Timeout (10 min)  │
      └──────────────────────┘
+              │
+              ├──[Sensors unavailable]───────────▶IDLE
+              │  (SAFETY ABORT, alert             (Clear flags & PSM)
+              │   HARDWARE_WATER_SENSORS_MISSING)
               │
               ├──[SafetyGate rejects]────────────▶IDLE
               │
@@ -313,26 +323,23 @@ WATER FILLING (standalone)
               │  Close valve                     │
               │  Clear PSM                       │
               │                                  │
-              ├──[Timeout (30s fallback)]────────┤
+              ├──[Timeout (10 min backup)]───────┤
               │  Close valve                     │
               │  Clear PSM                       │
+              │  Alert: HIGH sensor never        │
+              │  triggered                       │
               │                                  │
-              └──────────────────────────────────┼────────────────────┐
-                                                 │                    │
-                          ┌──────────────────────┼────────────────┐   │
-                          │ [auto_ph_          [No auto pH]       │   │
-                          │  correction_                          │   │
-                          │  pending = true]                      │   │
-                          ▼                                       ▼   │
-                   ┌────────────┐                              [IDLE] │
-                   │     PH_    │                                     │
-                   │ PROCESSING │                                     │
-                   └────────────┘                                     │
-                                                                      │
-                                                                      │ [Timeout with
-                                                                      │  no sensor]
-                                                                      ▼
-                                                                   [ERROR]
+              └──────────────────────────────────┘
+                                                 │
+                          ┌──────────────────────┼────────────────┐
+                          │ [auto_ph_          [No auto pH]       │
+                          │  correction_                          │
+                          │  pending = true]                      │
+                          ▼                                       ▼
+                   ┌────────────┐                              [IDLE]
+                   │     PH_    │
+                   │ PROCESSING │
+                   └────────────┘
 
 ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 WATER EMPTYING (via Shelly or manual)
@@ -345,23 +352,24 @@ WATER EMPTYING (via Shelly or manual)
      │  before starting     │
      │                      │
      │  Turn ON Wastewater  │
-     │  Pump (max 30s)      │
+     │  Pump (ASG backstop  │
+     │  1800s)              │
      │                      │
      │  Monitor:            │
-     │  - Water level LOW   │
+     │  - Water level EMPTY │
      │    sensor OFF        │
-     │  - Timeout (30s)     │
+     │  - Timeout (300s)    │
      └──────────────────────┘
               │
               ├──[Tank already empty (LOW OFF)]──▶IDLE
               │
               ├──[SafetyGate rejects]────────────▶IDLE
               │
-              ├──[LOW sensor OFF]────────────────┐
+              ├──[EMPTY sensor OFF]──────────────┐
               │  Stop pump                       │
               │  Clear PSM                       │
               │                                  │
-              ├──[Timeout (30s fallback)]────────┤
+              ├──[Timeout (300s fallback)]───────┤
               │  Stop pump                       │
               │  Clear PSM                       │
               │                                  │
@@ -377,9 +385,14 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
      │  First phase of Feed │
      │  operation           │
      │                      │
-     │  SAFETY CHECK:       │
-     │  Verify tank empty   │
-     │  (both sensors OFF)  │
+     │  SAFETY CHECKS:      │
+     │  1. Water level      │
+     │     sensors must be  │
+     │     available (no    │
+     │     blind fill)      │
+     │  2. Verify tank      │
+     │     empty (all 3     │
+     │     sensors OFF)     │
      │                      │
      │  Turn ON WaterValve  │
      │  (calc'd max time    │
@@ -392,6 +405,10 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
      │    sensor            │
      │  - Timeout (calc'd)  │
      └──────────────────────┘
+              │
+              ├──[Sensors unavailable]───────────▶IDLE
+              │  (SAFETY ABORT, alert             (Clear flags & PSM)
+              │   HARDWARE_WATER_SENSORS_MISSING)
               │
               ├──[Tank not empty]────────────────▶IDLE
               │  (sensors ON)                    (Clear flags & PSM)
@@ -444,9 +461,9 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | PH_CALIBRATING     | - None (sensor calibration only, no actuators) |
 | EC_CALIBRATING     | - None (sensor calibration only, no actuators) |
 | FEEDING            | **Setup state only — immediately delegates to EC_FEEDING loop.**<br>- Calculates individual dose = (calendar_mL/L × tank_volume × dose_multiplier) / 5<br>- If EC target configured: sets `feeding_manual_mode_=true`, transitions to EC_FEEDING<br>- If no EC target: uses full calendar dose in single pass via EC_FEEDING<br>**EC_FEEDING → EC_MIXING → EC_MEASURING loop repeats until EC target reached or 20 installments** |
-| WATER_FILLING      | - Turn ON WaterValve (max 30s, or until HIGH sensor) |
-| WATER_EMPTYING     | - Turn ON WastewaterPump (max 30s, or until LOW sensor OFF) |
-| FEED_FILLING       | - Turn ON WaterValve (calc'd duration, or until HIGH sensor) |
+| WATER_FILLING      | - Turn ON WaterValve (until HIGH sensor or 10-min timeout; ASG backstop 600s)<br>- **Aborts to IDLE if water level sensors unavailable (no blind fill)** |
+| WATER_EMPTYING     | - Turn ON WastewaterPump (until EMPTY sensor OFF or 300s timeout; ASG backstop 1800s) |
+| FEED_FILLING       | - Turn ON WaterValve (calc'd duration, or until HIGH sensor)<br>- **Aborts to IDLE if water level sensors unavailable (no blind fill)** |
 
 ## Persistent State Manager (PSM) Events
 
@@ -476,9 +493,9 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | resetEcCalibration()       | Any state          | (no transition)      | Reset EC factor to 1.0 (factory default) |
 | startFeeding()             | Must be in IDLE    | FEEDING → EC_FEEDING | Manual EC-dependent nutrient dosing (web UI button)<br>Doses in installments of (calendar_total × multiplier) / 5<br>Loops via EC_MIXING → EC_MEASURING until EC target reached (max 20 installments)<br>Falls back to single-pass if no EC target configured<br>**Blocked in NIGHT state** |
 | startMotherNutrients(L)    | Must be in IDLE    | EC_FEEDING → IDLE    | Dose nutrients for mother plant into a separate container<br>Fixed rates: A=1.44 mL/L, B=0.96 mL/L, C=0.48 mL/L<br>Single pass A→B→C only — no EC loop, no EC_MIXING, no pH correction<br>Volume: user-specified 1–15 L (WebUI number input 04_17)<br>Sets `is_mother_mix_=true` to short-circuit EC_FEEDING→IDLE |
-| startFillTank()            | Must be in IDLE    | WATER_FILLING        | Fill tank → EC check → pH correction (post-fill sequence)<br>**Blocked in NIGHT state** |
+| startFillTank()            | Must be in IDLE<br>Water level sensors available | WATER_FILLING        | Fill tank → EC check → pH correction (post-fill sequence)<br>**Rejected with error if water level sensors unavailable (overflow risk)**<br>**Blocked in NIGHT state** |
 | startEmptyTank()           | N/A (info only)    | IDLE (no change)     | Info message (use manual drain) |
-| startFeed()                | Must be in IDLE<br>Tank must be empty | FEED_FILLING         | Complete feed: Fill→Nutrients→pH<br>(safety check: both sensors OFF)<br>**Blocked in NIGHT state** |
+| startFeed()                | Must be in IDLE<br>Water level sensors available<br>Tank must be empty | FEED_FILLING         | Complete feed: Fill→Nutrients→pH<br>(safety checks: sensors available, all 3 sensors OFF)<br>**Blocked in NIGHT state** |
 | startReservoirChange()     | Must be in IDLE    | IDLE (manual drain)  | Info message (requires manual empty)<br>**Blocked in NIGHT state** |
 | setToShutdown()            | Any state          | SHUTDOWN             | Emergency shutdown (persists) |
 | setToPause()               | Any state          | PAUSE                | Pause system (persists) |
@@ -507,9 +524,9 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | PH_MEASURING       | 30s (normal) / 5min (post EC feeding) / 10min (post water fill) | → PH_CALCULATING |
 | PH_INJECTING       | Calculated dose + 200ms    | → PH_MIXING |
 | PH_MIXING          | 2 minutes (120s)           | → PH_MEASURING (loop back to verify) |
-| WATER_FILLING      | 10min (fallback) or HIGH sensor | → IDLE (sets `auto_ec_check_pending_`; IDLE dispatches EC_PROCESSING when not night mode) |
-| WATER_EMPTYING     | 30s (fallback) or sensor   | → IDLE |
-| FEED_FILLING       | Calculated or sensor       | → FEEDING |
+| WATER_FILLING      | 10min (safety backup) or HIGH sensor | → IDLE (sets `auto_ec_check_pending_`; IDLE dispatches EC_PROCESSING when not night mode)<br>Immediate abort → IDLE if water level sensors unavailable |
+| WATER_EMPTYING     | 300s (fallback) or EMPTY sensor OFF | → IDLE |
+| FEED_FILLING       | Calculated or sensor       | → FEEDING<br>Immediate abort → IDLE if water level sensors unavailable |
 | EC_CALIBRATING     | ~2.5 min nominal (30s+30s+30s+30s + readings) | → IDLE on COMPLETE, → ERROR on failure |
 
 ---
@@ -550,6 +567,7 @@ All actuator commands flow through ActuatorSafetyGate which provides:
 
 ### State-Specific Safety Actions
 - **WATER_FILLING**: Abort on HIGH sensor ON (prevent overflow)
+- **WATER_FILLING / FEED_FILLING**: Refuse to start if water level sensors unavailable — no blind time-based filling (overflow risk); raises `HARDWARE_WATER_SENSORS_MISSING` alert and aborts to IDLE
 - **WATER_EMPTYING**: Abort on EMPTY sensor OFF (prevent dry pump)
 - **FEED_FILLING**: Pre-check all 3 sensors OFF (tank must be completely empty)
 - **AUTOMATIC FEEDING**: Triggers at LOW state (HIGH=OFF, LOW=OFF, EMPTY=ON), max once per day

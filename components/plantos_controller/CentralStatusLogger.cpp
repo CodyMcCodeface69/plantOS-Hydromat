@@ -764,7 +764,8 @@ std::string CentralStatusLogger::getAlertStateShort() const {
 
         // Water sensors
         if (type == "HARDWARE_WATER_SENSOR_HIGH") return "Water Sensor: High";
-        if (type == "HARDWARE_WATER_SENSOR_LOW") return "Water Sensor: Low";
+        if (type == "HARDWARE_WATER_SENSOR_EMPTY") return "Water Sensor: Empty";
+        if (type == "HARDWARE_WATER_SENSORS_MISSING") return "Water Sensors Missing";
         if (type == "WATER_LOW") return "Water Low";
 
         // Hardware

@@ -1037,7 +1037,8 @@ void PlantOSController::handleError() {
 
             // Hardware detection alerts from Phase 8
             status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_HIGH");
-            status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_LOW");
+            status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_EMPTY");
+            status_logger_.resolveAlert("HARDWARE_WATER_SENSORS_MISSING");
         } else {
             // Legacy: clear alerts (backward compatible)
             ESP_LOGI(TAG, "Error timeout - clearing alerts and restarting to INIT");
@@ -2041,8 +2042,38 @@ void PlantOSController::handleFeedFilling() {
         state_entry_executed_ = true;
         ESP_LOGI(TAG, "[FEED_FILLING] Starting tank fill before nutrient dosing");
 
+        // SAFETY: Abort if water level sensors are unavailable - filling blind
+        // on a timeout with no level feedback risks tank overflow
+        if (!hal_ || !hal_->hasWaterLevelSensors()) {
+            ESP_LOGE(TAG, "[FEED_FILLING] SAFETY ABORT: water level sensors unavailable - refusing blind fill");
+
+            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                status_logger_.updateAlertWithContext(
+                    "HARDWARE_WATER_SENSORS_MISSING",
+                    "Water level sensors unavailable - fill aborted",
+                    "hasWaterLevelSensors() returned false when starting FEED_FILLING",
+                    "Check water level sensor configuration in plantOS.yaml and HAL wiring (HIGH=GPIO17, LOW=GPIO23, EMPTY=GPIO22)",
+                    "Feed sequence aborted before filling to prevent overflow",
+                    "Fix sensor configuration before feeding.",
+                    0
+                );
+            }
+
+            // Clear flags
+            auto_ph_correction_pending_ = false;
+
+            // Clear PSM event
+            if (psm_) {
+                psm_->clearEvent();
+            }
+
+            // Abort sequence
+            transitionTo(ControllerState::IDLE);
+            return;
+        }
+
         // Safety check - verify tank is EMPTY before filling (all 3 sensors OFF)
-        if (hal_->hasWaterLevelSensors()) {
+        {
             bool high_sensor = hal_->readWaterLevelHigh();
             bool low_sensor = hal_->readWaterLevelLow();
             bool empty_sensor = hal_->readWaterLevelEmpty();
@@ -2523,7 +2554,8 @@ void PlantOSController::handleWaterFilling() {
     // Blue solid LED handled by LedBehaviorSystem
     uint32_t elapsed = getStateElapsed();
 
-    // FILL DURATION: 10 minutes (fallback if sensors unavailable - CONFIGURE ACCORDING TO: tank volume and Mag Valve flowspeed )
+    // FILL TIMEOUT: 10 minutes - safety backup if the HIGH sensor never triggers
+    // (CONFIGURE ACCORDING TO: tank volume and Mag Valve flowspeed)
     static constexpr uint32_t FILL_DURATION_MS = 600000;
 
     // ENTRY: Log and activate water valve (only once per state entry)
@@ -2532,9 +2564,38 @@ void PlantOSController::handleWaterFilling() {
     if (elapsed < 100 && !valve_command_sent) {
         ESP_LOGI(TAG, "[WATER_FILLING] Starting tank fill sequence");
 
-        // Request water valve open (30s max duration as safety backup)
+        // SAFETY: Abort if water level sensors are unavailable - filling blind
+        // on a timeout with no level feedback risks tank overflow
+        if (!hal_ || !hal_->hasWaterLevelSensors()) {
+            ESP_LOGE(TAG, "[WATER_FILLING] SAFETY ABORT: water level sensors unavailable - refusing blind fill");
+
+            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                status_logger_.updateAlertWithContext(
+                    "HARDWARE_WATER_SENSORS_MISSING",
+                    "Water level sensors unavailable - fill aborted",
+                    "hasWaterLevelSensors() returned false when starting WATER_FILLING",
+                    "Check water level sensor configuration in plantOS.yaml and HAL wiring (HIGH=GPIO17, LOW=GPIO23, EMPTY=GPIO22)",
+                    "Water filling refused to prevent overflow",
+                    "Fix sensor configuration before filling the tank.",
+                    0
+                );
+            }
+
+            // Clear pending flags and PSM event - fill never started
+            auto_ph_correction_pending_ = false;
+            if (psm_) {
+                psm_->clearEvent();
+            }
+
+            valve_command_sent = false;
+            transitionTo(ControllerState::IDLE);
+            return;
+        }
+
+        // Request water valve open; ASG validates against its 600s max duration
+        // and force-closes the valve as a hardware-level backstop
         if (safety_gate_) {
-            bool approved = safety_gate_->executeCommand(WATER_VALVE, true, 30);  // 30 seconds max
+            bool approved = safety_gate_->executeCommand(WATER_VALVE, true, FILL_DURATION_MS / 1000);
 
             if (!approved) {
                 ESP_LOGE(TAG, "[WATER_FILLING] SafetyGate rejected WaterValve command");
@@ -2622,23 +2683,26 @@ void PlantOSController::handleWaterFilling() {
             low_sensor_logged = false;  // Reset for next fill cycle
         }
     } else {
-        // FALLBACK: No sensors available - use time-based limit
-        static bool no_sensor_warning_logged = false;
-        if (!no_sensor_warning_logged) {
-            ESP_LOGW(TAG, "[WATER_FILLING] Water level sensors not available - using 30s timeout");
+        // SAFETY: Sensors disappeared mid-fill (should be unreachable - entry
+        // guard already checked) - close valve immediately and abort
+        ESP_LOGE(TAG, "[WATER_FILLING] SAFETY ABORT: water level sensors lost during fill - closing valve");
 
-            // Alert about missing sensors (informational)
-            if (ENHANCED_ERROR_HANDLING_ENABLED) {
-                ESP_LOGD(TAG, "Water level sensors not configured - operation will use timeout fallback");
-            }
-
-            no_sensor_warning_logged = true;
+        if (safety_gate_) {
+            safety_gate_->executeCommand(WATER_VALVE, false, 0);
         }
+        if (psm_) {
+            psm_->clearEvent();
+        }
+
+        auto_ph_correction_pending_ = false;
+        valve_command_sent = false;
+        transitionTo(ControllerState::IDLE);
+        return;
     }
 
-    // TIMEOUT: Safety backup - 30s max fill time
+    // TIMEOUT: Safety backup - 10 minute max fill time
     if (elapsed >= FILL_DURATION_MS) {
-        ESP_LOGW(TAG, "[WATER_FILLING] 30s timeout reached - closing valve");
+        ESP_LOGW(TAG, "[WATER_FILLING] 10-minute timeout reached - closing valve");
 
         // Close water valve
         if (safety_gate_) {
@@ -2650,22 +2714,20 @@ void PlantOSController::handleWaterFilling() {
             psm_->clearEvent();
         }
 
-        // Alert if sensors were expected but didn't trigger
-        if (hal_->hasWaterLevelSensors()) {
-            ESP_LOGE(TAG, "[WATER_FILLING] HIGH sensor never triggered - possible sensor failure or low water pressure");
+        // Alert: sensors are present (guaranteed by entry guard) but HIGH never triggered
+        ESP_LOGE(TAG, "[WATER_FILLING] HIGH sensor never triggered - possible sensor failure or low water pressure");
 
-            // Set comprehensive alert for sensor failure
-            if (ENHANCED_ERROR_HANDLING_ENABLED) {
-                status_logger_.updateAlertWithContext(
-                    "HARDWARE_WATER_SENSOR_HIGH",
-                    "HIGH water level sensor never triggered during fill",
-                    "Sensor did not trigger after 30s timeout - possible sensor failure or disconnection",
-                    "Check HIGH water sensor wiring (GPIO10), verify sensor power, test sensor with multimeter",
-                    "Water filling completed via timeout (30s) instead of sensor trigger",
-                    "Tank may be under-filled or sensor may be faulty. Manual verification recommended.",
-                    0
-                );
-            }
+        // Set comprehensive alert for sensor failure
+        if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            status_logger_.updateAlertWithContext(
+                "HARDWARE_WATER_SENSOR_HIGH",
+                "HIGH water level sensor never triggered during fill",
+                "Sensor did not trigger after 10-minute timeout - possible sensor failure or disconnection",
+                "Check HIGH water sensor wiring (GPIO17), verify sensor power, test sensor with multimeter",
+                "Water filling completed via timeout (10 min) instead of sensor trigger",
+                "Tank may be under-filled or sensor may be faulty. Manual verification recommended.",
+                0
+            );
         }
 
         valve_command_sent = false;  // Reset for next fill cycle
@@ -2781,7 +2843,7 @@ void PlantOSController::handleWaterEmptying() {
             // Resolve any active water-related alerts
             if (ENHANCED_ERROR_HANDLING_ENABLED) {
                 status_logger_.resolveAlert("PUMP_REJECTION_WASTEWATER");
-                status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_LOW");
+                status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_EMPTY");
             }
 
             // Clear PSM event
@@ -2814,7 +2876,7 @@ void PlantOSController::handleWaterEmptying() {
         // FALLBACK: No sensors available - use time-based limit
         static bool no_sensor_warning_logged = false;
         if (!no_sensor_warning_logged) {
-            ESP_LOGW(TAG, "[WATER_EMPTYING] Water level sensors not available - using 30s timeout");
+            ESP_LOGW(TAG, "[WATER_EMPTYING] Water level sensors not available - using 300s timeout");
             no_sensor_warning_logged = true;
         }
     }
@@ -2835,16 +2897,16 @@ void PlantOSController::handleWaterEmptying() {
 
         // Alert if sensors were expected but didn't trigger
         if (hal_->hasWaterLevelSensors()) {
-            ESP_LOGE(TAG, "[WATER_EMPTYING] LOW sensor never cleared - possible sensor failure or clog");
+            ESP_LOGE(TAG, "[WATER_EMPTYING] EMPTY sensor never cleared - possible sensor failure or clog");
 
             // Set comprehensive alert for sensor failure
             if (ENHANCED_ERROR_HANDLING_ENABLED) {
                 status_logger_.updateAlertWithContext(
-                    "HARDWARE_WATER_SENSOR_LOW",
-                    "LOW water level sensor never cleared during drain",
-                    "Sensor did not clear after 30s timeout - possible sensor failure, disconnection, or clog",
-                    "Check LOW water sensor wiring (GPIO11), verify sensor power, test sensor, check for clogs",
-                    "Water emptying completed via timeout (30s) instead of sensor trigger",
+                    "HARDWARE_WATER_SENSOR_EMPTY",
+                    "EMPTY water level sensor never cleared during drain",
+                    "Sensor did not clear after 300s timeout - possible sensor failure, disconnection, or clog",
+                    "Check EMPTY water sensor wiring (GPIO22), verify sensor power, test sensor, check for clogs",
+                    "Water emptying completed via timeout (300s) instead of sensor trigger",
                     "Tank may not be fully drained or sensor may be faulty. Manual verification recommended.",
                     0
                 );
@@ -3154,6 +3216,13 @@ void PlantOSController::startMotherNutrients(float liters) {
 
 void PlantOSController::startFillTank() {
     if (current_state_ == ControllerState::IDLE) {
+        // SAFETY: Never fill without water level sensors - the valve would run
+        // blind on a timeout with no feedback, risking tank overflow
+        if (!hal_ || !hal_->hasWaterLevelSensors()) {
+            ESP_LOGE(TAG, "Cannot start fill - water level sensors unavailable (overflow risk)");
+            return;
+        }
+
         ESP_LOGI(TAG, "Starting tank fill with auto pH correction");
 
         // Set flag for auto pH correction after fill

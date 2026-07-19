@@ -1073,6 +1073,14 @@ void PlantOSController::handlePhMeasuring() {
             ESP_LOGI(TAG, "pH measuring: All pumps OFF for %.0fs stabilization",
                      stabilize_ms / 1000.0f);
         }
+
+        // Consume the stabilization intent flags: latch the chosen duration for
+        // this measuring run and clear the flags immediately, so they can never
+        // linger past a single PH_MEASURING entry (e.g. if this state is aborted).
+        ph_measuring_duration_ms_ = stabilize_ms;
+        ph_post_fill_stabilize_ = false;
+        ph_post_feed_stabilize_ = false;
+
         ph_readings_.clear(); // Reset readings buffer
 
         // Send temperature compensation before starting pH measurements
@@ -1189,19 +1197,10 @@ void PlantOSController::handlePhMeasuring() {
         }
     }
 
-    // Wait for stabilization period (duration depends on context - see entry block above)
-    uint32_t measuring_duration = PH_MEASURING_DURATION;
-    if (ph_post_fill_stabilize_) {
-        measuring_duration = POST_FILL_STABILIZE_MS;
-    } else if (ph_post_feed_stabilize_) {
-        measuring_duration = POST_FEED_STABILIZE_MS;
-    }
-    if (elapsed < measuring_duration) {
+    // Wait for stabilization period (duration latched at entry - see entry block above)
+    if (elapsed < ph_measuring_duration_ms_) {
         return;
     }
-    // Clear stabilization flags once measurement period is complete
-    ph_post_fill_stabilize_ = false;
-    ph_post_feed_stabilize_ = false;
 
     // Measurement period complete - calculate robust average
     if (ph_readings_.empty()) {
@@ -3050,6 +3049,11 @@ void PlantOSController::startPhCorrection() {
     ph_cycle_total_ml_ = 0.0f;
     ph_cycle_water_filled_ = false;
     ph_cycle_aborted_ = false;
+
+    // Manual trigger always uses the normal 30s stabilization: clear any stale
+    // post-feed/post-fill intent flags that may linger from an aborted auto-flow.
+    ph_post_fill_stabilize_ = false;
+    ph_post_feed_stabilize_ = false;
 
     // Initialize operation retry framework (max 3 retries for pH correction)
     initOperationRetry("PH_CORRECTION", 3);

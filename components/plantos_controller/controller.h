@@ -640,6 +640,7 @@ private:
     float ph_dose_ml_{0.0f};              // Calculated acid dose in milliliters
     uint32_t ph_dose_duration_ms_{0};     // Calculated acid dose duration (converted from mL)
     uint32_t ph_mixing_duration_ms_{0};   // Calculated mixing duration based on tank volume
+    uint32_t ph_measuring_duration_ms_{PH_MEASURING_DURATION};  // Stabilization duration chosen at PH_MEASURING entry (consumes stabilize flags)
     static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
 
     // Adaptive pH K-factor (pH_Regellogik.md Section 4)

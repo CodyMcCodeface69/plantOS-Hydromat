@@ -3127,7 +3127,7 @@ number:
       sorting_group_id: sg_controller_settings
       sorting_weight: 150
     min_value: 0.01
-    max_value: 0.50
+    max_value: 5.00
     step: 0.005
     mode: slider
     optimistic: true

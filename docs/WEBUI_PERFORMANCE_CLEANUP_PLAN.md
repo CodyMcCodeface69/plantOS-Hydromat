@@ -34,7 +34,7 @@ every `perform()`) and by synchronous Shelly HTTP.
 
 | Topic | Decision |
 |---|---|
-| LED | Throttle in the HAL and make the light `internal: true`. Add an LED test button to the debug package. |
+| LED | Throttle in the HAL and make the light `internal: true`. |
 | Logs | Keep the web log, but make it lean. The full reports become on-demand buttons. |
 | Debug entities | Move them into the build-time package `packages/debug.yaml`. |
 | Shelly | Async worker task in `ESPHomeHAL` plus a **runtime** switch "Shelly Integration" (persisted, default ON). |
@@ -70,8 +70,11 @@ Flexibility rule: anything that **costs while running** gets a runtime toggle. A
 - **Done when:** no burst of more than ~10 lines per minute from periodic reports.
 
 ### Step 3 – Debug package
-- Enable `packages:` in `plantOS.yaml`. Move all `sg_debug_*` entities, the Shelly test
-  buttons and the LED test button into `packages/debug.yaml`. Keep the sorting groups in
+- **Done.** 29 entities (20 switches, 5 HAL mirror text sensors, 4 buttons) moved. The PWM
+  sliders stay in core (`on_boot` reads them) and now sit in `sg_actuators`. The LED test
+  button was dropped: the FSM overwrites the LED on every frame anyway.
+- Enable `packages:` in `plantOS.yaml`. Move all `sg_debug_*` entities and the Shelly test
+  buttons into `packages/debug.yaml`. Keep the sorting groups in
   core so the package doesn't need to redefine them.
 - Production build: the include line is commented out. Debug build: uncomment one line.
 - Don't move anything that `on_boot` or other core lambdas reference by `id()`

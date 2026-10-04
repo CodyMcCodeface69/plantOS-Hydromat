@@ -14,7 +14,7 @@ change, night mode and grow-light scheduling over a 120-day grow calendar. The s
 
 - **Toolchain**: ESPHome **2025.4.2** (from the Nix flake), framework ESP-IDF, single-core RISC-V
 - **Board**: Waveshare ESP32-C6-DEV-KIT-N8. The YAML uses `esp32-c6-devkitc-1`.
-- **Size**: `plantOS.yaml` has ~3400 lines; custom C++ has ~18k lines in `components/`
+- **Size**: `plantOS.yaml` has ~2700 lines (+ ~700 in `packages/debug.yaml`); custom C++ has ~18k lines in `components/`
 - **Branch**: `main`
 - **Device**: `plantos` at http://192.168.0.201 (web_server v3, port 80)
 
@@ -130,14 +130,19 @@ These components are not referenced by `plantOS.yaml` and are candidates for del
 ## plantOS.yaml layout (approximate line numbers)
 
 ```
-8 esphome/on_boot · 64 logger · 98 wifi · 183 web_server (10 sorting_groups) · 231 api
-247 mqtt (TLS, Hetzner; publishes plantos/vitals every 30 s) · 264 http_request · 291 external_components
-317 uart · 345 light · 380 output · 436 sensor · 599 binary_sensor · 683 text_sensor
-893 button (38) · 1670 plantos_hal · 1751 plantos_controller · 1797 ASG · 1829 ezo_ph_uart
-1928 calendar_manager · 2069 switch (37) · 3017 number (13) · 3306 interval · 3383 script
+9 packages (commented out) · 19 esphome/on_boot · 75 logger · 109 wifi · 194 web_server (10 sorting_groups)
+242 api · 258 mqtt (TLS, Hetzner; publishes plantos/vitals every 30 s) · 275 http_request
+302 external_components · 328 uart · 356 light (internal) · 391 output · 447 sensor · 610 binary_sensor
+694 text_sensor · 811 button · 1537 plantos_hal · 1618 plantos_controller · 1664 ASG · 1696 ezo_ph_uart
+1795 calendar_manager · 1936 switch · 2374 number (13) · 2659 interval · 2698 script
 ```
 
-There are about 112 web UI entities. Each one carries `web_server: sorting_group_id`
+**Debug package:** `packages/debug.yaml` holds the debug-only entities (verbose log switches,
+direct GPIO switches, HAL mirror text sensors, Shelly and GPIO test buttons). Production builds
+leave it out; uncomment the two `packages:` lines in `plantOS.yaml` for a debug build. Never put
+anything that core lambdas reference by `id()` into it.
+
+There are about 82 web UI entities in the production build (~112 with the debug package). Each one carries `web_server: sorting_group_id`
 (`sg_status`, `sg_sensors`, `sg_controller_actions`, `sg_controller_settings`, `sg_calendar`,
 `sg_actuators`, `sg_system`, `sg_debug_logging`, `sg_debug_gpio`, `sg_debug_hal`).
 Give every new entity a group.

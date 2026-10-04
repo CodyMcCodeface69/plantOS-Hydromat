@@ -201,13 +201,13 @@ This document tracks tasks organized into three phases:
 
 - ✅ All 7 actuators respond to web UI
 - ✅ pH correction runs end-to-end automatically
-- [ ] Feeding runs on schedule with all 3 nutrient pumps
+- ✅ Feeding runs on schedule with all 3 nutrient pumps
 - ✅ Water fill/empty aborts safely on level sensors
 - ✅ Temperature compensation works
 - ✅ PSM recovers after power loss
 - ✅ SafetyGate enforces duration limits
-- [ ] 24-hour unattended operation successful
-- [ ] pH stays within 5.5-6.5 for 48 hours
+- ✅ 24-hour unattended operation successful
+- ✅ pH stays within 5.5-6.5 for 48 hours
 
 **MVP Timeline**: 1-2 weeks of focused work
 **MVP Deliverable**: Autonomous hydroponic system maintaining pH and feeding on schedule

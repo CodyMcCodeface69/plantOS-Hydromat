@@ -197,11 +197,13 @@ web_server:
   # Useful for debugging and monitoring without serial connection
   version: 3
   port: 80
-  # Using local CSS/JS files from www/ directory
-  # These files are served directly from the ESP32 filesystem
-  # css_url: "/local/www/webserver-v2.min.css"
-  # js_url: "/local/www/webserver-v2.min.js"
-  # local: true  # Embed all JS/CSS locally for offline operation
+  # local: embed the frontend that ships with this ESPHome version (2025.4.2).
+  # The default js_url (https://oi.esphome.io/v3/www.js) always serves the LATEST
+  # frontend, which expects a `domain` field in SSE state events that 2025.4 doesn't
+  # send. It then ignores an entity until it has seen 3 state events, so buttons,
+  # switches and numbers (one event each) never appeared. Drop this after an ESPHome upgrade
+  # only if the remote frontend matches the firmware again.
+  local: true
   # UI categories - every entity is assigned via web_server.sorting_group_id.
   # Lower sorting_weight appears first. Debug groups sit at the bottom.
   sorting_groups:

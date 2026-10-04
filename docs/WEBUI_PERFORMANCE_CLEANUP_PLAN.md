@@ -28,6 +28,14 @@ Conclusion: the device does send all entities. The browser frontend drowns in LE
 while it builds the page, and the loop is slowed by LED publishing (SSE, MQTT/TLS and API on
 every `perform()`) and by synchronous Shelly HTTP.
 
+**Update after the first flash (2026-10-04):** steps 1–4 removed the load (no LED events,
+uptime ticks 1/s, initial sync in ~3 s), but the page still had no buttons. The actual root
+cause was the frontend: the default `https://oi.esphome.io/v3/www.js` is always the latest
+version. It ignores SSE entities without a `domain` field (which 2025.4 doesn't send) until
+it has seen 3 state events, then fetches their details over REST. Buttons, switches and numbers
+send only one event, so they never appeared. Fix: `web_server: local: true` (commit `e296b91`)
+embeds the version-matched frontend. Flash usage is 86 %.
+
 ---
 
 ## 1. Decisions

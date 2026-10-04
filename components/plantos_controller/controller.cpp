@@ -147,8 +147,10 @@ void PlantOSController::loop() {
         }
     }
 
-    // Check if we should print periodic status report
-    if (status_logger_.shouldPrintStatusReport()) {
+    // Check if we should print periodic status report (or one was requested on demand)
+    bool forced_report = status_report_requested_;
+    if (status_logger_.shouldPrintStatusReport() || forced_report) {
+        status_report_requested_ = false;
         // Update status logger with current pH before printing
         if (hal_->hasPhValue()) {
             status_logger_.updateStatus(hal_->readPH(), "");
@@ -200,7 +202,7 @@ void PlantOSController::loop() {
 
         oneWireDevices.push_back(OneWireDeviceInfo(
             "DS18B20 Temperature",
-            "GPIO23",
+            "GPIO3",
             hasReading,  // ready when has reading
             true,        // critical for pH compensation
             status
@@ -281,7 +283,7 @@ void PlantOSController::loop() {
             );
         }
 
-        status_logger_.logStatus();
+        status_logger_.logStatus(forced_report);
 
         // Log water level status with ASCII art visualization (3-sensor system)
         if (hal_->hasWaterLevelSensors()) {

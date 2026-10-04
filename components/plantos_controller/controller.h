@@ -417,6 +417,11 @@ public:
     CentralStatusLogger* getStatusLogger() { return &status_logger_; }
 
     /**
+     * Print one full status report on the next loop, even if periodic reports are off
+     */
+    void requestStatusReport() { status_report_requested_ = true; }
+
+    /**
      * Configure status logger behavior
      * Called from Python during component initialization
      * @param enableReports Enable/disable periodic status reports
@@ -511,6 +516,7 @@ private:
     // Using volatile to ensure proper memory synchronization.
 
     volatile bool temperature_changed_{false};  // Set by ISR callback, cleared by loop()
+    bool status_report_requested_{false};       // Set by requestStatusReport(), cleared by loop()
     float last_temperature_{0.0f};              // Last temperature value received
 
     // ========================================================================

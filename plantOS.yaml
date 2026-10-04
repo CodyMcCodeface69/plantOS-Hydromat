@@ -65,7 +65,7 @@ logger:
   # DEBUG level enables detailed component logging for development
   # This helps diagnose FSM state transitions and sensor callbacks
   # In production, consider INFO or WARN to reduce log noise
-  level: VERBOSE
+  level: DEBUG
   initial_level: DEBUG
   # ESP32-C6 uses built-in USB Serial/JTAG controller for logging
   # This must be explicitly configured or boot will hang
@@ -87,8 +87,8 @@ logger:
     component: ERROR       # Suppress component timing warnings (web UI verbose toggle)
     esp-idf: INFO          # Suppress ESP-IDF GPIO logs (web UI verbose toggle)
     time: WARN             # Suppress time synchronization logs (web UI verbose toggle)
-    http_request: VERBOSE  # Socket lifecycle logging for debugging HTTP issues
-    wifi: VERBOSE       # Verbose WiFi logs for connection issues
+    http_request: WARN
+    wifi: WARN
     shelly_poll: WARN   # Suppress Shelly polling logs
     ledc.output: WARN  # Suppress LEDC output logs
     tds_sensor: INFO   # TDS/EC sensor logs
@@ -1002,6 +1002,44 @@ button:
             ESP_LOGI("button", "Using: Total Tank Volume (reservoir change)");
             ESP_LOGI("button", "========================================");
             id(unified_controller)->startReservoirChange();
+
+  - platform: template
+    name: "Print Status Report"
+    icon: "mdi:file-document-outline"
+    web_server:
+      sorting_group_id: sg_system
+      sorting_weight: 15
+    on_press:
+      - lambda: id(unified_controller)->requestStatusReport();
+
+  # [DEBUG] One-off GPIO level dump (was a 30s interval)
+  - platform: template
+    name: "Log GPIO Levels"
+    icon: "mdi:chip"
+    web_server:
+      sorting_group_id: sg_debug_gpio
+      sorting_weight: 5
+    on_press:
+      - lambda: |-
+          auto log_gpio = [](int pin, const char* name) {
+            ESP_LOGI("gpio_status", "GPIO[%2d] %-24s| Level: %d", pin, name, gpio_get_level((gpio_num_t)pin));
+          };
+          ESP_LOGI("gpio_status", "=== GPIO Status Report ===");
+          log_gpio(0,  "TDS/EC analog");
+          log_gpio(1,  "Water Valve (MagValve)");
+          log_gpio(3,  "DS18B20 water temp");
+          log_gpio(4,  "Acid Pump (PP_1)");
+          log_gpio(5,  "Grow (PP_2)");
+          log_gpio(6,  "Micro (PP_3)");
+          log_gpio(7,  "Bloom (PP_4)");
+          log_gpio(8,  "System LED (WS2812)");
+          log_gpio(17, "Water Level HIGH");
+          log_gpio(18, "EZO pH UART TX");
+          log_gpio(19, "EZO pH UART RX");
+          log_gpio(20, "I2C SDA (BME280)");
+          log_gpio(21, "I2C SCL (BME280)");
+          log_gpio(22, "Water Level EMPTY");
+          log_gpio(23, "Water Level LOW");
 
   - platform: template
     name: "Reconnect WiFi"
@@ -1935,7 +1973,7 @@ calendar_manager:
   verbose: false
 
   # Status log interval: How often to report current day and schedule
-  status_log_interval: 30s
+  status_log_interval: 10min
 
   # Schedule JSON: 120-day schedule (currently showing days 1-5 as example)
   # Full production schedule would contain all 120 days
@@ -2549,7 +2587,7 @@ switch:
       - switch.turn_off: verbose_time
 # ==== Individual Verbose Logging Switches ====
 # These switches control log output for specific components using logger.set_level action
-# Turning ON enables VERBOSE level (most detailed), turning OFF sets to WARN level (quiet)
+# Turning ON enables DEBUG level (compile-time max), turning OFF sets to WARN level (quiet)
 # See: https://esphome.io/components/logger/#loggerset_level-action
 
   # [DEBUG] Verbose log toggle - tag: sensor
@@ -2567,7 +2605,7 @@ switch:
           format: "Enabling verbose logging for: sensor"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: sensor
     turn_off_action:
       - logger.log:
@@ -2592,7 +2630,7 @@ switch:
           format: "Enabling verbose logging for: text_sensor"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: text_sensor
     turn_off_action:
       - logger.log:
@@ -2617,7 +2655,7 @@ switch:
           format: "Enabling verbose logging for: ezo_ph_uart"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: ezo_ph_uart
     turn_off_action:
       - logger.log:
@@ -2642,7 +2680,7 @@ switch:
           format: "Enabling verbose logging for: sensor_filter"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: sensor_filter
     turn_off_action:
       - logger.log:
@@ -2667,7 +2705,7 @@ switch:
           format: "Enabling verbose logging for: dallas.temp.sensor"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: dallas.temp.sensor
     turn_off_action:
       - logger.log:
@@ -2692,7 +2730,7 @@ switch:
           format: "Enabling verbose logging for: plantos_controller"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: plantos_controller
     turn_off_action:
       - logger.log:
@@ -2717,7 +2755,7 @@ switch:
           format: "Enabling verbose logging for: gpio_status"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: gpio_status
     turn_off_action:
       - logger.log:
@@ -2742,7 +2780,7 @@ switch:
           format: "Enabling verbose logging for: component"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: component
     turn_off_action:
       - logger.log:
@@ -2767,7 +2805,7 @@ switch:
           format: "Enabling verbose logging for: esp-idf"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: esp-idf
     turn_off_action:
       - logger.log:
@@ -2782,7 +2820,7 @@ switch:
     name: "System Status Reports"
     id: enable_status_reports
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_mode: ALWAYS_OFF  # ~60-line burst every 60s; use "Print Status Report" for one-off dumps
     icon: "mdi:file-document-outline"
     web_server:
       sorting_group_id: sg_debug_logging
@@ -2823,7 +2861,7 @@ switch:
           format: "Enabling verbose logging for: time synchronization"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: time
     turn_off_action:
       - logger.log:
@@ -2848,7 +2886,7 @@ switch:
           format: "Enabling verbose logging for: http_request"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: http_request
     turn_off_action:
       - logger.log:
@@ -2873,7 +2911,7 @@ switch:
           format: "Enabling verbose logging for: esp32.preferences"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: esp32.preferences
     turn_off_action:
       - logger.log:
@@ -2898,7 +2936,7 @@ switch:
           format: "Enabling verbose logging for: tds_sensor"
           level: INFO
       - logger.set_level:
-          level: VERBOSE
+          level: DEBUG
           tag: tds_sensor
     turn_off_action:
       - logger.log:
@@ -3297,51 +3335,9 @@ number:
           level: INFO
 
 ################################################################################
-# GPIO Status Logger (DEBUG Mode)
-#
-# Periodically logs GPIO pin status for all used pins in the system.
-# Shows InputEn, OutputEn, and current level for each GPIO.
-# Only active in DEBUG logger mode.
+# Intervals
 ################################################################################
 interval:
-  - interval: 30s
-    then:
-      - lambda: |-
-          // GPIO Status Logger - Simple level reading
-          // Note: ESP-IDF doesn't provide easy public API for reading input/output enable
-          // so we only log the current GPIO level (0=LOW, 1=HIGH)
-
-          auto log_gpio = [](int pin, const char* name) {
-            int level = gpio_get_level((gpio_num_t)pin);
-            ESP_LOGD("gpio_status", "GPIO[%d] %-20s| Level: %d", pin, name, level);
-          };
-
-          ESP_LOGD("gpio_status", "");
-          ESP_LOGD("gpio_status", "=== GPIO Status Report ===");
-
-          // Actuators (Active HIGH outputs - top of PCB)
-          log_gpio(1, "Water Valve (MagValve)");
-          log_gpio(4, "Acid Pump (PP_1)");
-          log_gpio(5, "Grow (PP_2)");
-          log_gpio(6, "Micro (PP_3)");
-          log_gpio(7, "Bloom (PP_4)");
-
-          // System LED
-          log_gpio(8, "System LED (WS2812)");
-
-          // Sensors (bottom of PCB)
-          log_gpio(16, "EZO pH UART RX");
-          log_gpio(17, "EZO pH UART TX");
-          log_gpio(18, "Water Temp (WTR_TEMP)");
-          log_gpio(19, "Water Level HIGH (WTR_HI)");
-          log_gpio(20, "Water Level LOW (WTR_LO)");
-          log_gpio(21, "Water Level EMPTY (WTR_Empty)");
-          log_gpio(22, "I2C SCL (AIR_TEMP)");
-          log_gpio(23, "I2C SDA (AIR_TEMP)");
-
-          ESP_LOGD("gpio_status", "=========================");
-          ESP_LOGD("gpio_status", "");
-
   # Shelly Health Check Interval - Ping Shelly every 30 seconds
   # This script sends an HTTP ping to the Shelly Plus 4PM and updates the HAL health status
   # Uses HAL's HTTP serialization to prevent socket exhaustion

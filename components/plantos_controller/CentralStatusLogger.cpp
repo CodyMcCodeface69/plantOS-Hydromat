@@ -329,10 +329,10 @@ void CentralStatusLogger::updateCalendarStatus(uint8_t currentDay, float phMin, 
     calendarStatusUpdated = true;
 }
 
-void CentralStatusLogger::logStatus() {
+void CentralStatusLogger::logStatus(bool force) {
     // The total length of the status report should be kept under 50 lines (max size of visible web ui logs)
     // Check if status reports are enabled
-    if (!enableReports_) {
+    if (!enableReports_ && !force) {
         return;
     }
 

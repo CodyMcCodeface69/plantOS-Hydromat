@@ -58,11 +58,14 @@ Flexibility rule: anything that **costs while running** gets a runtime toggle. A
 
 ### Step 2 – Log diet
 - Logger compile level `VERBOSE` → `DEBUG`. `wifi` and `http_request` → `WARN`.
-- Controller status report (`controller.cpp` ~150–284 and `CentralStatusLogger::logStatus()`):
-  the periodic output becomes a compact report of ≤ 10 lines. The full report stays
-  available through a "Dump full status" button. Fix the DS18B20 pin label (GPIO3).
-- GPIO status interval (~3307): remove the interval and turn it into a button with the
-  corrected pinout.
+  The runtime "Verbose: …" switches now raise tags to DEBUG (the compile-time maximum).
+- Controller status report: the existing "System Status Reports" switch is now `ALWAYS_OFF`.
+  The new button "Print Status Report" (`sg_system`) calls
+  `PlantOSController::requestStatusReport()` → `logStatus(force=true)`. This is simpler than
+  writing a second, compact report; the web UI already shows the same data as entities.
+  The DS18B20 pin label is fixed (GPIO3).
+- GPIO status interval: replaced by the button "Log GPIO Levels" (`sg_debug_gpio`) with the
+  correct pinout.
 - `calendar_manager` status log: periodic interval → 10 min.
 - **Done when:** no burst of more than ~10 lines per minute from periodic reports.
 

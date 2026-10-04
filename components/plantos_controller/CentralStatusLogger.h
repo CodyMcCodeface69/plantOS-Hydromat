@@ -368,8 +368,9 @@ public:
     /**
      * Print complete structured status summary to Serial
      * This is the primary logging method that outputs all system state
+     * @param force Print even when periodic reports are disabled (on-demand dump)
      */
-    void logStatus();
+    void logStatus(bool force = false);
 
     /**
      * Check if any alerts are currently active

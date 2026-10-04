@@ -153,8 +153,9 @@ Give every new entity a group.
   frontend. The remote `oi.esphome.io/v3/www.js` is always the newest and drops buttons,
   switches and numbers on 2025.4 (no `domain` field in SSE events). Re-check after an ESPHome
   upgrade. Background: `docs/WEBUI_PERFORMANCE_CLEANUP_PLAN.md`.
-- `~/.platformio` is shared with other ESPHome projects (e.g. DeskDisplayOS on 2025.11). Building
-  one can swap the toolchain under the other; the next `task build` reinstalls it.
+- PlatformIO lives in `<repo>/.platformio` (`PLATFORMIO_CORE_DIR`, set in `Taskfile.yml` and the
+  devshell), not the shared `~/.platformio`. Other ESPHome projects on other versions swapped the
+  toolchain there. After changing it, run `task clean` once.
 - Stale pin labels in code: the 30 s GPIO debug interval (`plantOS.yaml` ~3307) and the
   status report text in `controller.cpp` say DS18B20 is on "GPIO23". The real pin is GPIO3.
   Some switch comments around `plantOS.yaml` ~2305-2343 also list old pump GPIOs.

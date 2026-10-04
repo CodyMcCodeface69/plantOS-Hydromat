@@ -8,6 +8,7 @@
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 #include "esphome/components/http_request/http_request.h"
 #include "esphome/core/time.h"
+#include <cmath>
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/tds_sensor/tds_sensor.h"
 
@@ -1034,19 +1035,37 @@ void ESPHomeHAL::setSystemLED(float r, float g, float b, float brightness) {
     b = std::clamp(b, 0.0f, 1.0f);
     brightness = std::clamp(brightness, 0.0f, 1.0f);
 
+    // Throttle: every perform() is a full LightState update, so skip frames that
+    // don't change the LED visibly and cap the rate. An on/off flip always goes through.
+    bool on = brightness > 0.01f;
+    uint32_t now = esphome::millis();
+    if (on == led_is_on_) {
+        bool changed = std::fabs(r - led_r_) > LED_MIN_DELTA ||
+                       std::fabs(g - led_g_) > LED_MIN_DELTA ||
+                       std::fabs(b - led_b_) > LED_MIN_DELTA ||
+                       std::fabs(brightness - led_brightness_) > LED_MIN_DELTA;
+        if (!changed || now - led_last_update_ms_ < LED_MIN_INTERVAL_MS) {
+            return;
+        }
+    }
+
     // Use ESPHome's LightState API
     auto call = led_->make_call();
-    call.set_state(brightness > 0.01f);  // Turn on if brightness > 1%
+    call.set_state(on);
     call.set_brightness(brightness);
     call.set_rgb(r, g, b);
     call.perform();
 
-    // Track LED state
-    led_is_on_ = (brightness > 0.01f);
+    led_r_ = r;
+    led_g_ = g;
+    led_b_ = b;
+    led_brightness_ = brightness;
+    led_last_update_ms_ = now;
+    led_is_on_ = on;
 }
 
 void ESPHomeHAL::turnOffLED() {
-    if (!led_) {
+    if (!led_ || !led_is_on_) {
         return;
     }
 

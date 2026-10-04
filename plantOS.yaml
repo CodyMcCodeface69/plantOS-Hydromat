@@ -351,9 +351,9 @@ light:
     name: "Built-in LED"
     id: system_led
     chipset: WS2812
-    web_server:
-      sorting_group_id: sg_system
-      sorting_weight: 50
+    # internal: the FSM animates this LED; publishing every frame flooded the web UI (SSE),
+    # MQTT and API. The HAL also throttles updates (ESPHomeHAL::setSystemLED).
+    internal: true
 
     # default_transition_length: 0s disables automatic color smoothing
     # WHY: The FSM controller implements its own timing and animations

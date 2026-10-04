@@ -729,6 +729,10 @@ private:
     // Hardware component references (injected via Python)
     esphome::light::LightState* led_{nullptr};
     bool led_is_on_{false};
+    float led_r_{0.0f}, led_g_{0.0f}, led_b_{0.0f}, led_brightness_{0.0f};
+    uint32_t led_last_update_ms_{0};
+    static constexpr float LED_MIN_DELTA = 0.02f;         // Ignore changes below 2%
+    static constexpr uint32_t LED_MIN_INTERVAL_MS = 50;   // Max 20 LED updates/s
 
     esphome::sensor::Sensor* ph_sensor_{nullptr};
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_{nullptr};

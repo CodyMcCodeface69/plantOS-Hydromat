@@ -116,7 +116,7 @@ Components used in `plantOS.yaml`:
 | Component | Notes |
 |---|---|
 | `plantos_controller` (~8.3k lines) | `controller.cpp` alone is ~4.8k lines. LED behaviors are in flat `*.cpp` files (`breathing_green.cpp` etc.; `led_behaviors/` is empty). `CentralStatusLogger.*` builds the periodic status report. |
-| `plantos_hal` (~2.5k) | `hal.cpp` handles Shelly HTTP **synchronously** (blocks loop up to 5 s timeout) |
+| `plantos_hal` (~2.5k) | Shelly HTTP runs in a FreeRTOS worker task (`shellyTaskLoop`, `esp_http_client`, 2 s timeout, poll every 30 s). Main thread ↔ task only via two queues; results are applied in `ESPHomeHAL::loop()`. The runtime switch "Shelly Integration" (`setShellyEnabled`) turns it off. |
 | `actuator_safety_gate` (~1.5k) | |
 | `ezo_ph_uart`, `sensor_filter`, `tds_sensor` | sensors |
 | `calendar_manager` | 120-day schedule JSON in YAML (doses in mL/L, pH range, EC target). Day is kept in NVS. |
@@ -158,9 +158,9 @@ Give every new entity a group.
 ## Coding rules
 
 - **Non-blocking only**: no `delay()` in `loop()` paths. Use `millis()` deltas. The existing
-  `delay()` calls in `ezo_ph_uart.cpp` command paths and the synchronous HTTP in the HAL are
-  tech debt; don't add more.
-- No `ESP_LOG*` from ISR or callback context. Set a flag and log in `loop()`
+  `delay()` calls in `ezo_ph_uart.cpp` command paths are tech debt; don't add more.
+  Network I/O goes into the HAL's Shelly worker pattern, never into `loop()`.
+- No `ESP_LOG*` from ISR, callback or worker-task context. Set a flag and log in `loop()`
   (RISC-V alignment crashes).
 - Template switch lambdas must return cached values. Don't call NVS `loadState()` in them.
 - ESPHome sensor component layout: `__init__.py` (empty), `sensor.py` (schema), `*.h/*.cpp`.

@@ -2762,6 +2762,22 @@ void PlantOSController::handleWaterEmptying() {
     // ENTRY: Log and activate wastewater pump (only once per state entry)
     static bool pump_command_sent = false;
 
+    // Shelly integration switched off mid-drain: the HAL already queued WastewaterPump OFF.
+    // Abort the drain (and a running reservoir change) to IDLE.
+    if (!hal_->isShellyEnabled()) {
+        ESP_LOGE(TAG, "[WATER_EMPTYING] Shelly integration disabled - aborting drain");
+        if (safety_gate_) {
+            safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
+        }
+        if (psm_) {
+            psm_->clearEvent();
+        }
+        pump_command_sent = false;
+        auto_ph_correction_pending_ = false;
+        transitionTo(ControllerState::IDLE);
+        return;
+    }
+
     if (elapsed < 100 && !pump_command_sent) {
         ESP_LOGI(TAG, "[WATER_EMPTYING] Starting tank drain sequence");
 
@@ -3254,6 +3270,12 @@ void PlantOSController::startEmptyTank() {
         return;
     }
 
+    // The wastewater pump is a Shelly socket - no Shelly, no drain
+    if (!hal_->isShellyEnabled()) {
+        ESP_LOGE(TAG, "Cannot start tank drain - Shelly integration disabled (wastewater pump unavailable)");
+        return;
+    }
+
     ESP_LOGI(TAG, "========================================================");
     ESP_LOGI(TAG, "  STARTING TANK DRAIN");
     ESP_LOGI(TAG, "========================================================");
@@ -3564,6 +3586,12 @@ void PlantOSController::startReservoirChange() {
     // Prevent reservoir change during night mode
     if (current_state_ == ControllerState::NIGHT) {
         ESP_LOGW(TAG, "Cannot start Reservoir Change - system in NIGHT mode");
+        return;
+    }
+
+    // The wastewater pump is a Shelly socket - no Shelly, no drain
+    if (!hal_->isShellyEnabled()) {
+        ESP_LOGE(TAG, "Cannot start Reservoir Change - Shelly integration disabled (wastewater pump unavailable)");
         return;
     }
 
@@ -4298,8 +4326,16 @@ void PlantOSController::checkShellyHealth() {
     }
     last_shelly_check_time_ = now;
 
-    // Read cached Shelly health status from HAL
-    // The actual ping is performed by a YAML interval script that calls hal.updateShellyHealth()
+    // Shelly switched off on purpose: report it as disabled, not as an offline alert
+    if (!hal_->isShellyEnabled()) {
+        std::vector<ShellyDeviceInfo> devices;
+        devices.push_back(ShellyDeviceInfo("Shelly Plus 4PM", "192.168.0.130", false, false, "Disabled"));
+        status_logger_.updateShellyHardwareStatus(devices);
+        status_logger_.clearAlert("SHELLY_OFFLINE");
+        return;
+    }
+
+    // Read cached Shelly health status from HAL (polled by the HAL's Shelly worker task)
     bool reachable = hal_->isShellyReachable();
     uint32_t uptime = hal_->getShellyUptime();
 

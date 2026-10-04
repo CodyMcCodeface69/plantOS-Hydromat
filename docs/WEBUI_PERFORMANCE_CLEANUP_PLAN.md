@@ -82,6 +82,10 @@ Flexibility rule: anything that **costs while running** gets a runtime toggle. A
 - **Done when:** both variants (with and without the package) pass `task build`.
 
 ### Step 4 – Async Shelly worker and runtime toggle
+- **Done.** Implemented as planned. The YAML `http_request` component stays (it's unused by
+  the HAL now and could go later). Commands get 2 attempts with a 500 ms gap. The poll has no
+  backoff: it's off the main loop, so a fixed 30 s is fine. Poll failures are logged once per
+  streak. Disabling Shelly also aborts a running WATER_EMPTYING.
 - Inside `ESPHomeHAL` only (3-layer rule). A FreeRTOS task uses `esp_http_client` directly.
   The ESPHome `http_request` component is not used from the task.
   - Command queue (socket, on/off, or a pattern URL) → the worker sends it (the existing

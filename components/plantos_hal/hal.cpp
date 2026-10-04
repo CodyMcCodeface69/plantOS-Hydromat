@@ -6,7 +6,7 @@
 #include "esphome/components/output/float_output.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
-#include "esphome/components/http_request/http_request.h"
+#include "esp_http_client.h"
 #include "esphome/core/time.h"
 #include <cmath>
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
@@ -15,12 +15,6 @@
 namespace plantos_hal {
 
 static const char* TAG = "plantos_hal";
-
-// Connection: close header to ensure ESP32 closes socket immediately after response
-// Prevents socket exhaustion from lingering connections
-static const std::list<esphome::http_request::Header> CONNECTION_CLOSE_HEADERS = {
-    {"Connection", "close"}
-};
 
 // ============================================================================
 // DEPENDENCY INJECTION (called from Python __init__.py)
@@ -130,11 +124,6 @@ void ESPHomeHAL::set_actuator_safety_gate(esphome::actuator_safety_gate::Actuato
     ESP_LOGI(TAG, "ActuatorSafetyGate configured for state sync");
 }
 
-void ESPHomeHAL::set_http_request(esphome::http_request::HttpRequestComponent* http) {
-    http_request_ = http;
-    ESP_LOGI(TAG, "HTTP request component configured for Shelly control");
-}
-
 // NOTE: set_pump_air_output removed - future Zigbee implementation
 
 // ============================================================================
@@ -143,6 +132,17 @@ void ESPHomeHAL::set_http_request(esphome::http_request::HttpRequestComponent* h
 
 void ESPHomeHAL::setup() {
     ESP_LOGI(TAG, "PlantOS HAL initialized");
+
+    // Start the Shelly worker task (all Shelly HTTP runs off the main loop)
+    shelly_cmd_queue_ = xQueueCreate(8, sizeof(ShellyRequest));
+    shelly_result_queue_ = xQueueCreate(8, sizeof(ShellyResult));
+    if (shelly_cmd_queue_ && shelly_result_queue_ &&
+        xTaskCreate(&ESPHomeHAL::shellyTaskEntry, "shelly", 6144, this, 1, &shelly_task_) == pdPASS) {
+        ESP_LOGI(TAG, "Shelly worker started (%s, poll every %us)",
+                 SHELLY_IP, SHELLY_POLL_INTERVAL_MS / 1000);
+    } else {
+        ESP_LOGE(TAG, "Failed to start Shelly worker - Shelly actuators unavailable");
+    }
 
     // Verify critical dependencies
     if (!led_) {
@@ -188,72 +188,11 @@ void ESPHomeHAL::setup() {
 }
 
 void ESPHomeHAL::loop() {
-    uint32_t now = esphome::millis();
-
-    // Check for HTTP request timeout and clear the in-progress flag
-    // This is a safety net - with synchronous requests this should rarely trigger
-    if (http_request_in_progress_) {
-        if (now - http_request_start_time_ >= HTTP_REQUEST_TIMEOUT) {
-            ESP_LOGW(TAG, "HTTP request timed out after %ums - clearing in-progress flag",
-                     now - http_request_start_time_);
-            http_request_in_progress_ = false;
-        }
-    }
-
-    // Process scheduled Shelly HTTP retry attempts
-    // This handles transient connection failures by retrying commands
-    if (shelly_retry_attempts_ > 0) {
-        // Check backoff before attempting retry
-        if (!shelly_health_.canAttempt(now)) {
-            // In backoff period - cancel retries
-            ESP_LOGD(TAG, "%s: Retry cancelled - in backoff period",
-                     shelly_retry_device_name_.c_str());
-            shelly_retry_attempts_ = 0;
-        } else if (now >= shelly_retry_next_time_) {
-            // Check if we can send (no other request in progress)
-            if (!canSendHttpRequest()) {
-                // Reschedule for later
-                shelly_retry_next_time_ = now + 500;
-                ESP_LOGD(TAG, "%s: Retry delayed - HTTP request in progress",
-                         shelly_retry_device_name_.c_str());
-            } else {
-                shelly_retry_attempts_--;
-                ESP_LOGD(TAG, "%s: Retry attempt (%d remaining)",
-                         shelly_retry_device_name_.c_str(), shelly_retry_attempts_);
-
-                // Mark request as started
-                markHttpRequestStarted();
-
-                // Send retry with proper response handling
-                url_cache_ = shelly_retry_url_;
-                auto container = http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
-
-                bool success = false;
-                if (container) {
-                    if (container->status_code >= 200 && container->status_code < 300) {
-                        ESP_LOGD(TAG, "%s: Retry success (status %d)",
-                                 shelly_retry_device_name_.c_str(), container->status_code);
-                        shelly_retry_attempts_ = 0;  // Success - no more retries needed
-                        success = true;
-                        shelly_health_.recordSuccess(now);
-                    } else {
-                        ESP_LOGW(TAG, "%s: Retry failed (status %d)",
-                                 shelly_retry_device_name_.c_str(), container->status_code);
-                        shelly_health_.recordFailure(now);
-                    }
-                    container->end();
-                } else {
-                    ESP_LOGW(TAG, "%s: Retry returned null container",
-                             shelly_retry_device_name_.c_str());
-                    shelly_health_.recordFailure(now);
-                }
-
-                markHttpRequestCompleted();
-
-                if (shelly_retry_attempts_ > 0 && !success) {
-                    shelly_retry_next_time_ = now + 500;  // Schedule next attempt in 500ms
-                }
-            }
+    // Apply results from the Shelly worker (logging, ASG sync, switch publish)
+    if (shelly_result_queue_) {
+        ShellyResult result;
+        while (xQueueReceive(shelly_result_queue_, &result, 0) == pdTRUE) {
+            handleShellyResult(result);
         }
     }
 }
@@ -317,23 +256,21 @@ void ESPHomeHAL::setPump(const std::string& pumpId, bool state, float pwmIntensi
     else if (pumpId == "WastewaterPump") {
         // Wastewater pump via Shelly Socket 2 (HTTP direct control with retry)
         std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=2&on=" + (state ? "true" : "false");
-        sendShellyCommand(url, "WastewaterPump (Socket 2)");
+        queueShellyRequest(url, "WastewaterPump");
         ESP_LOGD(TAG, "WastewaterPump → Shelly Socket 2 HTTP: %s", state ? "ON" : "OFF");
     }
     else if (pumpId == "AirPump") {
         // Air pump via Shelly Socket 0 - Use sequence API for consistency
         // This also stops any running sequence when turning on/off manually
         // NOTE: Debouncing is handled by ActuatorSafetyGate, not here
-        if (http_request_) {
-            std::string url = std::string("http://") + SHELLY_IP +
-                              "/script/1/api?action=" + (state ? "on" : "off") + "&id=0";
-            sendShellyMultiAttempt(url, "AirPump", 1);  // Single attempt (retries disabled for now)
-        }
+        std::string url = std::string("http://") + SHELLY_IP +
+                          "/script/1/api?action=" + (state ? "on" : "off") + "&id=0";
+        queueShellyRequest(url, "AirPump");
     }
     else if (pumpId == "GrowLight") {
         // Grow light via Shelly Socket 3 (HTTP direct control with retry)
         std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=3&on=" + (state ? "true" : "false");
-        sendShellyCommand(url, "GrowLight (Socket 3)");
+        queueShellyRequest(url, "GrowLight");
         ESP_LOGI(TAG, "GrowLight → Shelly Socket 3 HTTP: %s", state ? "ON" : "OFF");
     }
     else {
@@ -460,172 +397,6 @@ bool ESPHomeHAL::getValveState(const std::string& valveId) const {
     return it != valve_states_.end() ? it->second : false;
 }
 
-bool ESPHomeHAL::sendShellyCommand(const std::string& url, const char* deviceName, int maxRetries) {
-    // Robust HTTP request with proper response handling and exponential backoff
-    // This is safe because Shelly Switch.Set commands are idempotent (setting ON multiple times is harmless).
-
-    if (!http_request_) {
-        ESP_LOGE(TAG, "%s: HTTP request component not configured!", deviceName);
-        return false;
-    }
-
-    uint32_t now = esphome::millis();
-
-    // Check exponential backoff - skip request if in backoff period
-    if (!shelly_health_.canAttempt(now)) {
-        uint32_t remaining = shelly_health_.backoff_until_ms - now;
-        ESP_LOGW(TAG, "%s: In backoff period (%d consecutive failures, %ums remaining)",
-                 deviceName, shelly_health_.consecutive_failures, remaining);
-        return false;
-    }
-
-    // Check if we can send (no other request in progress)
-    if (!canSendHttpRequest()) {
-        ESP_LOGW(TAG, "%s: HTTP request blocked - another request in progress", deviceName);
-        return false;
-    }
-
-    // Mark request as started
-    markHttpRequestStarted();
-
-    ESP_LOGI(TAG, "%s: Sending HTTP command", deviceName);
-    ESP_LOGD(TAG, "%s: URL: %s", deviceName, url.c_str());
-
-    // Cache URL to prevent use-after-free
-    url_cache_ = url;
-
-    // Send HTTP request and properly handle the response
-    // CRITICAL: We must consume the response to properly close the connection
-    auto container = http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
-
-    bool success = false;
-    if (container) {
-        if (container->status_code >= 200 && container->status_code < 300) {
-            ESP_LOGI(TAG, "%s: HTTP success (status %d, %ums)",
-                     deviceName, container->status_code, container->duration_ms);
-            success = true;
-            // Record success - reset backoff
-            shelly_health_.recordSuccess(now);
-        } else if (container->status_code > 0) {
-            ESP_LOGW(TAG, "%s: HTTP error status %d", deviceName, container->status_code);
-            // HTTP error response - record failure with backoff
-            shelly_health_.recordFailure(now);
-            ESP_LOGW(TAG, "%s: Backoff applied (%d failures, next attempt in %ums)",
-                     deviceName, shelly_health_.consecutive_failures,
-                     shelly_health_.getCurrentBackoffMs());
-        } else {
-            ESP_LOGW(TAG, "%s: HTTP request failed (no response)", deviceName);
-            // Connection failure - record failure with backoff
-            shelly_health_.recordFailure(now);
-            ESP_LOGW(TAG, "%s: Backoff applied (%d failures, next attempt in %ums)",
-                     deviceName, shelly_health_.consecutive_failures,
-                     shelly_health_.getCurrentBackoffMs());
-        }
-
-        // CRITICAL: Call end() to properly close the connection and free resources
-        container->end();
-    } else {
-        ESP_LOGW(TAG, "%s: HTTP request returned null container (connection failed)", deviceName);
-        // Null container means connection failed - apply backoff
-        shelly_health_.recordFailure(now);
-        ESP_LOGW(TAG, "%s: Backoff applied (%d failures, next attempt in %ums)",
-                 deviceName, shelly_health_.consecutive_failures,
-                 shelly_health_.getCurrentBackoffMs());
-    }
-
-    // Mark request as completed immediately (synchronous request)
-    markHttpRequestCompleted();
-
-    return success;
-}
-
-void ESPHomeHAL::sendShellyMultiAttempt(const std::string& url, const char* deviceName, uint8_t attempts) {
-    // Send HTTP command with proper response handling and exponential backoff
-    // Safe because Shelly commands are idempotent (sending ON twice is harmless)
-    //
-    // This works for ALL Shelly command types:
-    // - Simple ON/OFF: /script/1/api?action=on&id=0
-    // - Pattern/Sequence: /script/1/api?action=sequence&id=0&pattern=30,120,30&finalstate=1
-    // - Stop: /script/1/api?action=stop&id=0
-
-    if (!http_request_ || attempts == 0) {
-        ESP_LOGW(TAG, "%s: Cannot send - HTTP not configured or 0 attempts", deviceName);
-        return;
-    }
-
-    uint32_t now = esphome::millis();
-
-    // Check exponential backoff - skip request if in backoff period
-    if (!shelly_health_.canAttempt(now)) {
-        uint32_t remaining = shelly_health_.backoff_until_ms - now;
-        ESP_LOGW(TAG, "%s: In backoff period (%d consecutive failures, %ums remaining)",
-                 deviceName, shelly_health_.consecutive_failures, remaining);
-        return;
-    }
-
-    // Check if we can send (no other request in progress)
-    if (!canSendHttpRequest()) {
-        ESP_LOGW(TAG, "%s: HTTP request blocked - another request in progress", deviceName);
-        // Store for later retry via loop() scheduler
-        shelly_retry_url_ = url;
-        shelly_retry_device_name_ = deviceName;
-        shelly_retry_attempts_ = attempts;
-        shelly_retry_next_time_ = now + 1000;  // Retry in 1 second
-        return;
-    }
-
-    // Mark request as started
-    markHttpRequestStarted();
-
-    ESP_LOGI(TAG, "%s: Sending HTTP command: %s", deviceName, url.c_str());
-
-    // Cache URL to prevent use-after-free
-    url_cache_ = url;
-
-    // Send HTTP request and properly handle the response
-    // CRITICAL: We must consume the response to properly close the connection
-    auto container = http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
-
-    bool success = false;
-    if (container) {
-        // Check response status
-        if (container->status_code >= 200 && container->status_code < 300) {
-            ESP_LOGD(TAG, "%s: HTTP success (status %d, %ums)",
-                     deviceName, container->status_code, container->duration_ms);
-            success = true;
-            // Record success - reset backoff
-            shelly_health_.recordSuccess(now);
-        } else if (container->status_code > 0) {
-            ESP_LOGW(TAG, "%s: HTTP error status %d", deviceName, container->status_code);
-            // HTTP error - record failure with backoff
-            shelly_health_.recordFailure(now);
-            ESP_LOGW(TAG, "%s: Backoff applied (%d failures, next attempt in %ums)",
-                     deviceName, shelly_health_.consecutive_failures,
-                     shelly_health_.getCurrentBackoffMs());
-        } else {
-            ESP_LOGW(TAG, "%s: HTTP request failed (no response)", deviceName);
-            // Connection failure - record failure with backoff
-            shelly_health_.recordFailure(now);
-            ESP_LOGW(TAG, "%s: Backoff applied (%d failures, next attempt in %ums)",
-                     deviceName, shelly_health_.consecutive_failures,
-                     shelly_health_.getCurrentBackoffMs());
-        }
-
-        // CRITICAL: Call end() to properly close the connection and free resources
-        container->end();
-    } else {
-        ESP_LOGW(TAG, "%s: HTTP request returned null container (connection failed)", deviceName);
-        // Null container means connection failed - apply backoff
-        shelly_health_.recordFailure(now);
-        ESP_LOGW(TAG, "%s: Backoff applied (%d failures, next attempt in %ums)",
-                 deviceName, shelly_health_.consecutive_failures,
-                 shelly_health_.getCurrentBackoffMs());
-    }
-
-    // Mark request as completed immediately (synchronous request)
-    markHttpRequestCompleted();
-}
-
 bool ESPHomeHAL::checkShellySwitchStatus(const std::string& pumpId) {
     // TODO: Query Shelly via HTTP GET /rpc/Switch.GetStatus?id=X
     // ESPHome's callback-based HTTP makes synchronous requests difficult
@@ -638,8 +409,8 @@ bool ESPHomeHAL::checkShellySwitchStatus(const std::string& pumpId) {
 // ============================================================================
 
 bool ESPHomeHAL::setAirPumpPattern(const std::vector<uint32_t>& pattern, bool finalState) {
-    if (!http_request_ || pattern.empty()) {
-        ESP_LOGW(TAG, "setAirPumpPattern: HTTP not configured or empty pattern");
+    if (pattern.empty()) {
+        ESP_LOGW(TAG, "setAirPumpPattern: empty pattern");
         return false;
     }
 
@@ -663,7 +434,9 @@ bool ESPHomeHAL::setAirPumpPattern(const std::vector<uint32_t>& pattern, bool fi
 
     // Use multi-attempt to handle transient HTTP connection failures
     // Pattern commands are idempotent - Shelly script stops any existing sequence before starting new one
-    sendShellyMultiAttempt(url, "AirPump Pattern", 1);  // Single attempt (retries disabled for now)
+    if (!queueShellyRequest(url, "AirPump Pattern")) {
+        return false;
+    }
 
     // Track sequence state locally
     shelly_sequences_[0].running = true;
@@ -677,11 +450,6 @@ bool ESPHomeHAL::setAirPumpPattern(const std::vector<uint32_t>& pattern, bool fi
 }
 
 bool ESPHomeHAL::stopAirPumpSequence(bool finalState) {
-    if (!http_request_) {
-        ESP_LOGW(TAG, "stopAirPumpSequence: HTTP not configured");
-        return false;
-    }
-
     // NOTE: Debouncing is handled by ActuatorSafetyGate, not here
     // HAL is a dumb hardware layer that executes commands
 
@@ -693,7 +461,9 @@ bool ESPHomeHAL::stopAirPumpSequence(bool finalState) {
     ESP_LOGI(TAG, "AirPump sequence stop → %s", finalState ? "ON" : "OFF");
 
     // Use multi-attempt to handle transient HTTP connection failures
-    sendShellyMultiAttempt(url, "AirPump Stop", 1);  // Single attempt (retries disabled for now)
+    if (!queueShellyRequest(url, "AirPump Stop")) {
+        return false;
+    }
 
     // Clear sequence tracking
     shelly_sequences_[0].running = false;
@@ -747,7 +517,7 @@ void ESPHomeHAL::ensureNoSequenceRunning(uint8_t switchId, bool finalState) {
                           "/script/1/api?action=" + (finalState ? "on" : "off") +
                           "&id=" + std::to_string(switchId);
 
-        sendShellyMultiAttempt(url, "Sequence Stop", 1);
+        queueShellyRequest(url, "Sequence Stop");
 
         // Clear sequence tracking
         shelly_sequences_[switchId].running = false;
@@ -761,11 +531,6 @@ void ESPHomeHAL::setShellySwitch(uint8_t switchId, bool state) {
         return;
     }
 
-    if (!http_request_) {
-        ESP_LOGW(TAG, "setShellySwitch: HTTP not configured");
-        return;
-    }
-
     // Always use the script API for sequence-aware control
     // This ensures any running sequences are stopped properly
     // The Shelly script's on/off handlers call stopSequence() internally
@@ -775,7 +540,7 @@ void ESPHomeHAL::setShellySwitch(uint8_t switchId, bool state) {
 
     ESP_LOGI(TAG, "Shelly switch %d → %s (via script API)", switchId, state ? "ON" : "OFF");
 
-    sendShellyMultiAttempt(url, "Shelly Switch", 1);
+    queueShellyRequest(url, "Shelly Switch");
 
     // Clear sequence tracking for this switch
     shelly_sequences_[switchId].running = false;
@@ -1111,185 +876,239 @@ bool ESPHomeHAL::hasTime() const {
 }
 
 // ============================================================================
-// SHELLY HEALTH CHECK - Device monitoring via HTTP ping
+// SHELLY WORKER - async HTTP in a FreeRTOS task
 // ============================================================================
 
-void ESPHomeHAL::pingShellyDevice(std::function<void(bool, uint32_t)> callback) {
-    if (!http_request_) {
-        ESP_LOGW(TAG, "HTTP request component not configured - cannot ping Shelly");
-        if (callback) callback(false, 0);
-        return;
+namespace {
+
+// Blocking GET, called from the Shelly task only. Returns the HTTP status or -1.
+// Reads up to body_size-1 bytes of the response into body (NUL-terminated).
+int shellyHttpGet(const char* url, uint32_t timeout_ms, char* body, size_t body_size) {
+    esp_http_client_config_t cfg = {};
+    cfg.url = url;
+    cfg.timeout_ms = static_cast<int>(timeout_ms);
+    cfg.disable_auto_redirect = true;
+    cfg.keep_alive_enable = false;
+
+    esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (!client) {
+        return -1;
     }
+    esp_http_client_set_header(client, "Connection", "close");
 
-    uint32_t now = esphome::millis();
-
-    // Check exponential backoff - skip ping if in backoff period
-    if (!shelly_health_.canAttempt(now)) {
-        uint32_t remaining = shelly_health_.backoff_until_ms - now;
-        ESP_LOGD(TAG, "Shelly poll skipped - in backoff period (%ums remaining)", remaining);
-        return;
+    int status = -1;
+    if (esp_http_client_open(client, 0) == ESP_OK) {
+        esp_http_client_fetch_headers(client);
+        status = esp_http_client_get_status_code(client);
+        if (body && body_size > 0) {
+            int n = esp_http_client_read_response(client, body, static_cast<int>(body_size) - 1);
+            body[n > 0 ? n : 0] = '\0';
+        }
     }
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    return status;
+}
 
-    // Check if we can send (no other request in progress)
-    if (!canSendHttpRequest()) {
-        ESP_LOGD(TAG, "Shelly poll skipped - HTTP request in progress");
-        return;
+// Parse {"status":"ok","uptime":X,"switches":{"0":true,"2":false,"3":true}}
+void parseShellyStates(const char* body, uint32_t& uptime, int8_t states[4]) {
+    const char* uptime_key = strstr(body, "\"uptime\":");
+    if (uptime_key) {
+        uptime_key += 9;
+        while (*uptime_key == ' ' || *uptime_key == '\t') uptime_key++;
+        uptime = 0;
+        while (*uptime_key >= '0' && *uptime_key <= '9') {
+            uptime = uptime * 10 + (*uptime_key - '0');
+            uptime_key++;
+        }
     }
+    for (int i = 0; i < 4; i++) {
+        char search[8];
+        snprintf(search, sizeof(search), "\"%d\":", i);
+        const char* pos = strstr(body, search);
+        states[i] = -1;
+        if (!pos) continue;
+        pos += strlen(search);
+        while (*pos == ' ' || *pos == '\t') pos++;
+        if (*pos == 't') states[i] = 1;
+        else if (*pos == 'f') states[i] = 0;
+    }
+}
 
-    // Mark request as started
-    markHttpRequestStarted();
+}  // namespace
 
-    // Use states endpoint instead of ping - gets health AND switch states in one request
-    std::string url = std::string("http://") + SHELLY_IP + "/script/1/api?action=states";
-    ESP_LOGD(TAG, "Polling Shelly states at %s", url.c_str());
+void ESPHomeHAL::shellyTaskEntry(void* arg) {
+    static_cast<ESPHomeHAL*>(arg)->shellyTaskLoop();
+}
 
-    // Cache URL to prevent use-after-free
-    url_cache_ = url;
+void ESPHomeHAL::shellyTaskLoop() {
+    // esp_http_client logs through ESPHome's logger hook, which must only run on the
+    // main loop. Silence it here; failures are reported via ShellyResult instead.
+    esp_log_level_set("HTTP_CLIENT", ESP_LOG_NONE);
+    esp_log_level_set("esp-tls", ESP_LOG_NONE);
+    esp_log_level_set("transport_base", ESP_LOG_NONE);
+    esp_log_level_set("TRANSPORT_BASE", ESP_LOG_NONE);
+    esp_log_level_set("transport", ESP_LOG_NONE);
 
-    // Send HTTP request and properly handle the response
-    auto container = http_request_->get(url_cache_, CONNECTION_CLOSE_HEADERS);
-
-    bool reachable = false;
-    uint32_t uptime = 0;
-    bool need_airpump_activation = false;  // Deferred activation flag
-
-    if (container) {
-        if (container->status_code == 200) {
-            reachable = true;
-            // Record success - reset backoff
-            shelly_health_.recordSuccess(now);
-
-            // Parse response body
-            // Format: {"status":"ok","uptime":X,"switches":{"0":true,"2":false,"3":true}}
-            char body[512] = {0};
-            size_t body_len = std::min(container->content_length, sizeof(body) - 1);
-            if (body_len > 0) {
-                container->read(reinterpret_cast<uint8_t*>(body), body_len);
-                body[body_len] = '\0';
-
-                // Parse uptime
-                const char* uptime_key = strstr(body, "\"uptime\":");
-                if (uptime_key) {
-                    uptime_key += 9;  // Skip past "uptime":
-                    while (*uptime_key == ' ' || *uptime_key == '\t') uptime_key++;
-                    uptime = 0;
-                    while (*uptime_key >= '0' && *uptime_key <= '9') {
-                        uptime = uptime * 10 + (*uptime_key - '0');
-                        uptime_key++;
-                    }
-                }
-
-                // Helper lambda to find boolean value for a switch key like "0", "2", "3"
-                auto findSwitchState = [&body](const char* key) -> int {
-                    // Build search string like "\"0\":"
-                    char search[8];
-                    snprintf(search, sizeof(search), "\"%s\":", key);
-                    const char* pos = strstr(body, search);
-                    if (!pos) return -1;  // Not found
-                    pos += strlen(search);
-                    // Skip whitespace
-                    while (*pos == ' ' || *pos == '\t') pos++;
-                    if (*pos == 't') return 1;   // true
-                    if (*pos == 'f') return 0;   // false
-                    return -1;  // Unknown
-                };
-
-                // Parse switch states: 0=AirPump, 2=WastewaterPump, 3=GrowLight
-                int state0 = findSwitchState("0");
-                int state2 = findSwitchState("2");
-                int state3 = findSwitchState("3");
-
-                // Update HAL internal state, ASG actual state, and Web UI toggles
-                if (state0 >= 0) {
-                    bool s0 = (state0 == 1);
-                    updateShellySwitchState(0, s0);
-                    if (actuator_safety_gate_) {
-                        actuator_safety_gate_->updateActualState("AirPump", s0);
-                    }
-                    if (air_pump_switch_) {
-                        air_pump_switch_->publish_state(s0);
-                    }
-                }
-                if (state2 >= 0) {
-                    bool s2 = (state2 == 1);
-                    updateShellySwitchState(2, s2);
-                    if (actuator_safety_gate_) {
-                        actuator_safety_gate_->updateActualState("WastewaterPump", s2);
-                    }
-                    if (wastewater_pump_switch_) {
-                        wastewater_pump_switch_->publish_state(s2);
-                    }
-                }
-                if (state3 >= 0) {
-                    bool s3 = (state3 == 1);
-                    updateShellySwitchState(3, s3);
-                    if (actuator_safety_gate_) {
-                        actuator_safety_gate_->updateActualState("GrowLight", s3);
-                    }
-                    if (grow_light_switch_) {
-                        grow_light_switch_->publish_state(s3);
-                    }
-                }
-
-                ESP_LOGD(TAG, "Shelly states: AirPump=%d, Wastewater=%d, GrowLight=%d, uptime=%us",
-                         state0, state2, state3, uptime);
-
-                // Check if AirPump needs deferred activation (Normal mode on boot)
-                // We defer this until AFTER connection is closed to avoid back-to-back HTTP requests
-                if (state0 == 0 && actuator_safety_gate_ &&
-                    !actuator_safety_gate_->isCyclingEnabled("AirPump")) {
-                    need_airpump_activation = true;
-                }
+    uint32_t next_poll = 0;
+    for (;;) {
+        // Commands first. Wait at most 1 s so enable/poll requests are picked up quickly.
+        ShellyRequest req;
+        if (xQueueReceive(shelly_cmd_queue_, &req, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            ShellyResult res = {};
+            strncpy(res.name, req.name, sizeof(res.name) - 1);
+            for (uint8_t attempt = 0; attempt < req.attempts; attempt++) {
+                if (attempt > 0) vTaskDelay(pdMS_TO_TICKS(SHELLY_RETRY_DELAY_MS));
+                res.status = shellyHttpGet(req.url, SHELLY_HTTP_TIMEOUT_MS, nullptr, 0);
+                res.ok = res.status >= 200 && res.status < 300;
+                if (res.ok) break;
             }
-
-            ESP_LOGD(TAG, "Shelly poll success (status %d, uptime %us, %ums)",
-                     container->status_code, uptime, container->duration_ms);
-        } else if (container->status_code > 0) {
-            ESP_LOGW(TAG, "Shelly poll failed (status %d)", container->status_code);
-            // HTTP error - record failure with backoff
-            shelly_health_.recordFailure(now);
-            ESP_LOGW(TAG, "Shelly poll: Backoff applied (%d failures, next attempt in %ums)",
-                     shelly_health_.consecutive_failures, shelly_health_.getCurrentBackoffMs());
-        } else {
-            ESP_LOGW(TAG, "Shelly poll failed (no response)");
-            // Connection failure - record failure with backoff
-            shelly_health_.recordFailure(now);
-            ESP_LOGW(TAG, "Shelly poll: Backoff applied (%d failures, next attempt in %ums)",
-                     shelly_health_.consecutive_failures, shelly_health_.getCurrentBackoffMs());
+            xQueueSend(shelly_result_queue_, &res, 0);
+            continue;
         }
 
-        // CRITICAL: Call end() to properly close the connection and free resources
-        container->end();
-    } else {
-        ESP_LOGW(TAG, "Shelly poll returned null container (connection failed)");
-        // Null container means connection failed - apply backoff
-        shelly_health_.recordFailure(now);
-        ESP_LOGW(TAG, "Shelly poll: Backoff applied (%d failures, next attempt in %ums)",
-                 shelly_health_.consecutive_failures, shelly_health_.getCurrentBackoffMs());
+        uint32_t now = esphome::millis();
+        bool poll_due = shelly_poll_now_.exchange(false) || (int32_t)(now - next_poll) >= 0;
+        if (!shelly_enabled_ || !poll_due) {
+            continue;
+        }
+        next_poll = now + SHELLY_POLL_INTERVAL_MS;
+
+        char url[64];
+        snprintf(url, sizeof(url), "http://%s/script/1/api?action=states", SHELLY_IP);
+        char body[512];
+        body[0] = '\0';
+        ShellyResult res = {};
+        strncpy(res.name, "Poll", sizeof(res.name) - 1);
+        res.is_poll = true;
+        res.status = shellyHttpGet(url, SHELLY_HTTP_TIMEOUT_MS, body, sizeof(body));
+        res.ok = res.status == 200;
+        for (auto& st : res.states) st = -1;
+        if (res.ok) {
+            parseShellyStates(body, res.uptime, res.states);
+        }
+        xQueueSend(shelly_result_queue_, &res, 0);
+    }
+}
+
+bool ESPHomeHAL::queueShellyRequest(const std::string& url, const char* name, uint8_t attempts,
+                                    bool force) {
+    if (!shelly_enabled_ && !force) {
+        if (!shelly_disabled_warned_) {
+            ESP_LOGW(TAG, "Shelly integration disabled - dropping %s command (further drops not logged)",
+                     name);
+            shelly_disabled_warned_ = true;
+        }
+        return false;
+    }
+    if (!shelly_cmd_queue_) {
+        ESP_LOGE(TAG, "%s: Shelly worker not running", name);
+        return false;
     }
 
-    // Mark request as completed
-    markHttpRequestCompleted();
+    ShellyRequest req = {};
+    if (url.size() >= sizeof(req.url)) {
+        ESP_LOGE(TAG, "%s: URL too long (%u bytes)", name, (unsigned) url.size());
+        return false;
+    }
+    strncpy(req.url, url.c_str(), sizeof(req.url) - 1);
+    strncpy(req.name, name, sizeof(req.name) - 1);
+    req.attempts = attempts;
 
-    // Update health status with parsed uptime
-    updateShellyHealth(reachable, uptime);
+    if (xQueueSend(shelly_cmd_queue_, &req, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "%s: Shelly command queue full - command dropped", name);
+        return false;
+    }
+    ESP_LOGD(TAG, "%s: queued %s", name, req.url);
+    return true;
+}
 
-    // Handle deferred AirPump activation AFTER connection is fully closed
-    // This prevents back-to-back HTTP requests that can destabilize the connection
-    if (need_airpump_activation) {
-        ESP_LOGI(TAG, "AirPump OFF but Normal mode desired - activating via ASG (deferred)");
+void ESPHomeHAL::handleShellyResult(const ShellyResult& result) {
+    if (!result.is_poll) {
+        if (result.ok) {
+            ESP_LOGD(TAG, "%s: OK (status %d)", result.name, result.status);
+        } else {
+            ESP_LOGW(TAG, "%s: failed (status %d)", result.name, result.status);
+        }
+        return;
+    }
+
+    if (!shelly_enabled_) {
+        return;  // Poll finished after the integration was disabled - ignore
+    }
+
+    if (!result.ok) {
+        // Log only the first failure of a streak to avoid log spam while the Shelly is offline
+        if (shelly_poll_failures_ == 0) {
+            ESP_LOGW(TAG, "Shelly poll failed (status %d) - Shelly offline?", result.status);
+        }
+        if (shelly_poll_failures_ < 255) shelly_poll_failures_++;
+        updateShellyHealth(false, 0);
+        return;
+    }
+
+    if (shelly_poll_failures_ > 0) {
+        ESP_LOGI(TAG, "Shelly reachable again after %u failed polls", shelly_poll_failures_);
+        shelly_poll_failures_ = 0;
+    }
+    updateShellyHealth(true, result.uptime);
+
+    // Sync HAL state, ASG actual state and web UI toggles: 0=AirPump, 2=WastewaterPump, 3=GrowLight
+    struct { uint8_t id; const char* actuator; esphome::switch_::Switch* sw; } map[] = {
+        {0, "AirPump", air_pump_switch_},
+        {2, "WastewaterPump", wastewater_pump_switch_},
+        {3, "GrowLight", grow_light_switch_},
+    };
+    for (const auto& m : map) {
+        if (result.states[m.id] < 0) continue;
+        bool on = result.states[m.id] == 1;
+        updateShellySwitchState(m.id, on);
+        if (actuator_safety_gate_) {
+            actuator_safety_gate_->updateActualState(m.actuator, on);
+        }
+        if (m.sw) {
+            m.sw->publish_state(on);
+        }
+    }
+    ESP_LOGD(TAG, "Shelly states: AirPump=%d, Wastewater=%d, GrowLight=%d, uptime=%us",
+             result.states[0], result.states[2], result.states[3], result.uptime);
+
+    // AirPump should run continuously in Normal mode - turn it back on if the Shelly reports OFF
+    if (result.states[0] == 0 && actuator_safety_gate_ &&
+        !actuator_safety_gate_->isCyclingEnabled("AirPump")) {
+        ESP_LOGI(TAG, "AirPump OFF but Normal mode desired - activating via ASG");
         actuator_safety_gate_->enableCycling("AirPump", false);
     }
+}
 
-    // Call callback if provided
-    if (callback) {
-        callback(reachable, uptime);
+void ESPHomeHAL::setShellyEnabled(bool enabled) {
+    if (enabled == shelly_enabled_) {
+        return;
+    }
+    if (enabled) {
+        shelly_disabled_warned_ = false;
+        shelly_poll_failures_ = 0;
+        shelly_enabled_ = true;
+        shelly_poll_now_ = true;  // Re-sync states right away
+        ESP_LOGI(TAG, "Shelly integration ENABLED");
+    } else {
+        // Never leave the drain pump running unmanaged: queue OFF before disabling
+        // (no queue yet = called during boot restore, before the worker started)
+        if (shelly_cmd_queue_) {
+            std::string url = std::string("http://") + SHELLY_IP + "/rpc/Switch.Set?id=2&on=false";
+            queueShellyRequest(url, "WastewaterPump", 2, true);
+        }
+        pump_states_["WastewaterPump"] = false;
+        shelly_enabled_ = false;
+        shelly_reachable_ = false;
+        ESP_LOGW(TAG, "Shelly integration DISABLED - no polling, commands dropped "
+                      "(AirPump, WastewaterPump, GrowLight unmanaged)");
     }
 }
 
 bool ESPHomeHAL::isShellyReachable() const {
     // Consider offline if no successful ping in last 60 seconds
-    if (!shelly_reachable_) return false;
+    if (!shelly_enabled_ || !shelly_reachable_) return false;
     uint32_t age = esphome::millis() - shelly_last_ping_ms_;
     return age < 60000;  // 60 second timeout
 }
@@ -1300,53 +1119,15 @@ uint32_t ESPHomeHAL::getShellyUptime() const {
 
 void ESPHomeHAL::updateShellyHealth(bool reachable, uint32_t uptime) {
     // Update health status (can be called from YAML callbacks or internally)
+    bool changed = reachable != shelly_reachable_;
     shelly_reachable_ = reachable;
     if (reachable) {
         shelly_uptime_seconds_ = uptime;
         shelly_last_ping_ms_ = esphome::millis();
     }
-    ESP_LOGI(TAG, "Shelly health updated: %s (uptime: %us)",
-             reachable ? "ONLINE" : "OFFLINE", uptime);
-}
-
-// ============================================================================
-// HTTP REQUEST SERIALIZATION - Prevent socket exhaustion
-// ============================================================================
-
-bool ESPHomeHAL::canSendHttpRequest() {
-    uint32_t now = esphome::millis();
-
-    // If no request in progress, OK to send
-    if (!http_request_in_progress_) {
-        return true;
+    if (changed) {
+        ESP_LOGI(TAG, "Shelly health: %s (uptime: %us)", reachable ? "ONLINE" : "OFFLINE", uptime);
     }
-
-    // If request has timed out, clear the flag and allow new request
-    if (now - http_request_start_time_ >= HTTP_REQUEST_TIMEOUT) {
-        ESP_LOGW(TAG, "Previous HTTP request timed out after %ums - clearing flag",
-                 now - http_request_start_time_);
-        http_request_in_progress_ = false;
-        return true;
-    }
-
-    // Request still in progress
-    ESP_LOGD(TAG, "HTTP request in progress for %ums - waiting",
-             now - http_request_start_time_);
-    return false;
-}
-
-void ESPHomeHAL::markHttpRequestStarted() {
-    http_request_in_progress_ = true;
-    http_request_start_time_ = esphome::millis();
-    ESP_LOGD(TAG, "HTTP request started");
-}
-
-void ESPHomeHAL::markHttpRequestCompleted() {
-    if (http_request_in_progress_) {
-        uint32_t duration = esphome::millis() - http_request_start_time_;
-        ESP_LOGD(TAG, "HTTP request completed in %ums", duration);
-    }
-    http_request_in_progress_ = false;
 }
 
 // ============================================================================

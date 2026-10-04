@@ -1560,7 +1560,6 @@ plantos_hal:
   air_pump_switch: air_pump_shelly_switch           # Shelly Socket 0 - Air pump for pH mixing
   wastewater_pump_switch: wastewater_pump_shelly_switch  # Shelly Socket 2 - Tank drainage
   grow_light_switch: grow_light_shelly_switch       # Shelly Socket 3 - Grow light
-  http_request_id: http_client                      # HTTP client for direct Shelly control
 
   # ActuatorSafetyGate reference (for state sync on Shelly poll - consolidated HTTP)
   actuator_safety_gate: actuator_safety
@@ -2224,6 +2223,23 @@ switch:
             ESP_LOGW("switch", "Bloom Pump: OFF command REJECTED by safety gate");
           }
 
+  # Shelly integration on/off (runtime). OFF: no polling, Shelly commands dropped,
+  # WastewaterPump forced OFF first; tank drain and reservoir change are refused.
+  # Polling runs in a HAL worker task (every 30s), not in an interval.
+  - platform: template
+    name: "Shelly Integration"
+    id: shelly_integration_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    icon: "mdi:power-socket-eu"
+    web_server:
+      sorting_group_id: sg_controller_settings
+      sorting_weight: 5
+    turn_on_action:
+      - lambda: id(hal).setShellyEnabled(true);
+    turn_off_action:
+      - lambda: id(hal).setShellyEnabled(false);
+
   # === Shelly-Controlled Actuators (Shelly Plus 4PM @ 192.168.0.130) ===
   # AirPump on Socket 0, WastewaterPump on Socket 2, GrowLight on Socket 3
   # Socket 1 reserved for future expansion
@@ -2657,21 +2673,6 @@ number:
 # Intervals
 ################################################################################
 interval:
-  # Shelly Health Check Interval - Ping Shelly every 30 seconds
-  # This script sends an HTTP ping to the Shelly Plus 4PM and updates the HAL health status
-  # Uses HAL's HTTP serialization to prevent socket exhaustion
-  # Shelly health check - ping the device every 30 seconds
-  - interval: 30s
-    then:
-      - lambda: |-
-          // HAL's pingShellyDevice handles everything:
-          // - Checks if HTTP request can be sent
-          // - Sends synchronous ping with proper response handling
-          // - Updates health status internally
-          // HAL now uses states endpoint and handles switch state sync internally
-          // (consolidated from separate shelly_poll interval to prevent dual HTTP requests)
-          id(hal).pingShellyDevice(nullptr);
-
   # Time-Series Vitals Publish - one JSON snapshot to plantos/vitals every 30s.
   # NaN-guards on numeric fields so a not-yet-read sensor never emits invalid JSON.
   # Telegraf on the broker host parses this into the InfluxDB "vitals" measurement.

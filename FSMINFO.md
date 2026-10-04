@@ -494,9 +494,9 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | startFeeding()             | Must be in IDLE    | FEEDING → EC_FEEDING | Manual EC-dependent nutrient dosing (web UI button)<br>Doses in installments of (calendar_total × multiplier) / 5<br>Loops via EC_MIXING → EC_MEASURING until EC target reached (max 20 installments)<br>Falls back to single-pass if no EC target configured<br>**Blocked in NIGHT state** |
 | startMotherNutrients(L)    | Must be in IDLE    | EC_FEEDING → IDLE    | Dose nutrients for mother plant into a separate container<br>Fixed rates: A=1.44 mL/L, B=0.96 mL/L, C=0.48 mL/L<br>Single pass A→B→C only — no EC loop, no EC_MIXING, no pH correction<br>Volume: user-specified 1–15 L (WebUI number input 04_17)<br>Sets `is_mother_mix_=true` to short-circuit EC_FEEDING→IDLE |
 | startFillTank()            | Must be in IDLE<br>Water level sensors available | WATER_FILLING        | Fill tank → EC check → pH correction (post-fill sequence)<br>**Rejected with error if water level sensors unavailable (overflow risk)**<br>**Blocked in NIGHT state** |
-| startEmptyTank()           | N/A (info only)    | IDLE (no change)     | Info message (use manual drain) |
+| startEmptyTank()           | Must be in IDLE<br>Shelly integration enabled | WATER_EMPTYING       | Drain via WastewaterPump (Shelly socket 2) → IDLE<br>**Rejected with error if Shelly integration disabled**<br>**Blocked in NIGHT state** |
 | startFeed()                | Must be in IDLE<br>Water level sensors available<br>Tank must be empty | FEED_FILLING         | Complete feed: Fill→Nutrients→pH<br>(safety checks: sensors available, all 3 sensors OFF)<br>**Blocked in NIGHT state** |
-| startReservoirChange()     | Must be in IDLE    | IDLE (manual drain)  | Info message (requires manual empty)<br>**Blocked in NIGHT state** |
+| startReservoirChange()     | Must be in IDLE<br>Shelly integration enabled | WATER_EMPTYING       | Drain → FEED_FILLING → FEEDING → pH correction (total tank volume)<br>**Rejected with error if Shelly integration disabled**<br>**Blocked in NIGHT state** |
 | setToShutdown()            | Any state          | SHUTDOWN             | Emergency shutdown (persists) |
 | setToPause()               | Any state          | PAUSE                | Pause system (persists) |
 | setToIdle()                | SHUTDOWN or PAUSE  | IDLE                 | Resume from SHUTDOWN/PAUSE |
@@ -569,6 +569,7 @@ All actuator commands flow through ActuatorSafetyGate which provides:
 - **WATER_FILLING**: Abort on HIGH sensor ON (prevent overflow)
 - **WATER_FILLING / FEED_FILLING**: Refuse to start if water level sensors unavailable — no blind time-based filling (overflow risk); raises `HARDWARE_WATER_SENSORS_MISSING` alert and aborts to IDLE
 - **WATER_EMPTYING**: Abort on EMPTY sensor OFF (prevent dry pump)
+- **WATER_EMPTYING**: Refuse to start if the Shelly integration is disabled (web UI switch "Shelly Integration"). If it is disabled mid-drain, the HAL queues WastewaterPump OFF and the state aborts to IDLE (reservoir change cancelled, PSM event cleared)
 - **FEED_FILLING**: Pre-check all 3 sensors OFF (tank must be completely empty)
 - **AUTOMATIC FEEDING**: Triggers at LOW state (HIGH=OFF, LOW=OFF, EMPTY=ON), max once per day
 

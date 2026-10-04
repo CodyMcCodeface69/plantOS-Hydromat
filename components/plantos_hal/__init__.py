@@ -7,7 +7,7 @@ Provides platform-agnostic hardware interface for the unified Controller.
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import light, sensor, binary_sensor, output, switch, http_request, time
+from esphome.components import light, sensor, binary_sensor, output, switch, time
 from esphome.const import (
     CONF_ID,
 )
@@ -52,7 +52,6 @@ CONF_PUMP_WASTEWATER_OUTPUT = 'pump_wastewater_output'
 CONF_AIR_PUMP_SWITCH = 'air_pump_switch'
 CONF_WASTEWATER_PUMP_SWITCH = 'wastewater_pump_switch'
 CONF_GROW_LIGHT_SWITCH = 'grow_light_switch'
-CONF_HTTP_REQUEST = 'http_request_id'
 
 # ActuatorSafetyGate reference (for state sync on Shelly poll)
 CONF_ACTUATOR_SAFETY_GATE = 'actuator_safety_gate'
@@ -102,7 +101,6 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_AIR_PUMP_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_WASTEWATER_PUMP_SWITCH): cv.use_id(switch.Switch),
     cv.Optional(CONF_GROW_LIGHT_SWITCH): cv.use_id(switch.Switch),
-    cv.Optional(CONF_HTTP_REQUEST): cv.use_id(http_request.HttpRequestComponent),
 
     # ActuatorSafetyGate reference (for state sync on Shelly poll)
     cv.Optional(CONF_ACTUATOR_SAFETY_GATE): cv.use_id(ActuatorSafetyGate),
@@ -228,10 +226,6 @@ async def to_code(config):
         asg = await cg.get_variable(config[CONF_ACTUATOR_SAFETY_GATE])
         cg.add(var.set_actuator_safety_gate(asg))
 
-    # Inject HTTP request component for direct Shelly control
-    if CONF_HTTP_REQUEST in config:
-        http_req = await cg.get_variable(config[CONF_HTTP_REQUEST])
-        cg.add(var.set_http_request(http_req))
 
     # Inject tank volume and valve configuration
     cg.add(var.setTankVolumeDelta(config[CONF_TANK_VOLUME_DELTA_LITERS]))

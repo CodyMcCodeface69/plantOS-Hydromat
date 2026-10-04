@@ -4,6 +4,10 @@
 #include <functional>
 #include <map>
 #include <vector>
+#include <atomic>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 #include "esphome/core/component.h"
 #include "esphome/core/time.h"
 #include "esphome/components/time/real_time_clock.h"
@@ -27,9 +31,6 @@ class FloatOutput;
 }
 namespace ezo_ph_uart {
 class EZOPHUARTComponent;
-}
-namespace http_request {
-class HttpRequestComponent;
 }
 namespace actuator_safety_gate {
 class ActuatorSafetyGate;
@@ -514,13 +515,12 @@ public:
     // ============================================================================
 
     /**
-     * Check Shelly device health via HTTP ping
-     * @param callback Function called with (reachable, uptime_seconds) when ping completes
-     *
-     * NOTE: This is async - callback is called when HTTP response is received.
-     * Use updateShellyHealth() to manually update status if ping times out.
+     * Enable/disable the Shelly integration at runtime (web UI switch).
+     * Disabled: no polling, Shelly commands are dropped. Disabling first queues a
+     * WastewaterPump OFF so the drain pump is never left running unmanaged.
      */
-    virtual void pingShellyDevice(std::function<void(bool, uint32_t)> callback) = 0;
+    virtual void setShellyEnabled(bool enabled) = 0;
+    virtual bool isShellyEnabled() const = 0;
 
     /**
      * Check if Shelly device is considered reachable
@@ -540,22 +540,6 @@ public:
      * @param uptime Device uptime in seconds (0 if unknown)
      */
     virtual void updateShellyHealth(bool reachable, uint32_t uptime = 0) = 0;
-
-    /**
-     * Check if an HTTP request can be sent (for YAML to check before sending)
-     * @return true if OK to send, false if should wait
-     */
-    virtual bool canSendHttpRequest() = 0;
-
-    /**
-     * Mark HTTP request as started (called from YAML before sending)
-     */
-    virtual void markHttpRequestStarted() = 0;
-
-    /**
-     * Mark HTTP request as completed (called from YAML after response)
-     */
-    virtual void markHttpRequestCompleted() = 0;
 
     // ============================================================================
     // SHELLY STATE SYNCHRONIZATION - For debouncing and UI state
@@ -630,9 +614,6 @@ public:
 
     // ActuatorSafetyGate setter (for state sync on Shelly poll)
     void set_actuator_safety_gate(esphome::actuator_safety_gate::ActuatorSafetyGate* asg);
-
-    // HTTP request component setter (for direct Shelly control)
-    void set_http_request(esphome::http_request::HttpRequestComponent* http);
 
     // Configuration setters
     void set_ph_reading_interval(uint32_t interval_ms) { ph_reading_interval_ms_ = interval_ms; }
@@ -710,15 +691,11 @@ public:
     bool hasTime() const override;
 
     // Shelly health check methods
-    void pingShellyDevice(std::function<void(bool, uint32_t)> callback) override;
+    void setShellyEnabled(bool enabled) override;
+    bool isShellyEnabled() const override { return shelly_enabled_; }
     bool isShellyReachable() const override;
     uint32_t getShellyUptime() const override;
     void updateShellyHealth(bool reachable, uint32_t uptime = 0) override;
-
-    // HTTP request serialization methods (callable from YAML)
-    bool canSendHttpRequest() override;
-    void markHttpRequestStarted() override;
-    void markHttpRequestCompleted() override;
 
     // Shelly state synchronization methods (callable from YAML)
     void updateShellySwitchState(uint8_t switchId, bool state) override;
@@ -761,18 +738,46 @@ private:
     // ActuatorSafetyGate reference (for state sync on Shelly poll)
     esphome::actuator_safety_gate::ActuatorSafetyGate* actuator_safety_gate_{nullptr};
 
-    // HTTP request component for direct Shelly control
-    esphome::http_request::HttpRequestComponent* http_request_{nullptr};
-
-    // URL cache to prevent use-after-free in async HTTP requests
-    // The http_request component uses the URL asynchronously, so we must keep it alive
-    std::string url_cache_;
-
     // Shelly IP address
     static constexpr const char* SHELLY_IP = "192.168.0.130";
 
-    // Helper function for robust HTTP requests with retry
-    bool sendShellyCommand(const std::string& url, const char* deviceName, int maxRetries = 5);
+    // ------------------------------------------------------------------------
+    // Shelly worker: all Shelly HTTP runs in its own FreeRTOS task so the main
+    // loop (web UI, sensors, FSM) never blocks on the network. The task talks to
+    // the main thread only through two queues and never logs; results are
+    // logged and applied (ASG sync, switch publish) in loop().
+    // ------------------------------------------------------------------------
+    struct ShellyRequest {
+        char url[256];
+        char name[24];
+        uint8_t attempts;
+    };
+    struct ShellyResult {
+        char name[24];
+        bool is_poll;
+        bool ok;
+        int16_t status;         // HTTP status, -1 = no connection
+        uint32_t uptime;        // poll only
+        int8_t states[4];       // poll only: -1 unknown, 0 off, 1 on
+    };
+    static constexpr uint32_t SHELLY_POLL_INTERVAL_MS = 30000;
+    static constexpr uint32_t SHELLY_HTTP_TIMEOUT_MS = 2000;
+    static constexpr uint32_t SHELLY_RETRY_DELAY_MS = 500;
+
+    QueueHandle_t shelly_cmd_queue_{nullptr};
+    QueueHandle_t shelly_result_queue_{nullptr};
+    TaskHandle_t shelly_task_{nullptr};
+    std::atomic<bool> shelly_enabled_{true};
+    std::atomic<bool> shelly_poll_now_{true};
+    bool shelly_disabled_warned_{false};
+    uint8_t shelly_poll_failures_{0};
+
+    // Queue a Shelly GET (main thread). Returns false if disabled or the queue is full.
+    bool queueShellyRequest(const std::string& url, const char* name, uint8_t attempts = 2,
+                            bool force = false);
+    void handleShellyResult(const ShellyResult& result);
+    static void shellyTaskEntry(void* arg);
+    void shellyTaskLoop();
 
     // Actuator state tracking (for getPumpState/getValveState)
     std::map<std::string, bool> pump_states_;
@@ -791,67 +796,10 @@ private:
     float ph_min_{5.5f};                         // Default: pH 5.5
     float ph_max_{6.5f};                         // Default: pH 6.5
 
-    // Simple multi-attempt retry state for Shelly HTTP commands
-    // Works around transient connection failures without complex error detection
-    std::string shelly_retry_url_;
-    std::string shelly_retry_device_name_;
-    uint8_t shelly_retry_attempts_{0};
-    uint32_t shelly_retry_next_time_{0};
-
-    // Multi-attempt send helper for Shelly commands
-    void sendShellyMultiAttempt(const std::string& url, const char* deviceName, uint8_t attempts = 3);
-
     // Shelly health tracking
     bool shelly_reachable_{false};
     uint32_t shelly_uptime_seconds_{0};
     uint32_t shelly_last_ping_ms_{0};
-
-    // Shelly connection health with exponential backoff
-    // Tracks consecutive failures and implements backoff to prevent request hammering
-    struct ShellyConnectionHealth {
-        uint8_t consecutive_failures{0};    // Count of consecutive failed requests
-        uint32_t backoff_until_ms{0};       // Don't attempt requests until this time (millis())
-        uint32_t last_success_ms{0};        // Time of last successful request
-
-        static constexpr uint8_t MAX_FAILURES = 6;           // Max failures before max backoff
-        static constexpr uint32_t MIN_BACKOFF_MS = 1000;     // 1 second initial backoff
-        static constexpr uint32_t MAX_BACKOFF_MS = 60000;    // 60 second max backoff
-
-        // Check if we can attempt a request (backoff period expired)
-        bool canAttempt(uint32_t now) const {
-            return now >= backoff_until_ms;
-        }
-
-        // Record a successful request - reset backoff
-        void recordSuccess(uint32_t now) {
-            consecutive_failures = 0;
-            backoff_until_ms = 0;
-            last_success_ms = now;
-        }
-
-        // Record a failed request - apply exponential backoff
-        void recordFailure(uint32_t now) {
-            consecutive_failures = std::min(static_cast<uint8_t>(consecutive_failures + 1), MAX_FAILURES);
-            // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (capped)
-            uint32_t backoff = MIN_BACKOFF_MS << (consecutive_failures - 1);
-            backoff = std::min(backoff, MAX_BACKOFF_MS);
-            backoff_until_ms = now + backoff;
-        }
-
-        // Get current backoff duration for logging
-        uint32_t getCurrentBackoffMs() const {
-            if (consecutive_failures == 0) return 0;
-            uint32_t backoff = MIN_BACKOFF_MS << (consecutive_failures - 1);
-            return std::min(backoff, MAX_BACKOFF_MS);
-        }
-    };
-    ShellyConnectionHealth shelly_health_;
-
-    // HTTP request serialization to prevent socket exhaustion
-    // Only one HTTP request should be in-flight at a time
-    bool http_request_in_progress_{false};
-    uint32_t http_request_start_time_{0};
-    static constexpr uint32_t HTTP_REQUEST_TIMEOUT = 10000;  // 10 second max for any HTTP request
 
     // Shelly sequence tracking
     // Track which switches have active sequences running

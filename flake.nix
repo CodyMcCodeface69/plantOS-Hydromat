@@ -78,6 +78,10 @@
                   fi
                   # Ensure pipx binaries are in PATH
                   export PATH="$HOME/.local/bin:$PATH"
+
+                  # Per-project PlatformIO home (also set in Taskfile.yml) so other
+                  # ESPHome projects on other versions can't swap our toolchain
+                  export PLATFORMIO_CORE_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.platformio"
                 '';
               };
             };

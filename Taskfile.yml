@@ -3,6 +3,11 @@ version: '3'
 vars:
   ENTRY_POINT: plantOS.yaml
 
+# Per-project PlatformIO home (toolchains, ESP-IDF, cache). The shared ~/.platformio
+# got its toolchain swapped by other ESPHome projects on different versions.
+env:
+  PLATFORMIO_CORE_DIR: '{{.ROOT_DIR}}/.platformio'
+
 tasks:
   info:
     desc: Display all available tasks and Taskfile location.

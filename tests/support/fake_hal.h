@@ -33,6 +33,8 @@ struct FakeHAL : public plantos_hal::HAL {
   uint32_t ph_interval_ms = 7200000;
   float ph_min = 5.5f, ph_max = 6.2f;
   bool shelly_enabled = true, shelly_reachable = true;
+  bool ph_sensor_ready = true;
+  int ph_calib_fail_point = -1;  // startPhCalibration() fails for this point (0 mid, 1 low, 2 high)
 
   // --- recorded outputs ---
   struct Call {
@@ -44,6 +46,14 @@ struct FakeHAL : public plantos_hal::HAL {
   std::vector<Call> calls;
   std::map<std::string, bool> pump_states, valve_states;
   std::vector<uint32_t> last_pattern;
+  struct CalibCommand {
+    float ph;
+    int point;
+    uint32_t at_ms;
+  };
+  std::vector<CalibCommand> calib_commands;
+  int single_readings = 0;
+  int temp_compensations = 0;
 
   int count(const std::string &kind, const std::string &id, bool state) const {
     int n = 0;
@@ -109,11 +119,15 @@ struct FakeHAL : public plantos_hal::HAL {
   float readPH() override { return ph; }
   bool hasPhValue() const override { return has_ph; }
   void onPhChange(std::function<void(float)>) override {}
-  bool startPhCalibration(float, int) override { return true; }
-  bool isPhSensorReady() const override { return true; }
+  bool startPhCalibration(float ph_value, int point) override {
+    calib_commands.push_back({ph_value, point, esphome::millis()});
+    return point != ph_calib_fail_point;
+  }
+  bool isPhSensorReady() const override { return ph_sensor_ready; }
   void setPhVerbose(bool) override {}
   void queryPhCalibrationStatus() override {}
   bool takeSinglePhReading(float &value) override {
+    single_readings++;
     value = ph;
     return has_ph;
   }
@@ -139,7 +153,10 @@ struct FakeHAL : public plantos_hal::HAL {
   bool setECCalibrationFactor(float) override { return true; }
   float getECCalibrationFactor() const override { return 1.0f; }
   bool resetECCalibrationFactor() override { return true; }
-  bool sendPhTemperatureCompensation(float) override { return true; }
+  bool sendPhTemperatureCompensation(float) override {
+    temp_compensations++;
+    return true;
+  }
   void setSystemLED(float, float, float, float = 1.0f) override {}
   void turnOffLED() override {}
   bool isLEDOn() const override { return false; }

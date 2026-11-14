@@ -69,16 +69,7 @@ void PlantOSController::handlePhProcessing() {
         ESP_LOGI(TAG, "Starting pH correction sequence");
         ESP_LOGI(TAG, "========================================================");
 
-        // Reset pH correction state
-        ph_attempt_count_ = 0;
-        ph_readings_.clear();
-        ph_current_ = 0.0f;
-        ph_dose_ml_ = 0.0f;
-        ph_dose_duration_ms_ = 0;
-        ph_cycle_start_ph_ = 0.0f;
-        ph_cycle_total_ml_ = 0.0f;
-        ph_cycle_water_filled_ = false;
-        ph_cycle_aborted_ = false;
+        resetPhCycle();
 
         // Log event for crash recovery
         if (psm_) {

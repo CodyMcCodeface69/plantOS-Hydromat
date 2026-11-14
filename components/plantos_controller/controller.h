@@ -173,7 +173,7 @@ public:
      */
     void setGrowLightScheduleEnabled(bool enabled) {
         grow_light_schedule_enabled_ = enabled;
-        ESP_LOGI("controller", "Grow light schedule control %s", enabled ? "ENABLED" : "DISABLED");
+        ESP_LOGI(TAG, "Grow light schedule %s", enabled ? "ON" : "OFF");
     }
 
     // ========================================================================
@@ -292,7 +292,7 @@ public:
      */
     void setEcTargetMultiplier(float multiplier) {
         ec_target_multiplier_ = std::max(0.1f, std::min(2.0f, multiplier));
-        ESP_LOGI("controller", "EC target multiplier set to %.2f", ec_target_multiplier_);
+        ESP_LOGI(TAG, "EC target multiplier %.2f", ec_target_multiplier_);
     }
 
     /**
@@ -383,6 +383,9 @@ public:
      * @return Current state name (e.g., "IDLE", "PH_MEASURING", "SHUTDOWN")
      */
     std::string getStateAsString() const;
+
+    /// State name for logs ("UNKNOWN" for an out-of-range value)
+    static const char *stateName(ControllerState state);
 
     /**
      * Get status logger instance
@@ -751,6 +754,25 @@ private:
      * Called before critical pH readings (measuring, calibration, feeding)
      */
     void sendTemperatureCompensation();
+
+    // ========================================================================
+    // Start guards (one entry point for every start*() call)
+    // ========================================================================
+
+    enum class Operation : uint8_t {
+        PH_CORRECTION, PH_CALIBRATION, FEEDING, MOTHER_MIX, FILL, DRAIN, FEED,
+        EC_CHECK, EC_CALIBRATION, RESERVOIR_CHANGE
+    };
+
+    /// May `op` start now? Needs IDLE (NIGHT and busy states refuse) plus the hardware the
+    /// operation uses. On false, *reason says why (static string).
+    bool canStart(Operation op, const char **reason) const;
+
+    /// canStart() + a "Cannot start <name>: <reason>" warning on refusal.
+    bool startAllowed(Operation op, const char *name);
+
+    /// Reset the pH correction cycle state before a new correction run
+    void resetPhCycle();
 
     // ========================================================================
     // State Transition

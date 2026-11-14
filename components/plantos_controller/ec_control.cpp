@@ -437,16 +437,7 @@ void PlantOSController::handleEcMeasuring() {
     // Always check pH after EC feeding (nutrients shift pH)
     ESP_LOGI(TAG, "[EC_MEASURING] EC cycle complete - triggering pH check (5-min stabilization)");
 
-    // Reset pH state for clean correction cycle
-    ph_attempt_count_ = 0;
-    ph_readings_.clear();
-    ph_current_ = 0.0f;
-    ph_dose_ml_ = 0.0f;
-    ph_dose_duration_ms_ = 0;
-    ph_cycle_start_ph_ = 0.0f;
-    ph_cycle_total_ml_ = 0.0f;
-    ph_cycle_water_filled_ = false;
-    ph_cycle_aborted_ = false;
+    resetPhCycle();
 
     // Use extended stabilization: nutrients need time to distribute before accurate pH reading
     ph_post_feed_stabilize_ = true;
@@ -466,16 +457,7 @@ void PlantOSController::transitionAfterEcSkipped() {
         ESP_LOGI(TAG, "[EC_PROCESSING] Auto pH correction pending - transitioning to pH check");
         auto_ph_correction_pending_ = false;
 
-        // Reset pH state for clean correction cycle
-        ph_attempt_count_ = 0;
-        ph_readings_.clear();
-        ph_current_ = 0.0f;
-        ph_dose_ml_ = 0.0f;
-        ph_dose_duration_ms_ = 0;
-        ph_cycle_start_ph_ = 0.0f;
-        ph_cycle_total_ml_ = 0.0f;
-        ph_cycle_water_filled_ = false;
-        ph_cycle_aborted_ = false;
+        resetPhCycle();
 
         if (psm_) {
             psm_->clearEvent();

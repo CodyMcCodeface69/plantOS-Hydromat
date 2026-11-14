@@ -19,7 +19,7 @@
 esphome:
   name: plantos
   includes:
-    - wifi_scan.h
+    - includes/wifi_scan.h  # esp_wifi.h for the "WiFi Scan" button lambda
   on_boot:
     # Configure actuator safety gate max durations (in seconds) on boot
     # Each actuator has a safety timeout to prevent accidents

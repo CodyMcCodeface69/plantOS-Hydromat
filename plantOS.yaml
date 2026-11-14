@@ -82,6 +82,30 @@ esp32:
       # references the ~60 KB CA bundle (MQTT brings its own CA, the Shelly calls are plain HTTP).
       CONFIG_MBEDTLS_CERTIFICATE_BUNDLE: n
 
+      # --- Flash diet: TLS (mbedTLS) -------------------------------------------------------
+      # The only TLS user is the outbound MQTT connection (TLS 1.2 client, CA from secrets).
+      # web_server, the native API and OTA do not use mbedTLS, so the TLS server role goes.
+      CONFIG_MBEDTLS_TLS_SERVER_AND_CLIENT: n
+      CONFIG_MBEDTLS_TLS_CLIENT_ONLY: y
+      # Curves no public CA or broker uses. Still enabled: secp256r1, secp384r1, secp521r1
+      # and Curve25519 (key exchange + ECDSA certificates; WPA3-SAE needs secp256r1).
+      CONFIG_MBEDTLS_ECP_DP_SECP192R1_ENABLED: n
+      CONFIG_MBEDTLS_ECP_DP_SECP224R1_ENABLED: n
+      CONFIG_MBEDTLS_ECP_DP_SECP192K1_ENABLED: n
+      CONFIG_MBEDTLS_ECP_DP_SECP224K1_ENABLED: n
+      CONFIG_MBEDTLS_ECP_DP_SECP256K1_ENABLED: n
+      CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED: n
+      CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED: n
+      CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED: n
+      # Static-ECDH suites (fixed DH key in the certificate): obsolete, no server offers them.
+      # Still enabled: ECDHE-ECDSA, ECDHE-RSA and plain RSA key exchange.
+      CONFIG_MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA: n
+      CONFIG_MBEDTLS_KEY_EXCHANGE_ECDH_RSA: n
+      # The firmware only reads PEM certificates; it never writes PEM or parses CRLs/CSRs.
+      CONFIG_MBEDTLS_PEM_WRITE_C: n
+      CONFIG_MBEDTLS_X509_CRL_PARSE_C: n
+      CONFIG_MBEDTLS_X509_CSR_PARSE_C: n
+
 logger:
   # Compile-time level: INFO in production, DEBUG with the debug package. It is set in the
   # `packages:` block at the top of this file (not here, so the debug package can raise it).

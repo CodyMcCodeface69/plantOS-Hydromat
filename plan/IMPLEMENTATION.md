@@ -32,7 +32,7 @@ the decisions already taken. Tick steps off here and write the numbers and detai
 - [x] 0.1 Baseline: build `1655e15`, record flash/RAM and the largest symbols
       (`riscv32-esp-elf-nm --size-sort` on the ELF, top 40) in `LOG.md`. This is the map for phase 2.
 - [x] 0.2 Create `plan/TEST_ON_DEVICE.md` (table: area, change, commit, check, failure sign).
-- [ ] 0.3 Host test harness: `tests/` with a plain `g++`/`make` (or `task test`) setup, no new toolchain
+- [x] 0.3 Host test harness: `tests/` with a plain `g++`/`make` (or `task test`) setup, no new toolchain
       and no downloads beyond a single-header test lib if needed. Stub the few ESPHome headers the pure logic needs.
       First targets, written against **today's** behavior so later refactors are checked:
       calendar lookup and JSON parse, acid dose and K-factor update, EC dose math, pH mixing duration,

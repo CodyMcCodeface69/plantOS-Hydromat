@@ -62,3 +62,15 @@ Work is split across subagents with path ownership; only one agent builds at a t
 - Object id rule: lower-case, space → `_`, other chars outside `[a-zA-Z0-9_-]` → `_`, hyphens kept, no collapsing.
 - Tested only against a local fake of the API and in mock mode (dark theme looked at, light theme not).
 - Inputs for 3.5 added to `IMPLEMENTATION.md` (entity names, status text with pH band/EC target, "Last Refusal").
+
+## 2026-11-14: host tests (0.3) (Fable, subagent)
+- `tests/`: 155 tests / 1231 checks against the real, unmodified component sources (calendar, controller math and
+  handlers, `RobustAverager`, safety gate). `task test`: ~15 s clean, ~1 s incremental. `af54e6e`, `932ae66`, `a711e01`.
+- Stubs in `tests/stubs/` stand in for ESPHome/FreeRTOS; private members are reached with `-fno-access-control`.
+  ArduinoJson is copied once from `.esphome/build/plantos/.piolibdeps/`, so a checkout that never ran `task build` stops
+  with a message.
+- `tests/golden/haupt_schedule.csv`: all 120 days. The phase-table rewrite (3.2) must reproduce it exactly.
+- Suspect behavior found and pinned (not fixed): see `WEAKNESSES.md`, last section. The auto-feed marker lost on reboot
+  is the one with a real-world effect (a second feed the same day after a reboot); fix it in the simplification half of 2.4.
+- **Running:** the mechanical controller split (2.4) in a worktree branch, verified by the host tests only; the
+  coordinator merges and runs `task build` once the config agent (2.1/2.7/2.8) releases the build directory.

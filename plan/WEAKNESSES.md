@@ -59,3 +59,17 @@ Verify before acting; some may be harmless.
 - **New:** ASG soft-start ramp is never configured. `FSMINFO.md` says PH_MIXING is 120 s, the code scales 30-600 s with
   volume (~244 s at 27.4 L). pH dosing uses the 27.4 L delta volume, not the total.
 - **New:** generated `main.cpp.o` is 109 KB (`setup()` 48 KB), larger than the controller.
+- **New, from the host tests (each pinned by a `// SUSPECT:` test in `tests/`):**
+  - The EC dose is accumulated twice for K learning in the automatic path (`controller.cpp:2336` and `:2370`).
+  - The auto-feed "already fed today" marker does not survive a reboot: `AUTOFEED_<date>` is written to the single PSM
+    slot and `startFeed()` overwrites it with `FEED_OPERATION`. After a reboot the same day the trigger fires again.
+    `AUTORES_<week>` follows the same pattern (by reading, not tested).
+  - Reservoir-change weekday and week number are UTC-based; night mode and the feed date are local.
+  - `getCurrentGrowDay` flips at 00:00 UTC and has no caller; `__init__.py:110` builds the start timestamp in the build
+    machine's timezone.
+  - Calendar day numbers above 255 wrap (`"day": 300` → 44). Fallback `ec_tolerance` 0.20 sits in a µS/cm field.
+  - `enableCycling("AirPump", false)` leaves the tracked ASG state stale until the next Shelly poll.
+  - Not bugs, but easy to break: with the production calendar "night" means **light off** (08:00-16:00, 04:00-16:00 from
+    day 22), the 22-9 hour window is only a fallback; `PH_PROCESSING` uses the HAL range 5.5-6.2 while `PH_CALCULATING`
+    uses the calendar range; any pH above 5.85 doses at least 0.5 mL; `ph_K_` defaults to 0.25 as a member but 0.07 from
+    NVS; the EC guard is 12 h (comments say 4 h).

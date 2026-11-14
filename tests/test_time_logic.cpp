@@ -86,7 +86,11 @@ TEST(night_mode, calendar_schedule_of_the_calendar_day_counter_is_used) {
 
 TEST(night_mode, calendar_day_schedule_not_wrapping) {
   ControllerFixture f(false);
-  CalendarFixture c(R"([{"day": 1, "light_on_time": 360, "light_off_time": 1320}])");  // 06:00 - 22:00
+  auto p = test_phase();
+  p.light_on_min = 360;   // 06:00
+  p.light_off_min = 1320; // 22:00
+  OnePhaseCalendars cals(p);
+  CalendarFixture c(cals.defs);
   f.ctrl.setCalendarManager(&c.cal);
   CHECK(night_at(f, 5, 59));
   CHECK(!night_at(f, 6, 0));
@@ -97,7 +101,11 @@ TEST(night_mode, calendar_day_schedule_not_wrapping) {
 
 TEST(night_mode, equal_light_times_fall_back_to_hour_window) {
   ControllerFixture f(false);
-  CalendarFixture c(R"([{"day": 1, "light_on_time": 600, "light_off_time": 600}])");
+  auto p = test_phase();
+  p.light_on_min = 600;
+  p.light_off_min = 600;
+  OnePhaseCalendars cals(p);
+  CalendarFixture c(cals.defs);
   f.ctrl.setCalendarManager(&c.cal);
   CHECK(night_at(f, 23, 0));
   CHECK(!night_at(f, 12, 0));
@@ -486,7 +494,7 @@ TEST(idle_date_sync, advances_calendar_day_at_local_midnight) {
   f.ctrl.handleIdle();  // first sync seeds the date
   CHECK(f.ctrl.did_initial_date_sync_);
   CHECK_EQ(f.cal.get_current_day(), 10);
-  CHECK_EQ(f.cal.last_synced_date_, 20771);
+  CHECK_EQ(synced_date(f.cal), 20771);
 
   host::advance_millis(59999);
   f.set_time(2026, 11, 15, 0, 0, 30, 3600);
@@ -496,7 +504,7 @@ TEST(idle_date_sync, advances_calendar_day_at_local_midnight) {
   host::advance_millis(1);
   f.ctrl.handleIdle();
   CHECK_EQ(f.cal.get_current_day(), 11);
-  CHECK_EQ(f.cal.last_synced_date_, 20772);
+  CHECK_EQ(synced_date(f.cal), 20772);
 }
 
 TEST(idle_night, enters_night_state_in_night_hours) {

@@ -3,349 +3,129 @@
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
 #include "esphome/core/log.h"
-#include <string>
-#include <map>
-#include <ArduinoJson.h>
+#include "phase_table.h"
 
 namespace esphome {
 namespace calendar_manager {
 
 /**
- * DailySchedule - Structure representing a single day's schedule
+ * CalendarManager - grow calendars and grow-day counters for PlantOS
  *
- * Contains all target values and dosing durations for a specific day
- * in the grow cycle (days 1-120).
- */
-struct DailySchedule {
-    uint8_t day_number;                 // Current day in the grow cycle (1-120)
-    float target_ph_min;                // Lower bound for pH target (e.g., 5.8)
-    float target_ph_max;                // Upper bound for pH target (e.g., 6.2)
-    float nutrient_A_ml_per_liter;      // Nutrient A concentration (mL per liter of tank volume)
-    float nutrient_B_ml_per_liter;      // Nutrient B concentration (mL per liter of tank volume)
-    float nutrient_C_ml_per_liter;      // Nutrient C concentration (mL per liter of tank volume)
-    uint16_t light_on_time;             // Light ON time (minutes since midnight, e.g., 960 = 16:00)
-    uint16_t light_off_time;            // Light OFF time (minutes since midnight, e.g., 480 = 08:00)
-    float ec_target;                    // Target EC in µS/cm (internal; JSON stores mS/cm, converted on parse); 0.0 = EC feeding disabled
-    float ec_tolerance;                 // Tolerance band in µS/cm (internal; JSON stores mS/cm, converted on parse)
-    // Derived: ec_min_trigger = ec_target - ec_tolerance
-    //          ec_max_alarm   = ec_target + ec_tolerance * 1.5
-
-    DailySchedule()
-        : day_number(0),
-          target_ph_min(5.8),
-          target_ph_max(6.2),
-          nutrient_A_ml_per_liter(0.0f),
-          nutrient_B_ml_per_liter(0.0f),
-          nutrient_C_ml_per_liter(0.0f),
-          light_on_time(960),             // Default: 16:00
-          light_off_time(480),            // Default: 08:00
-          ec_target(0.0f),
-          ec_tolerance(0.20f) {}
-
-    DailySchedule(uint8_t day, float ph_min, float ph_max,
-                  float dose_a, float dose_b, float dose_c,
-                  uint16_t light_on = 960, uint16_t light_off = 480,
-                  float ec_tgt = 0.0f, float ec_tol = 0.20f)
-        : day_number(day),
-          target_ph_min(ph_min),
-          target_ph_max(ph_max),
-          nutrient_A_ml_per_liter(dose_a),
-          nutrient_B_ml_per_liter(dose_b),
-          nutrient_C_ml_per_liter(dose_c),
-          light_on_time(light_on),
-          light_off_time(light_off),
-          ec_target(ec_tgt),
-          ec_tolerance(ec_tol) {}
-};
-
-/**
- * CalendarManager - Manages the daily schedule and current day for PlantOS
+ * Three calendars (Anzucht, Mutter, Haupt), defined in YAML as phase tables and
+ * compiled into flash (see phase_tables.py / phase_table.h). One of them is active
+ * (default Haupt); every day/schedule method below acts on the active calendar.
  *
- * ============================================================================
- * PURPOSE
- * ============================================================================
+ * Each calendar has its own grow day and last-synced date in NVS, so switching
+ * calendars and back resumes by date: sync_to_date() advances the active calendar
+ * by the days elapsed since that calendar was last synced.
  *
- * This component manages the 120-day grow cycle schedule, storing target pH
- * values and nutrient dosing durations for each day. The current day number
- * is persisted to NVS (Non-Volatile Storage) to survive power cycles.
+ * After the last phase its values apply forever; the day counter keeps counting
+ * (up to MAX_DAY) instead of wrapping.
  *
- * ============================================================================
- * KEY FEATURES
- * ============================================================================
- *
- * 1. JSON SCHEDULE PARSING: Loads the entire 120-day schedule from a JSON
- *    string in the YAML configuration.
- *
- * 2. NVS PERSISTENCE: Current day number is saved to NVS and restored on boot.
- *
- * 3. SAFE MODE: When enabled, disables automated time-based routines (manual
- *    control via API still works).
- *
- * 4. VERBOSE MODE: When enabled, logs every operation to serial console.
- *
- * 5. STATUS LOGGING: Periodically reports current day and schedule to the
- *    CentralStatusLogger.
- *
- * ============================================================================
- * USAGE EXAMPLE
- * ============================================================================
- *
- * CalendarManager calendar;
- *
- * // Initialize and load schedule from JSON
- * calendar.setup();
- *
- * // Get today's schedule
- * DailySchedule today = calendar.get_today_schedule();
- * ESP_LOGI(TAG, "Target pH: %.2f - %.2f", today.target_ph_min, today.target_ph_max);
- *
- * // Advance to next day
- * calendar.advance_day();
- *
- * // Check if in safe mode
- * if (calendar.is_safe_mode()) {
- *     ESP_LOGW(TAG, "Safe mode enabled - automated routines disabled");
- * }
- *
- * ============================================================================
- * JSON FORMAT
- * ============================================================================
- *
- * The schedule_json parameter must contain a JSON array with 120 objects.
- * Nutrient doses are specified in mL per liter of tank volume (mL/L).
- * Actual mL doses are calculated by: dose_mL = dose_mL_per_L × tank_volume_L
- *
- * Example: For a 10L tank with dose_A_ml_per_L = 1.5:
- *   Actual dose = 1.5 mL/L × 10L = 15 mL
- *
- * [
- *   {
- *     "day": 1,
- *     "ph_min": 5.8,
- *     "ph_max": 6.2,
- *     "dose_A_ml_per_L": 1.5,
- *     "dose_B_ml_per_L": 2.0,
- *     "dose_C_ml_per_L": 1.0,
- *     "light_on_time": 960,
- *     "light_off_time": 480,
- *     "ec_target": 1.20,
- *     "ec_tolerance": 0.20
- *   },
- *   ...
- * ]
- *
- * Light times are in minutes since midnight (0-1439):
- *   - 16:00 = 16 * 60 = 960
- *   - 08:00 = 8 * 60 = 480
- *   - 04:00 = 4 * 60 = 240
+ * NVS: one 8-byte record per calendar (key "calendar_slot_<n>"). The single
+ * uint8 "current_day" + int32 "last_sync_date" of older firmware are migrated into
+ * the Haupt slot on first boot and left in place (an old firmware flashed back
+ * catches up from them by date).
  */
 class CalendarManager : public Component {
 public:
-    CalendarManager();
+    CalendarManager() = default;
 
-    /**
-     * ESPHome Component setup() - Initialize NVS and parse schedule JSON
-     *
-     * Called automatically by ESPHome during component initialization.
-     * Loads current day from NVS and parses the schedule JSON string.
-     */
     void setup() override;
-
-    /**
-     * ESPHome Component loop() - Periodic status logging
-     *
-     * Called continuously by ESPHome's main event loop.
-     * Periodically reports current day and schedule to status logger.
-     */
     void loop() override;
 
-    /**
-     * Set the schedule JSON string (called from Python generated code)
-     *
-     * @param json_str JSON array containing the 120-day schedule
-     */
-    void set_schedule_json(const std::string& json_str) {
-        schedule_json_ = json_str;
-    }
+    // ---- configuration (generated code) ----
+    void set_calendars(const CalendarDef *calendars) { calendars_ = calendars; }
+    void set_safe_mode(bool safe_mode) { safe_mode_ = safe_mode; }
+    void set_verbose(bool verbose) { verbose_ = verbose; }
+    void set_status_log_interval(uint32_t interval_ms) { status_log_interval_ = interval_ms; }
 
-    /**
-     * Set safe mode (called from Python generated code)
-     *
-     * @param safe_mode If true, disable automated time-based routines
-     */
-    void set_safe_mode(bool safe_mode) {
-        safe_mode_ = safe_mode;
-    }
+    // ---- active calendar ----
+    /** Select the active calendar (CAL_ANZUCHT / CAL_MUTTER / CAL_HAUPT). Not persisted here. */
+    bool set_active_calendar(uint8_t index);
+    uint8_t get_active_calendar() const { return active_; }
+    /** "Anzucht" / "Mutter" / "Haupt" ("" without tables). */
+    const char *get_calendar_name() const;
+    /** Name of the phase that applies today ("" if none). */
+    const char *get_phase_name() const;
+    /** Planned length of the active calendar in days; 0 = open-ended. */
+    uint16_t get_defined_days() const;
 
-    /**
-     * Set verbose mode (called from Python generated code)
-     *
-     * @param verbose If true, log every operation to serial console
-     */
-    void set_verbose(bool verbose) {
-        verbose_ = verbose;
-    }
+    // ---- schedule lookup (active calendar) ----
+    /** Schedule for `day`; past the last phase the last phase holds; day 0 = defaults. */
+    DailySchedule get_schedule(uint16_t day) const { return schedule_for_day(active_def_(), day); }
+    DailySchedule get_today_schedule() const { return get_schedule(get_current_day()); }
 
-    /**
-     * Set status log interval (called from Python generated code)
-     *
-     * @param interval_ms Interval in milliseconds between status reports
-     */
-    void set_status_log_interval(uint32_t interval_ms) {
-        status_log_interval_ = interval_ms;
-    }
-
-    /**
-     * Get the schedule for a specific day
-     *
-     * @param day Day number (1-120)
-     * @return DailySchedule for the specified day (default schedule if day not found)
-     */
-    DailySchedule get_schedule(uint8_t day) const;
-
-    /**
-     * Get the schedule for the current day
-     *
-     * @return DailySchedule for today
-     */
-    DailySchedule get_today_schedule() const {
-        return get_schedule(current_day_);
-    }
-
-    /**
-     * Get the current day number
-     *
-     * @return Current day (1-120)
-     */
-    uint8_t get_current_day() const {
-        return current_day_;
-    }
-
-    /**
-     * Set the current day number (and save to NVS)
-     *
-     * @param day Day number (1-120)
-     * @return true if successfully saved to NVS
-     */
-    bool set_current_day(uint8_t day);
-
-    /**
-     * Advance to the next day (and save to NVS)
-     *
-     * Increments current day and wraps around after day 120.
-     * @return true if successfully saved to NVS
-     */
+    // ---- grow day (active calendar) ----
+    uint16_t get_current_day() const { return slots_[active_].day; }
+    /** Set the day (1..MAX_DAY) and save it. The in-RAM day changes even if the save fails. */
+    bool set_current_day(uint16_t day);
+    /** Next day (stops at MAX_DAY). */
     bool advance_day();
+    /** Previous day (stays at day 1 and returns false there). */
+    bool go_back_day();
+    bool reset_to_day_1();
+    /**
+     * Restart the grow: day 1 as of today. The sync date is set to the last date seen
+     * by sync_to_date(); before the first sync it is cleared, so the next sync seeds it.
+     */
+    bool restart_grow();
 
     /**
-     * Sync the calendar day to the real-world calendar date.
-     *
-     * Compares today's local date (expressed as a days-since-epoch ordinal) to
-     * the last-synced date persisted in NVS and advances the grow day by the
-     * number of elapsed calendar days. This drives automatic midnight rollover
-     * during runtime AND catches up after the device was powered off across one
-     * or more midnights.
-     *
-     * Behavior:
-     *  - First ever call (no stored date): seeds the stored date, no advance.
-     *  - delta == 0 (same day): no-op.
-     *  - delta  < 0 (clock moved backwards): resyncs stored date, no rewind.
-     *  - delta  > 0: advances the grow day by delta (wrapping 1-120) and updates
-     *    the stored date. Manual day offset is preserved (delta is added on top).
-     *
-     * @param today_ordinal Local date as days since the Unix epoch (>0). 0 means
-     *                       time is not yet valid and the call is ignored.
-     * @return true if the grow day was advanced, false otherwise
+     * Sync the active calendar's grow day to the real date (local days since epoch).
+     *  - ordinal <= 0: time not valid, ignored.
+     *  - first sync of this calendar: seeds the stored date, no advance.
+     *  - same day: no-op. Clock moved backwards: resync the stored date, no rewind.
+     *  - delta > 0: day += delta (capped at MAX_DAY, no wrap), date stored.
+     * @return true if the grow day was advanced
      */
     bool sync_to_date(int32_t today_ordinal);
 
-    /**
-     * Go back to the previous day (and save to NVS)
-     *
-     * Decrements current day and wraps around to day 120 if at day 1.
-     * @return true if successfully saved to NVS
-     */
-    bool go_back_day();
-
-    /**
-     * Reset to day 1 (and save to NVS)
-     *
-     * @return true if successfully saved to NVS
-     */
-    bool reset_to_day_1();
-
-    /**
-     * Check if safe mode is enabled
-     *
-     * @return true if automated routines are disabled
-     */
-    bool is_safe_mode() const {
-        return safe_mode_;
-    }
-
-    /**
-     * Set safe mode
-     *
-     * @param enabled If true, disable automated routines (manual control still works)
-     */
+    // ---- safe mode / verbose ----
+    bool is_safe_mode() const { return safe_mode_; }
     void set_safe_mode_enabled(bool enabled) {
         if (safe_mode_ != enabled) {
             safe_mode_ = enabled;
             ESP_LOGI("calendar_manager", "Safe mode %s", enabled ? "ENABLED" : "DISABLED");
         }
     }
-
-    /**
-     * Toggle safe mode on/off
-     *
-     * Switches between automated and manual-only operation.
-     * When enabled: automated time-based triggers are disabled
-     * When disabled: automated triggers are re-enabled
-     */
     void toggle_safe_mode() {
         safe_mode_ = !safe_mode_;
         ESP_LOGI("calendar_manager", "Safe mode toggled: %s", safe_mode_ ? "ENABLED" : "DISABLED");
     }
-
-    /**
-     * Check if verbose mode is enabled
-     *
-     * @return true if detailed logging is enabled
-     */
-    bool is_verbose() const {
-        return verbose_;
-    }
+    bool is_verbose() const { return verbose_; }
 
 private:
-    // Configuration parameters
-    std::string schedule_json_;         // JSON string containing the schedule
-    bool safe_mode_{false};             // Disable automated routines
-    bool verbose_{false};               // Enable detailed logging
-    uint32_t status_log_interval_{30000}; // Status log interval (ms)
+    // Persisted per calendar. Layout is the NVS format: do not reorder.
+    struct SlotRecord {
+        uint16_t day;
+        uint16_t version;       // SLOT_VERSION
+        int32_t last_sync_date; // local days since epoch, 0 = not seeded
+    };
+    static_assert(sizeof(SlotRecord) == 8, "NVS slot record layout changed");
+    static constexpr uint16_t SLOT_VERSION = 1;
 
-    // Schedule storage
-    std::map<uint8_t, DailySchedule> schedule_map_; // Map of day -> schedule
-    uint8_t current_day_{1};            // Current day (1-120)
+    struct Slot {
+        uint16_t day{1};
+        int32_t last_sync_date{0};
+        ESPPreferenceObject pref;
+    };
 
-    // Last real-world date the grow day was synced to (local days since epoch).
-    // 0 = not yet seeded (no sync performed).
-    int32_t last_synced_date_{0};
+    const CalendarDef *calendars_{nullptr};
+    uint8_t active_{CAL_HAUPT};
+    Slot slots_[CAL_COUNT];
+    int32_t last_seen_ordinal_{0};      // last valid date passed to sync_to_date (RAM only)
 
-    // NVS persistence
-    ESPPreferenceObject pref_;
-    static constexpr const char* NVS_KEY = "current_day";
-    ESPPreferenceObject date_pref_;
-    static constexpr const char* NVS_KEY_SYNC_DATE = "last_sync_date";
-
-    // Status logging
+    bool safe_mode_{false};
+    bool verbose_{false};
+    uint32_t status_log_interval_{30000};
     uint32_t last_status_log_time_{0};
 
-    // Helper methods
-    bool parse_schedule_json();
-    bool save_current_day();
-    uint8_t load_current_day();
-    bool save_sync_date();
-    int32_t load_sync_date();
+    const CalendarDef *active_def_() const { return calendars_ ? &calendars_[active_] : nullptr; }
+    void load_slot_(uint8_t index);
+    bool migrate_legacy_(Slot &slot);
+    bool save_slot_(uint8_t index);
+    void log_today_(const char *prefix) const;
     void log_status();
 };
 

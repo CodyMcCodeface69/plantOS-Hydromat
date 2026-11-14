@@ -1,6 +1,6 @@
 // Shared fixtures: the real PlantOSController wired to a FakeHAL, the real
 // ActuatorSafetyGate, the real PersistentStateManager (on the in-memory NVS),
-// the real CalendarManager (loaded with the schedule extracted from plantOS.yaml)
+// the real CalendarManager (with the phase tables generated from plantOS.yaml)
 // and a fake RealTimeClock.
 //
 // The test binary is compiled with -fno-access-control, so tests may call
@@ -15,14 +15,34 @@
 #include "esphome/components/plantos_controller/controller.h"
 #include "esphome/components/time/real_time_clock.h"
 
-// The schedule_json string from plantOS.yaml (extracted at build time, see Makefile).
-const std::string &production_schedule_json();
+// The three calendars from plantOS.yaml (generated at build time by the firmware's own
+// phase_tables.py, see Makefile), indexed by calendar_manager::CalendarIndex.
+const esphome::calendar_manager::CalendarDef *production_calendars();
 
-// CalendarManager with the production schedule, set up against the fake NVS.
+// A phase with the values the old JSON parser used for missing fields.
+inline esphome::calendar_manager::Phase test_phase() {
+  return {1, 5.8f, 6.2f, 0.0f, 0.0f, 0.0f, 960, 480, 0.0f, 0.2f, "test"};
+}
+
+// Three calendars that are all one endless phase `p` (synthetic calendar tests).
+struct OnePhaseCalendars {
+  esphome::calendar_manager::Phase phase;
+  esphome::calendar_manager::CalendarDef defs[3];
+  explicit OnePhaseCalendars(const esphome::calendar_manager::Phase &p)
+      : phase(p), defs{{"A", &phase, 1, 0}, {"M", &phase, 1, 0}, {"H", &phase, 1, 0}} {}
+  OnePhaseCalendars(const OnePhaseCalendars &) = delete;
+};
+
+// The active calendar's last synced date (private slot state).
+inline int32_t synced_date(const esphome::calendar_manager::CalendarManager &c) {
+  return c.slots_[c.get_active_calendar()].last_sync_date;
+}
+
+// CalendarManager with the production calendars, set up against the fake NVS.
 struct CalendarFixture {
   esphome::calendar_manager::CalendarManager cal;
-  explicit CalendarFixture(const std::string &json = production_schedule_json()) {
-    cal.set_schedule_json(json);
+  explicit CalendarFixture(const esphome::calendar_manager::CalendarDef *cals = production_calendars()) {
+    cal.set_calendars(cals);
     cal.setup();
   }
 };
@@ -44,7 +64,7 @@ struct ControllerFixture {
     ctrl.setPersistenceManager(&psm);
     ctrl.setTimeSource(&clock);
     if (with_calendar) {
-      cal.set_schedule_json(production_schedule_json());
+      cal.set_calendars(production_calendars());
       cal.setup();
       ctrl.setCalendarManager(&cal);
     }

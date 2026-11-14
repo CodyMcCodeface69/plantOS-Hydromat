@@ -596,8 +596,6 @@ void PlantOSController::handleIdle() {
     // Breathing green - waiting for commands
     // This is the default ready state
 
-    uint32_t elapsed = getStateElapsed();
-
     // Periodically check PSM for SHUTDOWN or PAUSE states every 5 seconds
     // This handles cases where:
     // 1. State was set while system was running
@@ -842,8 +840,6 @@ void PlantOSController::handleNight() {
     // Dim breathing green - night mode active
     // Similar to IDLE but no automatic pH monitoring, feeding, or water management
 
-    uint32_t elapsed = getStateElapsed();
-
     // Periodically check PSM for SHUTDOWN or PAUSE states every 5 seconds
     // This handles cases where:
     // 1. State was set while system was running
@@ -897,8 +893,6 @@ void PlantOSController::handleShutdown() {
     // All actuators OFF, calendar/time-based events disabled
     // Persists across power cycles - must use setToIdle() to exit
 
-    uint32_t elapsed = getStateElapsed();
-
     // On entry: Turn off all pumps and valves for safety (only once!)
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
@@ -934,8 +928,6 @@ void PlantOSController::handlePause() {
     // Solid orange LED handled by LedBehaviorSystem
     // Actuators maintain current state, calendar/time-based events disabled
     // Persists across power cycles - must use setToIdle() to exit
-
-    uint32_t elapsed = getStateElapsed();
 
     // On entry: Log state change (only once!)
     if (!state_entry_executed_) {

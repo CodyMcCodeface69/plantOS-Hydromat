@@ -399,16 +399,12 @@ void PlantOSController::handlePhInjecting() {
         // Calculate injection duration in seconds (round up)
         uint32_t injection_sec = (ph_dose_duration_ms_ + 999) / 1000;
 
-        // Calculate mixing duration (same as handlePhMixing does)
-        uint32_t mixing_duration_ms = calculatePhMixingDuration();
-        uint32_t mixing_sec = (mixing_duration_ms + 999) / 1000;
-
         ESP_LOGI(TAG, "Starting acid injection: %.1f mL (%.2f sec)", ph_dose_ml_, injection_sec / 1.0f);
 
         // OPTIONAL: air pump cycling during pH injection — disabled based on test results.
         // Re-enable if poor acid mixing or pH measurement drift is observed.
         // if (safety_gate_) {
-        //     uint32_t total_air_pump_sec = injection_sec + mixing_sec;
+        //     uint32_t total_air_pump_sec = injection_sec + (calculatePhMixingDuration() + 999) / 1000;
         //     std::vector<uint32_t> pattern = {total_air_pump_sec};
         //     if (!safety_gate_->setAirPumpPattern(pattern, true)) {
         //         ESP_LOGW(TAG, "AirPump pattern rejected - falling back to simple ON");

@@ -537,31 +537,6 @@ switch:
           level: WARN
           tag: time
 
-  # [DEBUG] Verbose log toggle - tag: http_request
-  - platform: template
-    name: "Verbose: HTTP Request"
-    id: verbose_http_request
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
-    icon: "mdi:bug-outline"
-    web_server:
-      sorting_group_id: sg_debug_logging
-      sorting_weight: 130
-    turn_on_action:
-      - logger.log:
-          format: "Enabling verbose logging for: http_request"
-          level: INFO
-      - logger.set_level:
-          level: DEBUG
-          tag: http_request
-    turn_off_action:
-      - logger.log:
-          format: "Disabling verbose logging for: http_request"
-          level: INFO
-      - logger.set_level:
-          level: WARN
-          tag: http_request
-
   # [DEBUG] Verbose log toggle - tag: esp32.preferences
   - platform: template
     name: "Verbose: ESP32 Preferences"

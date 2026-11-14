@@ -244,7 +244,6 @@ void PlantOSController::handleEcCalculating() {
 void PlantOSController::handleEcFeeding() {
     // Orange pulse - sequential nutrient pump A → B → C (EC-calculated doses)
     uint32_t elapsed = getStateElapsed();
-    static uint32_t current_ec_duration_ms = 0;
 
     // Use state_counter_ as pump index (0=A, 1=B, 2=C, 3=done)
     const char* pump_name = nullptr;
@@ -286,14 +285,14 @@ void PlantOSController::handleEcFeeding() {
 
         if (dose_ml > 0.0f && hal_) {
             float duration_sec = hal_->pumpflow(pump_name, dose_ml);
-            current_ec_duration_ms = static_cast<uint32_t>(duration_sec * 1000.0f);
+            ec_pump_duration_ms_ = static_cast<uint32_t>(duration_sec * 1000.0f);
             ESP_LOGI(TAG, "[EC_FEEDING] %s: %.2f mL = %.2f s", pump_name, dose_ml, duration_sec);
         } else {
-            current_ec_duration_ms = 0;
+            ec_pump_duration_ms_ = 0;
         }
 
-        if (current_ec_duration_ms > 0) {
-            uint32_t duration_sec = (current_ec_duration_ms + 999) / 1000;
+        if (ec_pump_duration_ms_ > 0) {
+            uint32_t duration_sec = (ec_pump_duration_ms_ + 999) / 1000;
             if (!requestPumpAdaptive(pump_name, true, duration_sec, false)) {
                 ESP_LOGE(TAG, "[EC_FEEDING] %s rejected by SafetyGate - aborting EC feeding", pump_name);
                 if (psm_) psm_->clearEvent();
@@ -311,7 +310,7 @@ void PlantOSController::handleEcFeeding() {
     }
 
     // Wait for pump duration + 200ms safety margin
-    if (elapsed < current_ec_duration_ms + 200) {
+    if (elapsed < ec_pump_duration_ms_ + 200) {
         return;
     }
 

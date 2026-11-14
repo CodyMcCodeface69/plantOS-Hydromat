@@ -522,6 +522,13 @@ private:
     bool fill_cmd_sent_{false};
     bool drain_cmd_sent_{false};
 
+    /// Were function-static in handleIdle / handleNight / loop (same initial values)
+    uint32_t idle_psm_check_ms_{0};
+    uint32_t night_psm_check_ms_{0};
+    bool grow_light_on_{false};
+    bool grow_light_first_run_{true};
+    uint32_t ec_pump_duration_ms_{0};  // run time of the current EC_FEEDING pump (was function-static)
+
     // ========================================================================
     // Auto Reservoir Change (Weekly)
     // ========================================================================
@@ -726,6 +733,13 @@ private:
 
     void handleInit();
     void handleIdle();
+    // handleIdle / handleNight / loop parts (controller.cpp)
+    bool checkPersistedHoldState(uint32_t &last_check_ms, uint32_t now);
+    void syncCalendarDate();
+    bool checkPeriodicPh(uint32_t now);
+    bool checkAutoTriggers();
+    void updateStatusReport();
+    void controlGrowLight();
     void handleNight();
     void handleShutdown();
     void handlePause();

@@ -1,7 +1,9 @@
 # EC Sensor – Calibration & Temperature Compensation Logic
 
-> Reference for implementation in ESPHome / ESP32 C++.
-> **Sensor: Keyestudio TDS Meter V1.0 (KS0429)** + DS18B20 water temperature sensor.
+> **Sensor: Keyestudio TDS Meter V1.0 (KS0429)** on GPIO0 + DS18B20 water temperature sensor.
+> Implemented in `components/tds_sensor/` (pipeline, calibration factor in NVS) and in the
+> controller state `EC_CALIBRATING` (procedure). Checked against the code on 2026-11-14.
+> Section numbers are kept stable because code comments cite them (e.g. "§5").
 >
 > **References:**
 > - [Keyestudio KS0429 official docs](https://docs.keyestudio.com/projects/KS0429/en/latest/docs/KS0429.html)
@@ -11,30 +13,16 @@
 
 ---
 
-## 1. Task for Claude Code: Audit & Fix Unit Mismatch
+## 1. Units (the March 2026 unit audit is done)
 
-**Do this before touching anything else.**
+**µS/cm is the only internal unit** for EC: sensor output, thresholds, dosing and the
+`plantos/vitals` field `ec`. mS/cm appears only in the calendar JSON (`ec_target`, converted to
+µS/cm when parsed) and in display text. The original bug was a µS/cm value treated as mS/cm
+(`2596 µS/cm` read as `2596 mS/cm`).
 
-The codebase produced readings like `EC 2596.723 mS/cm` which failed plausibility check `[0–5.0]`.
-The value is correct in **µS/cm** — it is just never divided by 1000 before being treated as mS/cm.
-`2596 µS/cm = 2.596 mS/cm` → perfectly valid for nutrient solution.
-
-**Audit checklist — trace EC through the entire codebase:**
-
-1. Find every location where an EC/TDS value is computed, stored, compared, logged, or passed to dosing logic.
-2. Determine the unit at each step (raw ADC → voltage → formula output → variable → plausibility check → dosing logic → display).
-3. Fix: establish **µS/cm as the single canonical internal unit** everywhere.
-4. Convert to mS/cm **only at the display/logging layer**: `ec_display_mS = ec_internal_uS / 1000.0f`
-5. Update all hardcoded thresholds and plausibility bounds to µS/cm (e.g. `[0–5000]` µS/cm instead of `[0–5.0]` mS/cm).
-6. Update all dosing logic inputs to expect µS/cm and verify the math still holds.
-
-**Three compounding bugs to look for:**
-
-| Bug | Symptom | Fix |
-|-----|---------|-----|
-| ppm → µS conversion missing | Values ~2× off | Add `ec_uS = tds_ppm * 2.0f` |
-| µS not divided by 1000 | Values ~1000× off in mS context | Add `/1000.0f` at display layer only |
-| VREF = 5.0 on ESP32 (should be 3.3V) | Cubic formula blows up non-linearly | Change `VREF` to `3.3f`, ADC resolution to `4095.0f` |
+Sensor range: the KS0429 outputs 0–2.3 V. With the polynomial below, 2.3 V is about
+2240 µS/cm at 25 °C before the calibration factor. The calendar's highest EC target is
+2.2 mS/cm, so the top of the grow schedule sits at the upper end of what this probe can report.
 
 ---
 
@@ -67,7 +55,7 @@ analogRead(EC_PIN)
                   + 857.39 * V) * 0.5             // output unit: ppm (500-scale, mg/L)
         │
         ▼
-   ec_uS_cm    =  tds_ppm * 2.0                   // ppm(500-scale) → µS/cm  [LIKELY MISSING]
+   ec_uS_cm    =  tds_ppm * 2.0                   // ppm(500-scale) → µS/cm
         │
         ▼
    ec_uS_cal   =  ec_uS_cm * k_calibration        // apply one-point calibration factor (NVS)
@@ -80,7 +68,7 @@ analogRead(EC_PIN)
    tds_ppm_out =  ec_uS_cal / 2.0                 // display in ppm if needed
 ```
 
-**Note on temperature coefficient:** Keyestudio uses α = 0.02 (2%/°C). DFRobot uses 0.0185 (1.85%/°C). Both are fine. Use whichever is already in the codebase — do not mix.
+**Note on temperature coefficient:** Keyestudio uses α = 0.02 (2%/°C). DFRobot uses 0.0185 (1.85%/°C). The code uses 0.02.
 
 ---
 
@@ -126,90 +114,38 @@ k_calibration = 1413.0 / ec_uS_at_25C_measured
 Where `ec_uS_at_25C_measured` is the fully corrected reading (ppm×2, temperature-compensated) while the probe is in 1413 µS/cm solution.
 
 **Valid range check:** `0.5 ≤ k_calibration ≤ 2.0`
-Outside this range → reject, alert "Calibration out of bounds – check probe or solution expiry".
+Outside this range → the controller rejects the calibration (alert `EC_CALIB_ERROR`). `set_calibration_factor()` additionally clamps to this range.
 
-**Persistence:** Store in `NVS("ec_k_cal")`. Default before first calibration: `1.0`.
+**Persistence:** NVS key `ECCalibFactor` (in `tds_sensor`). Default before first calibration: `1.0`.
 
 ---
 
 ## 6. Calibration Procedure (State: EC_CALIBRATING)
 
+As implemented in `handleEcCalibrating()` (`controller.cpp`):
+
 ```
-1. Enter EC_CALIBRATING state → pause all dosing
-2. User immerses probe in 1413 µS/cm reference solution
-3. Wait for reading to stabilize (std dev < 10 µS over 10 samples, ~30 s)
-4. Read temperature T from DS18B20
-5. Compute full pipeline: voltage → ppm → µS/cm → temp-compensated → ec_uS_measured
-6. k_new = 1413.0 / ec_uS_measured
-7. Validate: 0.5 ≤ k_new ≤ 2.0
-      YES → NVS("ec_k_cal") = k_new, NVS("ec_cal_ts") = now()
-      NO  → reject, WARNING alert, keep previous k_calibration
-8. Return to IDLE / AUTO
+1. Button "Start EC Calibration" in IDLE → EC_CALIBRATING (no actuators)
+2. Prompt: rinse the probe (30 s)
+3. Prompt: dip the probe into the reference solution (30 s). Default target 1413 µS/cm,
+   changeable with setEcCalibrationTarget()
+4. Collect one reading per second, at least 30. The readings count as stable when their
+   coefficient of variation is below 5 %; otherwise the oldest 10 are dropped and collection continues
+5. factor = target / mean(readings)
+6. 0.5 ≤ factor ≤ 2.0 → saved to NVS by tds_sensor (key "ECCalibFactor"), calibration timestamp
+   saved (key "EcCalibTs"), back to IDLE
+   otherwise → alert EC_CALIB_ERROR, state ERROR, the previous factor stays
 ```
+
+`resetEcCalibration()` sets the factor back to 1.0.
 
 ---
 
-## 7. Complete C++ Implementation Sketch
+## 7. Implementation
 
-```cpp
-// ── Constants ──────────────────────────────────────────────────────────────
-constexpr float EC_TEMP_COEFF     = 0.02f;     // Keyestudio: 2%/°C
-constexpr float EC_REF_TEMP       = 25.0f;     // all nutrient charts reference 25°C
-constexpr float EC_CAL_TARGET_US  = 1413.0f;   // µS/cm calibration solution
-constexpr float EC_K_CAL_MIN      = 0.5f;
-constexpr float EC_K_CAL_MAX      = 2.0f;
-constexpr float ADC_VREF          = 3.3f;      // ESP32: 3.3V (NOT 5.0V!)
-constexpr float ADC_RESOLUTION    = 4095.0f;   // ESP32: 12-bit (NOT 1023!)
-
-// Plausibility bounds — internal unit is µS/cm
-constexpr float EC_PLAUSIBLE_MIN  = 0.0f;
-constexpr float EC_PLAUSIBLE_MAX  = 5000.0f;   // µS/cm (= 5.0 mS/cm)
-
-// ── Runtime state (NVS-persisted) ──────────────────────────────────────────
-float k_calibration = 1.0f;   // loaded from NVS on boot
-
-// ── Main read function — returns µS/cm ─────────────────────────────────────
-float readEC_uS(int raw_adc, float temperature_c) {
-    // 1. ADC → voltage (ESP32-correct values)
-    float voltage_V = (float)raw_adc / ADC_RESOLUTION * ADC_VREF;
-
-    // 2. Temperature compensation (Keyestudio method)
-    float compCoeff   = 1.0f + EC_TEMP_COEFF * (temperature_c - EC_REF_TEMP);
-    float compVoltage = voltage_V / compCoeff;
-
-    // 3. Keyestudio cubic polynomial → ppm (500-scale)
-    float tds_ppm = (133.42f * powf(compVoltage, 3.0f)
-                   - 255.86f * powf(compVoltage, 2.0f)
-                   + 857.39f * compVoltage) * 0.5f;
-
-    // 4. ppm (500-scale) → µS/cm
-    float ec_uS = tds_ppm * 2.0f;
-
-    // 5. Apply calibration K-factor
-    ec_uS *= k_calibration;
-
-    return ec_uS;   // ← always µS/cm, never mS/cm
-}
-
-// ── Display conversion helpers (call only at logging/display layer) ─────────
-float uS_to_mS(float ec_uS)     { return ec_uS / 1000.0f; }
-float uS_to_ppm500(float ec_uS) { return ec_uS / 2.0f; }
-float uS_to_ppm700(float ec_uS) { return ec_uS / 1000.0f * 700.0f; }
-
-// ── Calibration — input must already be temp-compensated µS/cm ─────────────
-bool calibrateEC(float ec_uS_in_cal_solution) {
-    float k_new = EC_CAL_TARGET_US / ec_uS_in_cal_solution;
-    if (k_new < EC_K_CAL_MIN || k_new > EC_K_CAL_MAX) {
-        sendAlert(WARNING, "EC cal rejected: k=" + String(k_new, 3)
-                  + " (valid: 0.5–2.0). Check probe & solution.");
-        return false;
-    }
-    k_calibration = k_new;
-    saveToNVS("ec_k_cal", k_calibration);
-    saveToNVS("ec_cal_ts", currentTimestamp());
-    return true;
-}
-```
+See `components/tds_sensor/tds_sensor.cpp`: `on_adc_update()` buffers voltages,
+`update()` takes the median, `apply_temperature_compensation()` and `voltage_to_ec()` are the
+pipeline of section 3, and `set_calibration_factor()` clamps to 0.5–2.0 and saves.
 
 ---
 
@@ -232,8 +168,6 @@ Internal code must **never** store or compare in mS/cm. Only the final log/displ
 
 ## 9. Calibration Reminder
 
-Track `ec_cal_ts` in NVS. Raise `WARNING` alert if:
-```
-currentDay - ec_cal_last_day > 30
-```
-Interval: **every 30 days**, or any time the probe has been stored dry or cleaned with harsh agents.
+The controller stores the time of the last EC calibration (`EcCalibTs`) and raises a WARNING
+alert when it is older than **30 days** (`EC_CALIB_INTERVAL_S`). Recalibrate also after the probe
+was stored dry or cleaned with harsh agents.

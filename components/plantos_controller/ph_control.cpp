@@ -106,7 +106,7 @@ void PlantOSController::handlePhMeasuring() {
         state_entry_executed_ = true;
         turnOffAllPumps();
 
-        // Select stabilization duration based on context (Logikplan.md Phase 5)
+        // Select stabilization duration based on context (docs/CONTROL_LOGIC.md)
         uint32_t stabilize_ms = PH_MEASURING_DURATION;
         if (ph_post_fill_stabilize_) {
             stabilize_ms = POST_FILL_STABILIZE_MS;
@@ -483,7 +483,7 @@ void PlantOSController::handlePhMixing() {
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
 
-        // Calculate mixing duration based on tank volume (linear: 1.7L→30s, 70L→120s)
+        // Calculate mixing duration based on tank volume (linear: 1.7L→30s, 70L→600s)
         ph_mixing_duration_ms_ = calculatePhMixingDuration();
 
         ESP_LOGI(TAG, "Mixing phase: waiting %.1f seconds (air pump controlled by Shelly pattern)",

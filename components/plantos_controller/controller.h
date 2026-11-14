@@ -617,7 +617,7 @@ private:
     // EC Feeding State
     // ========================================================================
 
-    // EC Adaptive K-factor (EC_Feeding_Logik.md Section 6)
+    // EC Adaptive K-factor (docs/CONTROL_LOGIC.md)
     float ec_K_feed_{0.00015f};                     // Current EC K-factor (EMA-smoothed), mL/L per µS/cm
     static constexpr float EC_K_EMA_ALPHA = 0.20f;
     static constexpr float EC_K_MIN_CLAMP = 0.00002f;  // 0.02 mL/L per mS/cm → per µS/cm
@@ -649,7 +649,7 @@ private:
     uint32_t ph_measuring_duration_ms_{PH_MEASURING_DURATION};  // Stabilization duration chosen at PH_MEASURING entry (consumes stabilize flags)
     static constexpr uint8_t MAX_PH_ATTEMPTS = 5;
 
-    // Adaptive pH K-factor (pH_Regellogik.md Section 4)
+    // Adaptive pH K-factor (docs/CONTROL_LOGIC.md)
     float ph_K_{0.25f};                         // Current K-factor (EMA-smoothed)
     std::function<void(float)> ph_k_update_callback_;
     static constexpr float PH_K_EMA_ALPHA = 0.20f;
@@ -804,7 +804,7 @@ private:
 
     /**
      * Calculate pH mixing duration based on tank volume
-     * Linear formula: 1.7L→30s, 70L→120s
+     * Linear formula: 1.7L→30s, 70L→600s, clamped to [30 s, 600 s]
      * Returns duration in milliseconds
      */
     uint32_t calculatePhMixingDuration() const;
@@ -949,7 +949,7 @@ private:
     static constexpr uint32_t POST_FILL_STABILIZE_MS = 600000; // 10 min - pH stabilization after water fill
     static constexpr uint32_t POST_FEED_STABILIZE_MS = 300000; // 5 min - pH stabilization after EC feeding
     // NOTE: PH_MIXING_DURATION is now calculated dynamically based on tank volume
-    // See calculatePhMixingDuration() for linear formula (1.7L→30s, 70L→120s)
+    // See calculatePhMixingDuration() for linear formula (1.7L→30s, 70L→600s)
 
     // pH correction parameters
     static constexpr float PH_TARGET_MIN = 5.5f;

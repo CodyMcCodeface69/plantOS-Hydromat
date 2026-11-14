@@ -390,7 +390,7 @@ void PlantOSController::handleEcMeasuring() {
     // Update adaptive K-factor based on observed EC response
     updateEcKFactor(ec_pre_feeding_, ec_after, ec_total_ml_per_L_);
 
-    // Record timestamp to enforce 4h minimum interval between automatic feedings
+    // Record timestamp to enforce the 12 h (EC_MIN_INTERVAL_S) minimum interval between automatic feedings
     if (hal_->hasTime()) {
         last_ec_feeding_timestamp_ = hal_->getCurrentTimestamp();
     }
@@ -460,7 +460,7 @@ void PlantOSController::handleEcMeasuring() {
 }
 
 void PlantOSController::transitionAfterEcSkipped() {
-    // Post-fill sequencing (Steuerungslogik.md 10.2): if auto pH correction is pending,
+    // Post-fill sequencing (docs/CONTROL_LOGIC.md): if auto pH correction is pending,
     // transition to PH_PROCESSING; otherwise return to IDLE.
     if (auto_ph_correction_pending_) {
         ESP_LOGI(TAG, "[EC_PROCESSING] Auto pH correction pending - transitioning to pH check");

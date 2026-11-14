@@ -5,7 +5,10 @@ Extracts every `PlantOSController::name(...) { ... }` body from the unsplit cont
 and from all .cpp files of the split component, and compares them ignoring whitespace.
 
     git show ac2b66a:components/plantos_controller/controller.cpp > /tmp/base.cpp
-    python3 tests/tools/bodydiff.py /tmp/base.cpp components/plantos_controller [-v]
+    python3 tests/tools/bodydiff.py /tmp/base.cpp components/plantos_controller [-v] [--code-only]
+
+Also reports functions missing from the split files, duplicated (an assertion), or new.
+--code-only drops `//` comments before comparing, so comment-only edits do not count as a diff.
 """
 import sys, re, glob, difflib
 
@@ -29,7 +32,12 @@ def bodies(path):
     return found
 
 
+CODE_ONLY = '--code-only' in sys.argv
+
+
 def norm(ls):
+    if CODE_ONLY:
+        ls = [re.sub(r'//.*$', '', l) for l in ls]
     return [re.sub(r'\s+', '', l) for l in ls if l.strip()]
 
 

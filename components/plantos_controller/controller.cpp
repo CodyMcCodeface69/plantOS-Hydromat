@@ -980,6 +980,7 @@ void PlantOSController::startPhCalibration() {
 
     calib_step_ = CalibrationStep::MID_PROMPT;
     calib_step_start_time_ = esphome::millis();
+    logPhCalibrationPrompt(0);
 
     if (psm_) {
         psm_->logEvent("PH_CALIBRATION", 0);  // 0 = STARTED

@@ -638,7 +638,7 @@ private:
     // pH Calibration State - Enhanced with robust averaging
     // ========================================================================
     // Each calibration point requires stable readings before proceeding
-    // Stability check: 5 batches × 20 readings (1/s), wait 30s between batches
+    // Stability check: 5 batches × 20 readings (1/s), back to back (the 30 s batch wait never worked)
     // Then verify last 3 batches are within 0.1 pH difference
 
     enum class CalibrationStep {
@@ -701,7 +701,6 @@ private:
     static constexpr size_t CALIB_READINGS_PER_BATCH = 20;  // 20 readings per batch
     static constexpr size_t CALIB_TOTAL_BATCHES = 5;        // 5 batches total
     static constexpr uint32_t CALIB_READING_INTERVAL = 1000; // 1 second between readings
-    static constexpr uint32_t CALIB_BATCH_WAIT = 30000;      // 30 seconds between batches
     static constexpr float CALIB_STABILITY_THRESHOLD = 0.1f; // ±0.1 pH difference
 
     float calib_batch_averages_[CALIB_TOTAL_BATCHES];       // Average of each batch
@@ -709,7 +708,6 @@ private:
     size_t calib_readings_in_batch_{0};                     // Readings collected in current batch
     float calib_batch_sum_{0.0f};                           // Sum of readings in current batch
     uint32_t calib_last_reading_time_{0};                   // Time of last reading
-    uint32_t calib_batch_complete_time_{0};                 // Time when batch completed
 
     // ========================================================================
     // LED Behavior System
@@ -748,6 +746,12 @@ private:
     // Helper methods for calibration
     void resetCalibrationBatch();
     bool checkCalibrationStability();
+    /// One STABILIZING tick for a calibration point; true when the point is stable.
+    bool stepPhCalibrationBatch(const char *point_name, uint32_t now);
+    /// Next CalibrationStep (enum order), restart its timer, log the prompt of a new point.
+    void advancePhCalibrationStep(uint32_t now);
+    void logPhCalibrationPrompt(int point);
+    void finishPhCalibration();
 
     /**
      * Send current water temperature compensation to pH sensor

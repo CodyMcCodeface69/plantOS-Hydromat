@@ -1,7 +1,7 @@
 # Overhaul plan (Nov 2026)
 
 Entry point for the overhaul. Read this file, then `LOG.md` (where the last session stopped),
-then only the workstream you are working on. `AGENTS.md` stays the reference for
+then `IMPLEMENTATION.md` (the ordered step list with checkboxes) and only the workstream you are working on. `AGENTS.md` stays the reference for
 architecture and coding rules; this folder is about **what to change and why**.
 
 Prepared 2026-11-14 against commit `99a181e`. The sprint runs until **2026-11-16 23:59**.
@@ -60,6 +60,8 @@ cheaper to read. Re-order if you see a better path.
 
 ## Supporting files
 
+- `IMPLEMENTATION.md`: the ordered step list and the owner's design decisions. Tick steps off there.
+- `TEST_ON_DEVICE.md` (created in phase 0): every change that needs a check on real hardware.
 - `MAP.md`: where things live (a dense orientation, no prose)
 - `WEAKNESSES.md`: observed problems with evidence (observations, not orders)
 - `LOG.md`: an append-only session log. **Update it at the end of every session**, so the next one

@@ -45,8 +45,8 @@ Verify before acting; some may be harmless.
   might be worth a lot right now.
 
 ## Repo hygiene
-- `esptool_venv/` (a full Python venv, 452 files) is committed. So are 4 log captures,
-  `boot_logs.txt` and `plantos.pdf` (purpose unclear).
+- `esptool_venv/` (a full Python venv, 452 files) is committed. So are 4 log captures
+  and `boot_logs.txt`.
 - The `BLE-Shelly` branch (1 commit, Jan 2026, +1353 lines) has gone stale next to `main`.
 - `www/webserver-v2.*` is probably unused with `version: 3`.
 - `.gitignore` is missing `.venv/` (only excluded locally through `.git/info/exclude`).

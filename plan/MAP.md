@@ -21,7 +21,7 @@ Line numbers are approximate. Grep before you trust them.
 | `Hardware/` | PCB, Gerber, BOM, Altium | Keep |
 | `flake.nix/.lock` | Nix devshell (ESPHome 2025.4.2) | Not used on this laptop. The owner uses it on other machines, so keep it |
 | `secrets.example.yaml` | Template | `wifi_bssid: ""` fails validation on 2025.4.2. Needs a MAC or the key removed |
-| ballast | `esptool_venv/` (452 files in git), `plantos-log-*.txt` ×4, `boot_logs.txt`, `plantos.pdf`, `wifi_scan.h`, `ezo_switch_helper.h` | Check whether the two headers are referenced |
+| ballast | `esptool_venv/` (452 files in git), `plantos-log-*.txt` ×4, `boot_logs.txt`, `wifi_scan.h`, `ezo_switch_helper.h` | Check whether the two headers are referenced |
 
 ## Components (lines = .cpp + .h)
 

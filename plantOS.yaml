@@ -106,6 +106,18 @@ esp32:
       CONFIG_MBEDTLS_X509_CRL_PARSE_C: n
       CONFIG_MBEDTLS_X509_CSR_PARSE_C: n
 
+      # --- Flash diet: MQTT and WiFi features nothing uses ---------------------------------
+      # MQTT runs over plain TLS (port 8883), never over WebSockets.
+      CONFIG_MQTT_TRANSPORT_WEBSOCKET: n
+      CONFIG_MQTT_TRANSPORT_WEBSOCKET_SECURE: n
+      # WPA3-Personal (SAE) for the station stays on. Off: SAE-PK (public hotspots), SAE for
+      # our own fallback AP (ESPHome starts it as WPA2), OWE (encrypted open networks) and
+      # WPA-Enterprise (no eap: block in wifi:).
+      CONFIG_ESP_WIFI_ENABLE_SAE_PK: n
+      CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT: n
+      CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA: n
+      CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT: n
+
 logger:
   # Compile-time level: INFO in production, DEBUG with the debug package. It is set in the
   # `packages:` block at the top of this file (not here, so the debug package can raise it).

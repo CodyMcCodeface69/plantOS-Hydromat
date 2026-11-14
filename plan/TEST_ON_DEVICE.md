@@ -11,3 +11,4 @@ with `git checkout main`.
 
 | Area | Change | Commit | How to check | Failure sign |
 |---|---|---|---|---|
+| Logging | Production compiles at log level INFO (was DEBUG); `ESP_LOGD/V` output is gone, incl. the `ezo_ph_uart` DEBUG lines that were on by default. The level is set by an inline package in `plantOS.yaml`; the debug build (uncomment the one `debug:` line) is back at DEBUG with the old per-tag limits | `f4b96ed` | `task snoop`: boot log shows INFO/WARN/ERROR lines only, no `[D]` lines; status report, FSM transitions and dose logs still appear. Debug build: `[D]` lines appear and the "Verbose: ..." switches change the output | No log output at all over USB/API, or `[D]` lines in a production build |

@@ -69,12 +69,12 @@ Order by expected gain per risk. Measure after each step and stop a line of work
       ~110 `ESP_LOGD/V` calls against ~890 `ESP_LOGI`, so most of this gain comes from ESPHome core. Measure before
       expecting much. Remove UI "verbose" switches that become no-ops in production (or move them to the debug package)
       and list them as deliberate removals.
-- [ ] 2.2 **Log diet in custom code**: the 890 `ESP_LOGI` are the real string mass. Remove banner/ASCII-art/multi-line
+- [x] 2.2 **Log diet in custom code**: the 890 `ESP_LOGI` are the real string mass. Remove banner/ASCII-art/multi-line
       decoration, demote chatter to `LOGD`, merge multi-call blocks into one line, drop logs that repeat the state name.
       Keep every log that tells an operator *why* something happened (transitions, dose amounts, aborts, alerts).
 - [ ] 2.3 **`CentralStatusLogger`** (1.3k lines): reduce to a compact on-demand report built into a fixed buffer.
       Decide whether the 420 easter egg stays (default: keep it tiny or drop it; list in `LOG.md`).
-- [ ] 2.4 **Split and simplify the controller.** Target layout inside `plantos_controller/` (names for roles, not features):
+- [x] 2.4 **Split and simplify the controller.** Target layout inside `plantos_controller/` (names for roles, not features):
       `controller.cpp` (setup/loop/dispatch/transitions/public API), `ph_control.cpp`, `ec_control.cpp`,
       `water_ops.cpp` (fill, empty, reservoir change, feed-fill), `health_checks.cpp`, `scheduling.cpp`
       (night mode, grow day, auto triggers), `dosing_math.h/.cpp` (pure functions, host-tested), `led/` for the behaviors.

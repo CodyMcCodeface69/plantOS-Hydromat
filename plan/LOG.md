@@ -101,3 +101,21 @@ Work is split across subagents with path ownership; only one agent builds at a t
 - **Running:** controller simplification (dead code, auto-feed/reservoir marker fixes, log diet, handler restructuring)
   on the worktree branch `worktree-agent-a760c26e111b63836`. **Next:** merge it + build, then 2.5 (YAML lambdas → C++),
   2.3 (`CentralStatusLogger`), then phase 3.
+
+## 2026-11-14: controller simplification merged (2.2 controller part, 2.4) (Opus subagent)
+- Merged `95471da`. **Build green: flash 1,425,614 B (77.7 %), RAM 37,308 B.** Host tests 197 / 1621 checks.
+- Lines: controller.cpp 1711 → 1348, ph_control 1152 → 795, ec_control 718 → 657, water_ops 587 → 346,
+  scheduling 318 → 231, health_checks 312 → 243, controller.h 1206 → 1075.
+- Dead code out: grow-day calculation from `grow_start_date` (never had a caller; the calendar's `sync_to_date` is what
+  counts days), retry bookkeeping (also a slow heap leak), unread sensor tiers, unused getters. `grow_start_date` and
+  `enhanced_error_handling` are still accepted in YAML but ignored (clean up with 2.5).
+- Deliberate fixes (rows in `TEST_ON_DEVICE.md`, `FSMINFO.md` updated): auto-feed / auto-reservoir "done" markers in
+  their own NVS keys (`AutoFeedDay`, `AutoResWeek`); reservoir weekday in local time; air pump tracked state.
+- Restructured with tests written first: pH calibration (table-driven), `loop`/`handleIdle` parts, water ops helpers,
+  one `canStart(Operation, &reason)` for all start actions (**the hook for the preset capability check, 3.1**).
+- Log diet: 489 → 179 INFO/WARN/ERROR calls in the controller.
+- **Left open:** WATER_FILLING / WATER_EMPTYING open the valve/pump only in the first 100 ms of the state and use a
+  `*_cmd_sent_` flag that stays set after an emergency stop/pause: a late first call or an interrupted fill means the
+  next fill never opens the valve and "times out". To fix with `state_entry_executed_` in the next step.
+  EC formula and double accumulation untouched (owner question).
+- **Next:** 2.5 YAML lambdas → C++, 2.3 `CentralStatusLogger`, the fill/drain entry-gate fix; then phase 3.

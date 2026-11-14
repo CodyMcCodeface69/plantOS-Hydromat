@@ -517,6 +517,11 @@ private:
     /// True when running a mother plant nutrient mix — skips EC_MIXING and returns to IDLE directly
     bool is_mother_mix_{false};
 
+    /// Entry command sent in WATER_FILLING / WATER_EMPTYING (were function-static flags; reset
+    /// only by the handlers' own exits, see water_ops.cpp)
+    bool fill_cmd_sent_{false};
+    bool drain_cmd_sent_{false};
+
     // ========================================================================
     // Auto Reservoir Change (Weekly)
     // ========================================================================
@@ -735,6 +740,12 @@ private:
     void handleWaterFilling();
     void handleWaterEmptying();
     void handleFeedFilling();
+    // water_ops.cpp helpers
+    void stopWaterActuator(const char *id);
+    void clearPsmEvent();
+    void alertWaterSensorsMissing(const char *operation);
+    void queuePostFillChecks();
+    void finishDrain();
     void handleEcProcessing();
     void handleEcCalculating();
     void handleEcFeeding();

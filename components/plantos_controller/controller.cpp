@@ -980,7 +980,7 @@ void PlantOSController::handleError() {
 
     // Wait 5 seconds to display error
     if (elapsed >= ERROR_DURATION) {
-        if (ENHANCED_ERROR_HANDLING_ENABLED) {
+        {
             // Resolve all active alerts (keep history for debugging)
             ESP_LOGI(TAG, "Error timeout - resolving alerts and restarting to INIT");
 
@@ -1008,12 +1008,6 @@ void PlantOSController::handleError() {
             status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_HIGH");
             status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_EMPTY");
             status_logger_.resolveAlert("HARDWARE_WATER_SENSORS_MISSING");
-        } else {
-            // Legacy: clear alerts (backward compatible)
-            ESP_LOGI(TAG, "Error timeout - clearing alerts and restarting to INIT");
-            status_logger_.clearAlert("PH_CRITICAL");
-            status_logger_.clearAlert("PH_MAX_ATTEMPTS");
-            status_logger_.resolveAlert("SENSOR_CRITICAL");
         }
 
         transitionTo(ControllerState::INIT);
@@ -1485,11 +1479,6 @@ bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint3
 }
 
 bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool state, uint32_t requestedDurationSec, bool forceExecute) {
-    // If enhanced error handling is disabled, use legacy behavior
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return requestPump(pumpId, state, requestedDurationSec, forceExecute);
-    }
-
     // Try original request first
     bool approved = safety_gate_->executeCommand(pumpId.c_str(), state, requestedDurationSec, forceExecute);
     if (approved) {

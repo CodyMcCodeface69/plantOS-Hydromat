@@ -66,7 +66,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_NIGHT_MODE_ENABLED, default=False): cv.boolean,
     cv.Optional(CONF_NIGHT_MODE_START_HOUR, default=22): cv.int_range(min=0, max=23),
     cv.Optional(CONF_NIGHT_MODE_END_HOUR, default=8): cv.int_range(min=0, max=23),
-    cv.Optional(CONF_ENHANCED_ERROR_HANDLING, default=False): cv.boolean,
+    cv.Optional(CONF_ENHANCED_ERROR_HANDLING, default=True): cv.boolean,  # ignored, always on
     cv.Optional(CONF_ALERT_SERVICE): cv.use_id(AlertService),
     cv.Optional(CONF_PH_K_FACTOR, default=0.25): cv.float_range(min=0.01, max=0.50),
 }).extend(cv.COMPONENT_SCHEMA)
@@ -127,9 +127,8 @@ async def to_code(config):
         config[CONF_NIGHT_MODE_END_HOUR]
     ))
 
-    # Enable enhanced error handling compile flag if configured
-    if config[CONF_ENHANCED_ERROR_HANDLING]:
-        cg.add_define("PLANTOS_ENHANCED_ERROR_HANDLING")
+    # enhanced_error_handling: accepted for config compatibility only. The retry / duration
+    # adaptation / alert-context path is always compiled in (production ran with `true`).
 
     # Inject AlertService dependency (optional)
     if CONF_ALERT_SERVICE in config:

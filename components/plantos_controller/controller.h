@@ -1145,13 +1145,6 @@ private:
     static constexpr const char* NVS_KEY_PH_CALIB_TS = "PhCalibTs";
     static constexpr const char* NVS_KEY_EC_CALIB_TS = "EcCalibTs";
 
-    // Compile-time feature flag for enhanced error handling
-#ifdef PLANTOS_ENHANCED_ERROR_HANDLING
-    static constexpr bool ENHANCED_ERROR_HANDLING_ENABLED = true;
-#else
-    static constexpr bool ENHANCED_ERROR_HANDLING_ENABLED = false;
-#endif
-
     // Helper methods for enhanced error handling
     bool requestPumpAdaptive(const std::string& pumpId, bool state, uint32_t requested_duration_sec, bool forceExecute);
     void initOperationRetry(const std::string& operation_name, uint8_t max_retries);

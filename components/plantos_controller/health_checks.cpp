@@ -17,7 +17,7 @@ namespace plantos_controller {
 // ============================================================================
 
 void PlantOSController::checkHardwareStatus() {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED || !hal_) {
+    if (!hal_) {
         return;
     }
 
@@ -270,37 +270,21 @@ void PlantOSController::checkCalibrationReminders() {
 // ============================================================================
 
 void PlantOSController::initOperationRetry(const std::string& operation_name, uint8_t max_retries) {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return;
-    }
-
     retry_state_.reset(operation_name, max_retries);
     ESP_LOGI(TAG, "Operation retry initialized: %s (max retries: %u)",
              operation_name.c_str(), max_retries);
 }
 
 bool PlantOSController::canRetryOperation() {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return false;
-    }
-
     return retry_state_.canRetry();
 }
 
 void PlantOSController::recordOperationStep(const std::string& step_name) {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return;
-    }
-
     retry_state_.completed_steps.push_back(step_name);
     ESP_LOGD(TAG, "Operation step completed: %s", step_name.c_str());
 }
 
 void PlantOSController::retryOperation() {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return;
-    }
-
     retry_state_.incrementRetry();
 
     ESP_LOGW(TAG, "Retrying operation '%s': attempt %u/%u (backoff: %u ms)",

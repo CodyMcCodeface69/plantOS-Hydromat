@@ -29,10 +29,7 @@ SCHEDULE_JSON := $(BUILD)/schedule.json
 INCLUDES := -Istubs -Isupport -I$(BUILD)/inc -I$(REPO)/components/sensor_filter -isystem $(ARDUINOJSON_VENDORED)
 DEFINES  := -DPLANTOS_SCHEDULE_JSON_PATH='"$(abspath $(SCHEDULE_JSON))"' \
             -DPLANTOS_GOLDEN_DIR='"$(abspath golden)"' \
-            -DARDUINOJSON_ENABLE_STD_STRING=1 -DARDUINOJSON_USE_LONG_LONG=1 \
-            -DPLANTOS_ENHANCED_ERROR_HANDLING
-# PLANTOS_ENHANCED_ERROR_HANDLING: plantOS.yaml sets `enhanced_error_handling: true`, so the
-# tests build the same configuration as production.
+            -DARDUINOJSON_ENABLE_STD_STRING=1 -DARDUINOJSON_USE_LONG_LONG=1
 
 # Real firmware sources compiled unmodified for the host.
 COMPONENT_SRCS := \

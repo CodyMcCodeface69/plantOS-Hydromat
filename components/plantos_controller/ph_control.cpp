@@ -141,7 +141,7 @@ void PlantOSController::handlePhMeasuring() {
 
         if (hasPhValue()) {
             // Sensor has value - check if recovering from failures
-            if (ENHANCED_ERROR_HANDLING_ENABLED && sensor_retry_state_.consecutive_failures > 0) {
+            if (sensor_retry_state_.consecutive_failures > 0) {
                 ESP_LOGI(TAG, "pH sensor recovered after %u failures", sensor_retry_state_.consecutive_failures);
                 sensor_retry_state_.reset();
                 status_logger_.resolveAlert("PH_SENSOR_CRITICAL");
@@ -184,7 +184,7 @@ void PlantOSController::handlePhMeasuring() {
             }
         } else {
             // Sensor has no value - implement retry logic with exponential backoff
-            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            {
                 sensor_retry_state_.recordFailure();
 
                 if (!sensor_retry_state_.shouldRetry()) {
@@ -235,9 +235,6 @@ void PlantOSController::handlePhMeasuring() {
                          sensor_retry_state_.consecutive_failures,
                          sensor_retry_state_.MAX_SENSOR_RETRIES,
                          sensor_retry_state_.backoff_delay_ms);
-            } else {
-                // Legacy behavior - just log warning
-                ESP_LOGW(TAG, "pH sensor has no value - waiting for reading");
             }
         }
     }
@@ -317,7 +314,7 @@ void PlantOSController::handlePhCalculating() {
 
         // Resolve any active pH-related alerts
         status_logger_.resolveAlert("PH_TOO_LOW");
-        if (ENHANCED_ERROR_HANDLING_ENABLED) {
+        {
             status_logger_.resolveAlert("PH_CRITICAL");
             status_logger_.resolveAlert("NO_PH_READINGS");
             status_logger_.resolveAlert("PUMP_REJECTION_ACID");

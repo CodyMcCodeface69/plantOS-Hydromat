@@ -31,7 +31,7 @@ void PlantOSController::handleWaterFilling() {
         if (!hal_ || !hal_->hasWaterLevelSensors()) {
             ESP_LOGE(TAG, "[WATER_FILLING] SAFETY ABORT: water level sensors unavailable - refusing blind fill");
 
-            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            {
                 status_logger_.updateAlertWithContext(
                     "HARDWARE_WATER_SENSORS_MISSING",
                     "Water level sensors unavailable - fill aborted",
@@ -63,7 +63,7 @@ void PlantOSController::handleWaterFilling() {
                 ESP_LOGE(TAG, "[WATER_FILLING] SafetyGate rejected WaterValve command");
 
                 // Set comprehensive alert
-                if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                {
                     status_logger_.updateAlertWithContext(
                         "PUMP_REJECTION_WATER_VALVE",
                         "Water valve rejected by SafetyGate",
@@ -106,7 +106,7 @@ void PlantOSController::handleWaterFilling() {
             }
 
             // Resolve any active water-related alerts
-            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            {
                 status_logger_.resolveAlert("PUMP_REJECTION_WATER_VALVE");
                 status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_HIGH");
             }
@@ -180,7 +180,7 @@ void PlantOSController::handleWaterFilling() {
         ESP_LOGE(TAG, "[WATER_FILLING] HIGH sensor never triggered - possible sensor failure or low water pressure");
 
         // Set comprehensive alert for sensor failure
-        if (ENHANCED_ERROR_HANDLING_ENABLED) {
+        {
             status_logger_.updateAlertWithContext(
                 "HARDWARE_WATER_SENSOR_HIGH",
                 "HIGH water level sensor never triggered during fill",
@@ -270,7 +270,7 @@ void PlantOSController::handleWaterEmptying() {
                 ESP_LOGE(TAG, "[WATER_EMPTYING] SafetyGate rejected WastewaterPump command");
 
                 // Set comprehensive alert
-                if (ENHANCED_ERROR_HANDLING_ENABLED) {
+                {
                     status_logger_.updateAlertWithContext(
                         "PUMP_REJECTION_WASTEWATER",
                         "Wastewater pump rejected by SafetyGate",
@@ -319,7 +319,7 @@ void PlantOSController::handleWaterEmptying() {
             }
 
             // Resolve any active water-related alerts
-            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            {
                 status_logger_.resolveAlert("PUMP_REJECTION_WASTEWATER");
                 status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_EMPTY");
             }
@@ -378,7 +378,7 @@ void PlantOSController::handleWaterEmptying() {
             ESP_LOGE(TAG, "[WATER_EMPTYING] EMPTY sensor never cleared - possible sensor failure or clog");
 
             // Set comprehensive alert for sensor failure
-            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            {
                 status_logger_.updateAlertWithContext(
                     "HARDWARE_WATER_SENSOR_EMPTY",
                     "EMPTY water level sensor never cleared during drain",
@@ -451,7 +451,7 @@ void PlantOSController::handleFeedFilling() {
         if (!hal_ || !hal_->hasWaterLevelSensors()) {
             ESP_LOGE(TAG, "[FEED_FILLING] SAFETY ABORT: water level sensors unavailable - refusing blind fill");
 
-            if (ENHANCED_ERROR_HANDLING_ENABLED) {
+            {
                 status_logger_.updateAlertWithContext(
                     "HARDWARE_WATER_SENSORS_MISSING",
                     "Water level sensors unavailable - fill aborted",

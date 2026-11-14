@@ -5,6 +5,9 @@ This file gives coding agents guidance for working in this repository.
 It was rewritten on 2026-10-04 against commit `8830ccf`. When this file disagrees with the
 code, **the code wins**. Fix this file when you notice drift.
 
+> **Overhaul sprint until 2026-11-16 23:59:** start with `plan/README.md`, then `plan/LOG.md`.
+> Build only, no flashing (the device is out of reach).
+
 ## Project Overview
 
 PlantOS ("Hydromat Mk.1") is an ESPHome firmware for an ESP32-C6 that runs a hydroponic
@@ -42,7 +45,9 @@ task decode -- 0x...   # addr2line for crash addresses
 task reboot | clean
 ```
 
-Enter the environment with `direnv allow` or `nix develop`. There are no automated tests.
+Enter the environment with `direnv allow` or `nix develop`. Without Nix, use a venv with
+`esphome==2025.4.2` (on the owner's Ubuntu laptop: `source .venv/bin/activate`; `task` is in
+`~/.local/bin`). There are no automated tests.
 Verify on hardware through the logs, the web UI and the LED.
 
 ## Architecture: 3-layer HAL (mandatory)
@@ -171,4 +176,6 @@ Give every new entity a group.
 - ESPHome sensor component layout: `__init__.py` (empty), `sensor.py` (schema), `*.h/*.cpp`.
   Use `PollingComponent` for periodic work and `Component` for event-driven work.
 - Name new components for their eventual role, not for their first feature.
-- **The user commits.** Never run `git commit`. Give the user a short English commit message.
+- **Git:** agents may commit and push on their own. Use small commits that build, with short English
+  messages. Keep only `main`: no branches are left for the user to merge, and any short-lived
+  branch gets merged and deleted by the agent. Never commit `secrets.yaml`.

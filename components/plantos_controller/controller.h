@@ -492,11 +492,12 @@ private:
     /// Enable/disable automatic feeding (persisted to NVS)
     bool auto_feeding_enabled_{true};
 
-    /// Last date when auto-feeding was triggered (Unix timestamp at midnight UTC)
-    int64_t last_auto_feed_date_{0};
+    /// Local date (days since 1970-01-01, getLocalDateOrdinal()) of the last auto-feed.
+    /// -1 = not read from NVS yet (read lazily on the first trigger check).
+    int32_t last_auto_feed_day_{-1};
 
-    /// NVS key for storing last auto-feed date
-    static constexpr const char* NVS_KEY_AUTO_FEED_DATE = "AutoFeedDate";
+    /// NVS key (int32) for last_auto_feed_day_. Written only when the day changes (<= once a day).
+    static constexpr const char* NVS_KEY_AUTO_FEED_DAY = "AutoFeedDay";
 
     /// NVS key for auto-feeding enable/disable state
     static constexpr const char* NVS_KEY_AUTO_FEED_ENABLE = "AutoFeedEnable";
@@ -523,8 +524,12 @@ private:
     /// Day of week for auto reservoir change (0=Sunday, 1=Monday, ..., 6=Saturday)
     uint8_t auto_reservoir_change_day_{0};
 
-    /// Week number of last auto reservoir change (weeks since Unix epoch)
-    int64_t last_auto_reservoir_change_week_{0};
+    /// Week number (getCurrentWeekNumber()) of the last auto reservoir change.
+    /// -1 = not read from NVS yet (read lazily on the first trigger check).
+    int32_t last_auto_res_week_{-1};
+
+    /// NVS key (int32) for last_auto_res_week_. Written only when the week changes.
+    static constexpr const char* NVS_KEY_AUTO_RES_WEEK = "AutoResWeek";
 
     /// NVS key for auto reservoir change enable/disable state
     static constexpr const char* NVS_KEY_AUTO_RES_ENABLE = "AutoResEnable";
@@ -776,12 +781,12 @@ private:
      */
     bool shouldTriggerAutoFeeding();
 
-    /**
-     * Get a unique per-day key for the current LOCAL calendar date.
-     * Used for daily feeding limit tracking (rolls over at local midnight).
-     * @return Local date key (local days since epoch × 86400), or 0 if NTP unavailable
-     */
-    int64_t getCurrentDateTimestamp();
+    /// Last auto-feed day / auto reservoir change week, read from NVS on first use.
+    int32_t lastAutoFeedDay();
+    int32_t lastAutoResWeek();
+    /// Remember the day / week of an automatic trigger in RAM and NVS (NVS only when it changes).
+    void markAutoFeedDay(int32_t day);
+    void markAutoResWeek(int32_t week);
 
     /**
      * Check if auto reservoir change should be triggered

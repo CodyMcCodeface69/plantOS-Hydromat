@@ -73,9 +73,6 @@ void PlantOSController::setup() {
         ec_K_feed_ = psm_->loadFloat(NVS_KEY_EC_K, 0.00015f);
         ESP_LOGI(TAG, "EC K-factor loaded from NVS: %.4f", ec_K_feed_);
 
-        // Initialize last feed date (will be loaded from NVS on first check)
-        last_auto_feed_date_ = 0;
-
         // Load calibration timestamps from NVS (Phase 7)
         last_ph_calibration_ts_ = (int64_t)psm_->loadInt32(NVS_KEY_PH_CALIB_TS, 0);
         last_ec_calibration_ts_ = (int64_t)psm_->loadInt32(NVS_KEY_EC_CALIB_TS, 0);
@@ -753,20 +750,8 @@ void PlantOSController::handleIdle() {
         ESP_LOGI(TAG, "========================================");
         ESP_LOGI(TAG, "[AUTO-FEEDING] Water level at LOW - triggering daily feed");
 
-        // Record today's date
-        int64_t today = getCurrentDateTimestamp();
-        if (today > 0) {
-            last_auto_feed_date_ = today;
-
-            // Save to NVS with unique key per date
-            if (psm_) {
-                char date_key[32];
-                snprintf(date_key, sizeof(date_key), "AUTOFEED_%lld", (long long)today);
-                psm_->logEvent(date_key, 0);  // 0 = STARTED
-
-                ESP_LOGI(TAG, "[AUTO-FEEDING] Stored trigger date: %lld", (long long)today);
-            }
-        }
+        // Record today's local date (own NVS key, so it survives the PSM event that startFeed() logs)
+        markAutoFeedDay(getLocalDateOrdinal());
 
         // Start feeding sequence
         startFeed();
@@ -803,20 +788,8 @@ void PlantOSController::handleIdle() {
         ESP_LOGI(TAG, "  (Weekly schedule - Day %d)", auto_reservoir_change_day_);
         ESP_LOGI(TAG, "========================================");
 
-        // Record this week's trigger
-        int64_t current_week = getCurrentWeekNumber();
-        if (current_week > 0) {
-            last_auto_reservoir_change_week_ = current_week;
-
-            // Save to NVS with unique key per week
-            if (psm_) {
-                char week_key[32];
-                snprintf(week_key, sizeof(week_key), "AUTORES_%lld", (long long)current_week);
-                psm_->logEvent(week_key, 0);  // 0 = STARTED
-
-                ESP_LOGI(TAG, "[AUTO-RES] Stored trigger week: %lld", (long long)current_week);
-            }
-        }
+        // Record this week (own NVS key, so it survives the PSM event that startReservoirChange() logs)
+        markAutoResWeek(static_cast<int32_t>(getCurrentWeekNumber()));
 
         // Start reservoir change sequence
         startReservoirChange();

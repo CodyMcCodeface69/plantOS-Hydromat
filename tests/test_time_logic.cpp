@@ -1,6 +1,6 @@
 // Time-driven decisions of the controller.
 // Real code under test: components/plantos_controller/controller.cpp
-//   isNightModeHours, getLocalDateOrdinal, getCurrentDateTimestamp,
+//   isNightModeHours, getLocalDateOrdinal,
 //   shouldTriggerAutoFeeding, shouldTriggerAutoReservoirChange, getCurrentWeekNumber,
 //   getCurrentDayOfWeek, and the pH slot schedule / date sync / auto-feed parts of handleIdle
 #include "minitest.h"
@@ -104,7 +104,7 @@ TEST(night_mode, equal_light_times_fall_back_to_hour_window) {
 }
 
 // ---------------------------------------------------------------------------
-// getLocalDateOrdinal / getCurrentDateTimestamp (days since 1970-01-01, local date)
+// getLocalDateOrdinal (days since 1970-01-01, local date)
 // ---------------------------------------------------------------------------
 
 TEST(date_ordinal, known_dates) {
@@ -116,14 +116,12 @@ TEST(date_ordinal, known_dates) {
   for (auto &c : cases) {
     f.set_time(c.y, c.m, c.d, 12, 0);
     CHECK_EQ(f.ctrl.getLocalDateOrdinal(), c.ordinal);
-    CHECK_EQ(f.ctrl.getCurrentDateTimestamp(), static_cast<int64_t>(c.ordinal) * 86400);
   }
 }
 
 TEST(date_ordinal, zero_without_valid_time) {
   ControllerFixture f;
   CHECK_EQ(f.ctrl.getLocalDateOrdinal(), 0);
-  CHECK_EQ(f.ctrl.getCurrentDateTimestamp(), 0);
   f.clock.set_local(2018, 12, 31, 12, 0);  // ESPTime::is_valid() needs year >= 2019
   CHECK_EQ(f.ctrl.getLocalDateOrdinal(), 0);
   f.ctrl.setTimeSource(nullptr);
@@ -218,8 +216,8 @@ TEST(auto_feed, blocked_during_night_hours_unless_night_mode_disabled) {
 TEST(auto_feed, once_per_local_day) {
   ControllerFixture f;
   arm_auto_feed(f);
-  f.ctrl.last_auto_feed_date_ = f.ctrl.getCurrentDateTimestamp();  // what handleIdle stores
-  CHECK_EQ(f.ctrl.last_auto_feed_date_, 20771LL * 86400);
+  f.ctrl.markAutoFeedDay(f.ctrl.getLocalDateOrdinal());  // what handleIdle stores
+  CHECK_EQ(f.ctrl.last_auto_feed_day_, 20771);
   CHECK(!f.ctrl.shouldTriggerAutoFeeding());
   f.set_time(2026, 11, 14, 23, 59);
   CHECK(!f.ctrl.shouldTriggerAutoFeeding());
@@ -227,36 +225,61 @@ TEST(auto_feed, once_per_local_day) {
   CHECK(f.ctrl.shouldTriggerAutoFeeding());
 }
 
-TEST(auto_feed, nvs_event_of_today_blocks_and_fills_cache) {
+TEST(auto_feed, nvs_day_of_today_blocks) {
   ControllerFixture f;
   arm_auto_feed(f);
-  f.psm.logEvent("AUTOFEED_1794614400", 0);  // 20771 * 86400
+  f.psm.saveInt32("AutoFeedDay", 20771);  // 2026-11-14
   CHECK(!f.ctrl.shouldTriggerAutoFeeding());
-  CHECK_EQ(f.ctrl.last_auto_feed_date_, 1794614400LL);
-  // An event for another day does not block.
+  CHECK_EQ(f.ctrl.last_auto_feed_day_, 20771);
+  // A stored earlier day does not block.
+  host::reset();
   ControllerFixture g;
   arm_auto_feed(g);
-  g.psm.logEvent("AUTOFEED_1794528000", 0);
+  g.psm.saveInt32("AutoFeedDay", 20770);
   CHECK(g.ctrl.shouldTriggerAutoFeeding());
 }
 
-TEST(auto_feed, idle_handler_starts_feed_and_overwrites_its_own_nvs_marker) {
-  // SUSPECT: handleIdle logs "AUTOFEED_<date>" to the PSM and then calls startFeed(), which
-  // logs "FEED_OPERATION" into the same single PSM slot. The per-day marker is gone at once,
-  // so the "already fed today" check does not survive a reboot (only the RAM cache works).
+TEST(auto_feed, old_psm_marker_is_not_read) {
+  // Firmware before 2026-11-14 wrote "AUTOFEED_<day*86400>" into the PSM event slot. That
+  // marker was overwritten by startFeed() at once, so it never blocked anything; it is ignored.
+  ControllerFixture f;
+  arm_auto_feed(f);
+  f.psm.logEvent("AUTOFEED_1794614400", 0);
+  CHECK(f.ctrl.shouldTriggerAutoFeeding());
+}
+
+TEST(auto_feed, idle_handler_starts_feed_and_the_day_survives_a_reboot) {
+  // Fixed 2026-11-14: the day is stored under its own NVS key (AutoFeedDay), so the
+  // FEED_OPERATION event that startFeed() logs into the single PSM slot no longer erases it.
   ControllerFixture f;
   arm_auto_feed(f);
   f.ctrl.auto_ph_correction_enabled_ = false;  // keep the periodic pH check out of the way
   f.ctrl.handleIdle();
   CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::FEED_FILLING);
-  CHECK_EQ(f.ctrl.last_auto_feed_date_, 1794614400LL);
+  CHECK_EQ(f.ctrl.last_auto_feed_day_, 20771);
   CHECK_EQ(std::string(f.psm.getLastEvent().eventID), std::string("FEED_OPERATION"));
   CHECK(f.ctrl.auto_ph_correction_pending_);
 
   // "Reboot": new controller objects on the same NVS, same day, level LOW again.
   ControllerFixture after_reboot;
   arm_auto_feed(after_reboot);
-  CHECK(after_reboot.ctrl.shouldTriggerAutoFeeding());  // would feed a second time today
+  CHECK(!after_reboot.ctrl.shouldTriggerAutoFeeding());
+  // Next local day it feeds again.
+  after_reboot.set_time(2026, 11, 15, 18, 0);
+  CHECK(after_reboot.ctrl.shouldTriggerAutoFeeding());
+}
+
+TEST(auto_feed, nvs_written_only_when_the_day_changes) {
+  ControllerFixture f;
+  arm_auto_feed(f);
+  int before = host::nvs_save_count;
+  f.ctrl.markAutoFeedDay(20771);
+  CHECK_EQ(host::nvs_save_count, before + 1);
+  f.ctrl.markAutoFeedDay(20771);
+  f.ctrl.markAutoFeedDay(0);  // no date: ignored
+  CHECK_EQ(host::nvs_save_count, before + 1);
+  f.ctrl.markAutoFeedDay(20772);
+  CHECK_EQ(host::nvs_save_count, before + 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -303,10 +326,26 @@ TEST(auto_reservoir, triggers_on_configured_weekday_once_per_week) {
   ControllerFixture f;
   arm_auto_reservoir(f);
   CHECK(f.ctrl.shouldTriggerAutoReservoirChange());
-  f.ctrl.last_auto_reservoir_change_week_ = f.ctrl.getCurrentWeekNumber();  // what handleIdle stores
+  f.ctrl.markAutoResWeek(f.ctrl.getCurrentWeekNumber());  // what handleIdle stores
   CHECK(!f.ctrl.shouldTriggerAutoReservoirChange());
   f.set_time(2026, 11, 21, 18, 0);  // next Saturday
   CHECK(f.ctrl.shouldTriggerAutoReservoirChange());
+}
+
+TEST(auto_reservoir, idle_handler_starts_change_and_the_week_survives_a_reboot) {
+  ControllerFixture f;
+  arm_auto_reservoir(f);
+  f.ctrl.auto_feeding_enabled_ = false;
+  f.ctrl.auto_ph_correction_enabled_ = false;
+  f.hal.level_empty = true;  // something to drain
+  f.ctrl.handleIdle();
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::WATER_EMPTYING);
+  CHECK_EQ(f.ctrl.last_auto_res_week_, 2967);
+  CHECK_EQ(std::string(f.psm.getLastEvent().eventID), std::string("RESERVOIR_CHANGE"));
+
+  ControllerFixture after_reboot;
+  arm_auto_reservoir(after_reboot);
+  CHECK(!after_reboot.ctrl.shouldTriggerAutoReservoirChange());
 }
 
 TEST(auto_reservoir, each_condition_blocks) {
@@ -345,9 +384,9 @@ TEST(auto_reservoir, each_condition_blocks) {
   {
     ControllerFixture f;
     arm_auto_reservoir(f);
-    f.psm.logEvent("AUTORES_2967", 0);
+    f.psm.saveInt32("AutoResWeek", 2967);  // already done this week (stored before a reboot)
     CHECK(!f.ctrl.shouldTriggerAutoReservoirChange());
-    CHECK_EQ(f.ctrl.last_auto_reservoir_change_week_, 2967);
+    CHECK_EQ(f.ctrl.last_auto_res_week_, 2967);
   }
 }
 

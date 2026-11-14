@@ -21,6 +21,11 @@ tasks:
     cmds:
       - esphome compile {{.ENTRY_POINT}}
 
+  test:
+    desc: Build and run the host unit tests (g++ only, no ESPHome needed). 'task test -- calendar' runs tests matching a name.
+    cmds:
+      - make -C tests --no-print-directory -j4 ARGS="{{.CLI_ARGS}}"
+
   flash:
     desc: Flash plantOS onto MCU.
     cmds:

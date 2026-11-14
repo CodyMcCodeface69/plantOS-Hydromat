@@ -9,7 +9,7 @@
 REPO      := $(abspath ..)
 BUILD     := build
 CXX       ?= g++
-CXXFLAGS  ?= -std=gnu++17 -O1 -g -Wall -Wno-unused-variable -Wno-unused-but-set-variable \
+CXXFLAGS  ?= -std=gnu++17 -O0 -g1 -Wall -Wno-unused-variable -Wno-unused-but-set-variable \
              -Wno-format -Wno-sign-compare -Wno-unused-function
 # Tests reach into private members of the real classes instead of editing components/.
 CXXFLAGS  += -fno-access-control

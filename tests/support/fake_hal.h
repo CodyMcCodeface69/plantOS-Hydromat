@@ -25,7 +25,10 @@ struct FakeHAL : public plantos_hal::HAL {
   bool has_temperature = false;
   bool level_high = false, level_low = false, level_empty = false;
   bool has_level_sensors = true;
-  int64_t timestamp = 0;  // unix seconds; 0 = no time
+  // Time as ESPHomeHAL reports it: UTC unix timestamp + LOCAL seconds since midnight.
+  // ControllerFixture::set_time() fills all three consistently.
+  int64_t timestamp = 0;  // 0 = no time
+  uint32_t seconds_since_midnight = 0;
   bool has_time = false;
   uint32_t ph_interval_ms = 7200000;
   float ph_min = 5.5f, ph_max = 6.2f;
@@ -142,7 +145,7 @@ struct FakeHAL : public plantos_hal::HAL {
   bool isLEDOn() const override { return false; }
   uint32_t getSystemTime() const override { return esphome::millis(); }
   int64_t getCurrentTimestamp() const override { return timestamp; }
-  uint32_t getSecondsSinceMidnight() const override { return static_cast<uint32_t>(timestamp % 86400); }
+  uint32_t getSecondsSinceMidnight() const override { return seconds_since_midnight; }
   bool hasTime() const override { return has_time; }
   void setShellyEnabled(bool e) override { shelly_enabled = e; }
   bool isShellyEnabled() const override { return shelly_enabled; }

@@ -57,10 +57,12 @@ struct ControllerFixture {
     ctrl.state_entry_executed_ = false;
   }
 
-  // Set wall clock on both time paths the controller uses (RealTimeClock and HAL timestamp).
+  // Set the wall clock on both time paths the controller uses (RealTimeClock and HAL).
+  // y/mo/d h:mi:s is LOCAL time; utc_offset_s says how far it is ahead of UTC (CET = 3600).
   void set_time(int y, int mo, int d, int h, int mi, int s = 0, int utc_offset_s = 0) {
     clock.set_local(y, mo, d, h, mi, s, utc_offset_s);
     hal.timestamp = clock.now().timestamp;
+    hal.seconds_since_midnight = h * 3600 + mi * 60 + s;
     hal.has_time = true;
     host::set_unix_time(hal.timestamp);
   }

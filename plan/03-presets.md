@@ -14,8 +14,11 @@ One device and one firmware. Switching between **Anzucht** (propagation), **Mutt
 - These stay **global** (not per preset): night mode, pump calibration (flow rates), Shelly IP and wiring.
   Change this only with a good reason.
 - The owner fills in real values later. Ship sensible defaults: Haupt = the current production
-  values (27.4 / 47.5 L, the current 120-day schedule). Mutter and Anzucht are plausible placeholders,
-  clearly marked as such.
+  values (27.4 / 47.5 L, the current 120-day schedule). Mutter and Anzucht get plausible placeholders
+  for now. The owner still has to **measure** the real values.
+- Record every placeholder in **`plan/TO_MEASURE.md`**: the value, where it is entered (file/line or UI
+  entity), and **how to measure it** (e.g. tank volume LOW→HIGH: fill from the LOW sensor to the HIGH sensor and
+  read the liters). The owner works through that list on site.
 
 ## Open design space (your call)
 - Where presets and calendars are defined (YAML at build time + a runtime choice, editable on the device, both).
@@ -29,3 +32,5 @@ One device and one firmware. Switching between **Anzucht** (propagation), **Mutt
 - The preset switch is in the UI and the value survives a reboot (argued from code, since no flash is possible).
 - Tank volume, calendar and the actuator set follow the active preset. Haupt reproduces today's behavior.
 - `FSMINFO.md` and `AGENTS.md` describe the preset model.
+- `plan/TO_MEASURE.md` is complete. Entering the measured values needs no code changes, at most a
+  config line or a UI input.

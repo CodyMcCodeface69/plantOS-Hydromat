@@ -65,7 +65,7 @@ the decisions already taken. Tick steps off here and write the numbers and detai
 
 Order by expected gain per risk. Measure after each step and stop a line of work when it stops paying.
 
-- [ ] 2.1 **Compile-time log level INFO** in production, DEBUG via `packages/debug.yaml`. Note: the custom code has only
+- [x] 2.1 **Compile-time log level INFO** in production, DEBUG via `packages/debug.yaml`. Note: the custom code has only
       ~110 `ESP_LOGD/V` calls against ~890 `ESP_LOGI`, so most of this gain comes from ESPHome core. Measure before
       expecting much. Remove UI "verbose" switches that become no-ops in production (or move them to the debug package)
       and list them as deliberate removals.
@@ -87,9 +87,9 @@ Order by expected gain per risk. Measure after each step and stop a line of work
 - [ ] 2.6 **`ezo_ph_uart` `delay()`**: turn the command paths into a small non-blocking state machine. High risk without
       the probe attached, so it goes last in this phase, gets host tests for the parser, and detailed
       `TEST_ON_DEVICE.md` rows (calibration, temperature compensation, reading cadence). Skip it if time runs short.
-- [ ] 2.7 **8 MB flash, prepared only**: partition CSV + the `flash_size: 8MB` lines as a commented opt-in, with a
+- [x] 2.7 **8 MB flash, prepared only**: partition CSV + the `flash_size: 8MB` lines as a commented opt-in, with a
       "USB flash required" note in `LOG.md` and `AGENTS.md`. Nothing else may depend on it.
-- [ ] 2.8 Smaller checks, each only if the symbol map says it pays: `ArduinoJson` in the calendar (goes away with 3.2),
+- [x] 2.8 Smaller checks, each only if the symbol map says it pays: `ArduinoJson` in the calendar (goes away with 3.2),
       `std::map` use, sdkconfig options (mbedTLS cipher suites and buffer sizes for the one MQTT broker, lwIP), unused
       ESPHome components in the YAML. The `plantos/vitals` payload must stay byte-compatible in its keys.
 

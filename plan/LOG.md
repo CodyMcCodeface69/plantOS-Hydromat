@@ -74,3 +74,30 @@ Work is split across subagents with path ownership; only one agent builds at a t
   is the one with a real-world effect (a second feed the same day after a reboot); fix it in the simplification half of 2.4.
 - **Running:** the mechanical controller split (2.4) in a worktree branch, verified by the host tests only; the
   coordinator merges and runs `task build` once the config agent (2.1/2.7/2.8) releases the build directory.
+
+## 2026-11-14: config-level flash savings (2.1, 2.7, 2.8) and controller split merged (Fable + Opus subagents)
+- **Flash 1,583,438 → 1,440,176 B (86.3 % → 78.5 %), RAM 39,256 → 37,356 B.** Debug build: 1,494,370 B, fits.
+  | Measure | Flash after | Commit |
+  |---|---|---|
+  | Log level INFO in production (inline package, debug package raises to DEBUG) | 1,557,132 | `f4b96ed` |
+  | Unused `http_request` + two scripts removed | 1,551,378 | `3870dcc` |
+  | mbedTLS: client only, unused curves, static ECDH, PEM write, CRL/CSR off | 1,520,542 | `c63a159` |
+  | WiFi Enterprise/OWE/SAE-PK/softAP SAE off, MQTT WebSocket transports off | 1,498,840 | `ea53ffa` |
+  | Silent assertions | 1,440,176 | `a81d478` |
+- TLS left enabled: TLS 1.2 client; ECDHE-ECDSA, ECDHE-RSA, RSA; secp256r1/384r1/521r1 + Curve25519; AES-GCM/CCM/CBC;
+  SHA-1/256/384/512. Fallback AP, OTA, native API, web_server unchanged. Rows are in `TEST_ON_DEVICE.md`.
+- Checked and dropped (no or tiny gain, or unsafe): mbedTLS error strings, secp521r1, nano printf (64-bit formats in use),
+  lwIP, unused components (none). Not done, owner question: `ESP_ERR_TO_NAME_LOOKUP` off (~7.5 KB).
+- Removed entity: debug-only switch "Verbose: HTTP Request". Production entities unchanged.
+- **8 MB prepared, NOT enabled, USB flash required:** commented `flash_size: 8MB` + `partitions: partitions_8mb.csv` in
+  `plantOS.yaml`. The custom table keeps otadata/phy_init/app0/nvs at today's offsets (nvs 0x390000, 436 KB) and gives
+  two 3584 KB app slots. ESPHome's own 8 MB layout would move NVS to 0x790000 and wipe grow day, K-factors, calibration.
+- **Controller split merged** (`f6039f4`): `controller.cpp` 4854 → 1711 lines + `ph_control`, `ec_control`, `water_ops`,
+  `scheduling`, `health_checks`, pure math in `dosing_math`/`schedule_math`. 178 host tests green. Body diff: 85/85
+  functions, only the 18 that call an extracted function differ. Firmware build green: flash 1,441,132 B (+956 B).
+- Lesson: two agents ran on the same task for a while after a usage-limit interruption (the old ones resumed on their
+  own). After a limit, resume the existing agent with a message; do not start a replacement.
+- Lesson: new `.cpp` files need a CMake reconfigure (see `AGENTS.md` known issues).
+- **Running:** controller simplification (dead code, auto-feed/reservoir marker fixes, log diet, handler restructuring)
+  on the worktree branch `worktree-agent-a760c26e111b63836`. **Next:** merge it + build, then 2.5 (YAML lambdas → C++),
+  2.3 (`CentralStatusLogger`), then phase 3.

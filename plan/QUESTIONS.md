@@ -25,6 +25,12 @@ The owner answers asynchronously. Park a question here, pick a sensible default,
   Set an OTA password and API encryption with the next flash? Default: unchanged for now (a new OTA password must not
   lock out the first OTA after the sprint); `web_server: auth:` would rule out any externally opened page.
 
+- **Assert messages**: the build now uses silent assertions (saves 58.7 KB). A failed assert still reboots and the
+  backtrace is decodable with `task decode`, but the file/line text is gone from the log. Fine for a device that is hard
+  to reach? Default: keep the saving.
+- **Error names**: turning off `CONFIG_ESP_ERR_TO_NAME_LOOKUP` would save about 7.5 KB but turn ESP-IDF error names in
+  logs into "UNKNOWN ERROR". Default: not done.
+
 ## Answered
 - Presets: runtime-switchable. They differ in tank volume, calendar and active actuators. (2026-11-14)
 - Custom UI: evaluation only. (2026-11-14)

@@ -39,7 +39,8 @@ change, night mode and grow-light scheduling over a 120-day grow calendar. The s
 ## Commands (Taskfile)
 
 ```bash
-task build             # compile (~70 s full rebuild)
+task build             # compile (minutes cold, ~30 s incremental)
+task test              # host unit tests (~1 s incremental)
 task flash             # flash via USB
 task run               # build + flash + logs   (OTA=true for OTA, IDFMON=true for decoded backtraces)
 task snoop             # attach to logs only (USB, OTA fallback)
@@ -112,7 +113,7 @@ PSM recovery. **Update it** in the same change whenever you modify any of those 
 - 22 states: `components/plantos_controller/controller.h:47-70`.
   The groups are INIT/IDLE/NIGHT/SHUTDOWN/PAUSE/ERROR, PH_*, EC_*, FEEDING, WATER_FILLING/EMPTYING
   and FEED_FILLING.
-- Dispatch switch: `controller.cpp:298-386`, with handlers `handleXxx()` in the same file.
+- Dispatch switch in `controller.cpp` `loop()`; the `handleXxx()` handlers live in the role files (grep for them).
 - Public API (start*/set*/is*, auto toggles, setToShutdown/Pause/Idle, emergencyStop):
   `controller.h:200-440`.
 - pH dosing uses a K-factor (EMA-updated, exposed as the `ph_k_factor_slider` number).
@@ -124,7 +125,7 @@ Components used in `plantOS.yaml`:
 
 | Component | Notes |
 |---|---|
-| `plantos_controller` (~8.3k lines) | `controller.cpp` alone is ~4.8k lines. LED behaviors are in flat `*.cpp` files (`breathing_green.cpp` etc.). `CentralStatusLogger.*` builds the on-demand status report (`i2c_scanner` reports hardware status into it). |
+| `plantos_controller` (~8.3k lines) | Split by role: `controller.cpp` (setup/loop/dispatch/API), `ph_control.cpp`, `ec_control.cpp`, `water_ops.cpp`, `scheduling.cpp`, `health_checks.cpp`; pure math in `dosing_math.*` and `schedule_math.*` (no ESPHome includes, host-tested). LED behaviors are in flat `*.cpp` files (`breathing_green.cpp` etc.). `CentralStatusLogger.*` builds the on-demand status report (`i2c_scanner` reports hardware status into it). |
 | `plantos_hal` (~2.5k) | Shelly HTTP runs in a FreeRTOS worker task (`shellyTaskLoop`, `esp_http_client`, 2 s timeout, poll every 30 s). Main thread ↔ task only via two queues; results are applied in `ESPHomeHAL::loop()`. The runtime switch "Shelly Integration" (`setShellyEnabled`) turns it off. |
 | `actuator_safety_gate` (~1.5k) | |
 | `ezo_ph_uart`, `sensor_filter`, `tds_sensor` | sensors |
@@ -162,6 +163,12 @@ Give every new entity a group.
 - PlatformIO lives in `<repo>/.platformio` (`PLATFORMIO_CORE_DIR`, set in `Taskfile.yml` and the
   devshell), not the shared `~/.platformio`. Other ESPHome projects on other versions swapped the
   toolchain there. After changing it, run `task clean` once.
+- **New `.cpp` files are not picked up by an incremental build** (the ESP-IDF CMake file list is cached; the link then
+  fails with undefined references). After adding a source file run
+  `touch .esphome/build/plantos/src/CMakeLists.txt .esphome/build/plantos/CMakeLists.txt` (or `task clean`) and build again.
+- **Flash size:** the device runs the 4 MB layout. `plantOS.yaml` has a commented opt-in for 8 MB (`partitions_8mb.csv`,
+  keeps NVS in place). It needs **one USB flash**; never OTA an 8 MB build onto the 4 MB layout, and never set
+  `flash_size` alone (ESPHome's generated layout moves NVS and loses grow day, K-factors and calibration).
 - **EC dosing math is inverted** (`controller.cpp`, `handleEcCalculating`): `ec_K_feed_` is mL/L per µS/cm, but the dose is
   `delta_ec / ec_K_feed_`. The result is always cut down to the calendar dose, so every EC step doses the full calendar
   amount and the learned K has no effect. Not fixed without the owner (see `plan/QUESTIONS.md`).

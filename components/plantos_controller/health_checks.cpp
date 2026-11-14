@@ -43,7 +43,7 @@ void PlantOSController::checkShellyHealth() {
     uint32_t uptime = hal_->getShellyUptime();
 
     ESP_LOGD(TAG, "Shelly health status: %s (uptime: %us)",
-             reachable ? "ONLINE" : "OFFLINE", uptime);
+             reachable ? "ONLINE" : "OFFLINE", (unsigned)uptime);
 
     // Update CentralStatusLogger with result
     std::vector<ShellyDeviceInfo> devices;

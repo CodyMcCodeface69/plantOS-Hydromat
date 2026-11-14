@@ -219,7 +219,9 @@ The PlantOS Controller implements a unified Finite State Machine (FSM) with 16 s
      │  - Prompt user (10s) │
      │  - 5 batches × 20    │
      │    readings (1/sec)  │
-     │  - Wait 30s between  │
+     │  - back to back (the │
+     │    30s wait between  │
+     │    batches never ran)│
      │  - Verify stability  │
      │    (±0.1 pH)         │
      │  - Send calib cmd    │

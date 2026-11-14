@@ -188,8 +188,7 @@ void PlantOSController::handlePhMeasuring() {
                     // Still in backoff - wait
                     uint32_t wait_time = (current_time - sensor_retry_state_.last_failure_time) / 1000;
                     uint32_t backoff_sec = sensor_retry_state_.backoff_delay_ms / 1000;
-                    ESP_LOGD(TAG, "Sensor backoff: waiting %u/%u seconds",
-                             wait_time, backoff_sec);
+                    ESP_LOGD(TAG, "Sensor backoff: waiting %u/%u seconds", (unsigned)wait_time, (unsigned)backoff_sec);
                     return;
                 }
 
@@ -442,8 +441,7 @@ void PlantOSController::handlePhMixing() {
 
         // Loop back to PH_MEASURING to verify correction
         // Will continue until pH is in range OR max attempts reached
-        ESP_LOGI(TAG, "Re-measuring pH to verify correction (attempt %d/%d)",
-                 ph_attempt_count_, MAX_PH_ATTEMPTS);
+        ESP_LOGD(TAG, "Re-measuring pH (attempt %u/%u)", (unsigned)ph_attempt_count_, (unsigned)MAX_PH_ATTEMPTS);
 
         transitionTo(ControllerState::PH_MEASURING);
     }

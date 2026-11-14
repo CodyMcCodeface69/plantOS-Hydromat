@@ -8,6 +8,15 @@ The owner answers asynchronously. Park a question here, pick a sensible default,
   wastewater pump, air pump, grow light does the Anzucht setup have? Default until answered: none of them
   (pH probe + acid pump only). All five are switchable in the UI, so a wrong default costs five taps.
 
+- **EC dosing bug** (found 2026-11-14, verified in `controller.cpp` `handleEcCalculating`): the adaptive EC factor is
+  stored as mL/L per µS/cm, but the dose is computed as `delta_ec / K` instead of `delta_ec * K`. The result is huge and
+  gets capped, so **every EC feeding step doses the full calendar amount** and the learned factor does nothing. A plain
+  fix is not safe either: the default (0.00015) and the clamp range (max 0.0005) look about 5-10x too low for a 3-part
+  nutrient (roughly 2 mL/L per mS/cm), so a "correct" formula would dose tiny amounts over many retries.
+  Question: what do your logs show per EC step (dose in mL/L and EC rise)? Default until answered: **behavior unchanged**
+  (the system has been growing with it), the bug is documented and pinned by a host test.
+- **Soft-start**: the ASG PWM ramp is never configured, so pumps switch on at once. Was that deliberate? Default: leave off.
+
 ## Answered
 - Presets: runtime-switchable. They differ in tank volume, calendar and active actuators. (2026-11-14)
 - Custom UI: evaluation only. (2026-11-14)

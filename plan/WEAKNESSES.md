@@ -50,3 +50,12 @@ Verify before acting; some may be harmless.
 - The `BLE-Shelly` branch (1 commit, Jan 2026, +1353 lines) has gone stale next to `main`.
 - `www/webserver-v2.*` is probably unused with `version: 3`.
 - `.gitignore` is missing `.venv/` (only excluded locally through `.git/info/exclude`).
+
+## Resolved or added during the sprint
+- Resolved 2026-11-14: repo hygiene items above, docs sprawl, the duplicate `CentralStatusLogger`, Taskfile paths,
+  `secrets.example.yaml`, stale pin labels.
+- **New: EC dose formula is inverted** (`delta_ec / K` with K in mL/L per µS/cm), so EC steps always dose the capped
+  calendar amount. See `QUESTIONS.md`.
+- **New:** ASG soft-start ramp is never configured. `FSMINFO.md` says PH_MIXING is 120 s, the code scales 30-600 s with
+  volume (~244 s at 27.4 L). pH dosing uses the 27.4 L delta volume, not the total.
+- **New:** generated `main.cpp.o` is 109 KB (`setup()` 48 KB), larger than the controller.

@@ -26,11 +26,15 @@ change, night mode and grow-light scheduling over a 120-day grow calendar. The s
 | Doc | Trust |
 |---|---|
 | `FSMINFO.md` | **Authoritative for FSM behavior** (see below) |
-| `PINOUT.md` | Pin table is current. Its header date is wrong. |
+| `PINOUT.md` | Current, verified against `plantOS.yaml` on 2026-11-14 |
+| `docs/README.md` | Index of `docs/` with a trust level per file. Start there for topic docs. |
+| `docs/CONTROL_LOGIC.md` | Current. Rationale for pH/EC control, spec-vs-code table, the known EC dosing unit problem. |
+| `docs/LESSONS.md` | Current. RISC-V alignment, no logging from callbacks/tasks, watchdog. |
 | `docs/WEBUI_PERFORMANCE_CLEANUP_PLAN.md` | Current. Web UI slowness analysis and options. |
-| `TODO.md` | Stale (Dec 2025 status/percentages). The user edits it by hand. |
-| `docs/PERFORMANCE_ANALYSIS.md`, `docs/LED_OPTIMIZATION_ANALYSIS.md` | Stale. They ignore the publish/SSE cost of LED updates. |
-| Other `docs/*.md` | Topic notes and plans. Read only if the task is about that topic. |
+| `docs/DESK_DISPLAY_FIRMWARE.md`, `docs/HETZNER_*.md` | Interface contracts (`plantos/vitals`, `plantos/debug`). Do not break. |
+| `docs/archive/*` | Background only, not a description of the code |
+| `TODO.md` | The owner's file, reorganized 2026-11-14. The user edits it by hand. |
+| `CHANGELOG.md` | Historical, ends at 0.9.1 (2025-12-15) |
 
 ## Commands (Taskfile)
 
@@ -47,8 +51,8 @@ task reboot | clean
 
 Enter the environment with `direnv allow` or `nix develop`. Without Nix, use a venv with
 `esphome==2025.4.2` (on the owner's Ubuntu laptop: `source .venv/bin/activate`; `task` is in
-`~/.local/bin`). There are no automated tests.
-Verify on hardware through the logs, the web UI and the LED.
+`~/.local/bin`). Host-side unit tests for the pure logic live in `tests/` (`task test`).
+Verify everything else on hardware through the logs, the web UI and the LED.
 
 ## Architecture: 3-layer HAL (mandatory)
 
@@ -120,17 +124,14 @@ Components used in `plantOS.yaml`:
 
 | Component | Notes |
 |---|---|
-| `plantos_controller` (~8.3k lines) | `controller.cpp` alone is ~4.8k lines. LED behaviors are in flat `*.cpp` files (`breathing_green.cpp` etc.; `led_behaviors/` is empty). `CentralStatusLogger.*` builds the periodic status report. |
+| `plantos_controller` (~8.3k lines) | `controller.cpp` alone is ~4.8k lines. LED behaviors are in flat `*.cpp` files (`breathing_green.cpp` etc.). `CentralStatusLogger.*` builds the on-demand status report (`i2c_scanner` reports hardware status into it). |
 | `plantos_hal` (~2.5k) | Shelly HTTP runs in a FreeRTOS worker task (`shellyTaskLoop`, `esp_http_client`, 2 s timeout, poll every 30 s). Main thread ↔ task only via two queues; results are applied in `ESPHomeHAL::loop()`. The runtime switch "Shelly Integration" (`setShellyEnabled`) turns it off. |
 | `actuator_safety_gate` (~1.5k) | |
 | `ezo_ph_uart`, `sensor_filter`, `tds_sensor` | sensors |
 | `calendar_manager` | 120-day schedule JSON in YAML (doses in mL/L, pH range, EC target). Day is kept in NVS. |
 | `persistent_state_manager`, `wdt_manager`, `i2c_scanner`, `alert_service` | support services |
 
-These components are not referenced by `plantOS.yaml` and are candidates for deletion:
-`central_status_logger/` (an old duplicate; `i2c_scanner` includes the controller's copy),
-`ezo_ph` (the I2C variant), `time_dummy`, `psm_checker`, `dummy_actuator_trigger`, and
-`sensor_dummy` (only listed in `external_components`).
+`includes/wifi_scan.h` is pulled in through `esphome: includes:` for the "WiFi Scan" button lambda.
 
 ## plantOS.yaml layout (approximate line numbers)
 
@@ -161,9 +162,10 @@ Give every new entity a group.
 - PlatformIO lives in `<repo>/.platformio` (`PLATFORMIO_CORE_DIR`, set in `Taskfile.yml` and the
   devshell), not the shared `~/.platformio`. Other ESPHome projects on other versions swapped the
   toolchain there. After changing it, run `task clean` once.
-- Stale pin labels in code: the 30 s GPIO debug interval (`plantOS.yaml` ~3307) and the
-  status report text in `controller.cpp` say DS18B20 is on "GPIO23". The real pin is GPIO3.
-  Some switch comments around `plantOS.yaml` ~2305-2343 also list old pump GPIOs.
+- **EC dosing math is inverted** (`controller.cpp`, `handleEcCalculating`): `ec_K_feed_` is mL/L per µS/cm, but the dose is
+  `delta_ec / ec_K_feed_`. The result is always cut down to the calendar dose, so every EC step doses the full calendar
+  amount and the learned K has no effect. Not fixed without the owner (see `plan/QUESTIONS.md`).
+- **Soft-start is not active**: `ActuatorSafetyGate::setRampDuration()` is never called, so outputs switch at once.
 
 ## Coding rules
 

@@ -1,4 +1,4 @@
-# Code map (as of `99a181e`, 2026-11-14)
+# Code map (written at `99a181e`, updated after the phase 1 cleanup, 2026-11-14)
 
 Line numbers are approximate. Grep before you trust them.
 
@@ -9,19 +9,19 @@ Line numbers are approximate. Grep before you trust them.
 | `plantOS.yaml` | **The firmware config**, 2740 lines, 110 lambdas | The section index is in `AGENTS.md` |
 | `packages/debug.yaml` | Debug-only entities (~700 lines) | The include is commented out in `plantOS.yaml` (~line 9) |
 | `components/` | Custom C++ components, ~18k lines | See below |
-| `Taskfile.yml` | build/flash/logs/decode | `decode` and `IDFMON` use `$HOME/.platformio/...`, but the core dir is `./.platformio` |
+| `Taskfile.yml` | build/flash/logs/decode/test | |
 | `FSMINFO.md` | **Authoritative** FSM description (779 lines) | |
 | `AGENTS.md` (`CLAUDE.md` → symlink) | Agent guide: architecture, rules, pins | |
-| `PINOUT.md`, `PINOUT_CHANGE.md` | Pin table (current) and migration notes (history) | |
+| `PINOUT.md` | Pin table (current, includes a "Changing a pin" checklist) | |
 | `CHANGELOG.md` | 1914 lines | |
-| `TODO.md` | Stale (Dec 2025) and maintained by hand by the owner | Mentions the old user path `/home/cody/...` |
-| `docs/` | 30 topic docs, ~10k lines | Most of them are stale. Trust levels are in `AGENTS.md` |
-| `www/webserver-v2.*` | An old v2 web frontend | Probably unused (`web_server: version 3, local: true`) |
+| `TODO.md` | The owner's list, reorganized 2026-11-14 | |
+| `docs/` | ~1.6k lines current + `docs/archive/` | Index and trust levels: `docs/README.md` |
+| `includes/wifi_scan.h` | Header for the "WiFi Scan" button lambda | |
+| `tests/` | Host-side unit tests (`task test`) | |
 | `shelly-scripts/airpump-sequence.js` | A script that runs **on the Shelly** | |
 | `Hardware/` | PCB, Gerber, BOM, Altium | Keep |
 | `flake.nix/.lock` | Nix devshell (ESPHome 2025.4.2) | Not used on this laptop. The owner uses it on other machines, so keep it |
-| `secrets.example.yaml` | Template | `wifi_bssid: ""` fails validation on 2025.4.2. Needs a MAC or the key removed |
-| ballast | `esptool_venv/` (452 files in git), `plantos-log-*.txt` ×4, `boot_logs.txt`, `wifi_scan.h`, `ezo_switch_helper.h` | Check whether the two headers are referenced |
+| `secrets.example.yaml` | Template (validates as shipped) | Lists some keys the YAML never reads |
 
 ## Components (lines = .cpp + .h)
 
@@ -35,7 +35,6 @@ Line numbers are approximate. Grep before you trust them.
 | `ezo_ph_uart` | 1.2k | EZO pH over UART (still has `delay()`) | yes |
 | `calendar_manager` | 0.7k | Day schedule from the JSON in YAML, day in NVS | yes |
 | `persistent_state_manager`, `wdt_manager`, `alert_service`, `i2c_scanner`, `sensor_filter`, `tds_sensor` | small | Support and sensors | yes |
-| `central_status_logger`, `ezo_ph`, `time_dummy`, `psm_checker`, `dummy_actuator_trigger`, `sensor_dummy` | | Dead (not referenced; `sensor_dummy` is only in `external_components`) | **no** |
 
 Python codegen per component: `components/<name>/__init__.py` (schema + `to_code`). Config keys
 reach C++ setters only through it. That is where any new config surface ends up.
@@ -62,7 +61,7 @@ second chamber with its own pH probe), but it is **not implemented**.
 - Flash **86.3 %** (1,583,438 / 1,835,008 B app partition). RAM 12.0 % (39 KB static).
 - **No `flash_size` is set**, so the default 4 MB layout applies. The board (Waveshare ESP32-C6-DEV-KIT-**N8**) has
   **8 MB**. A bigger app partition needs a USB flash (the partition table changes), so it can only be prepared now.
-- The `BLE-Shelly` branch (Jan 2026) already carries a `huge_app.csv` partition attempt.
+- The old `BLE-Shelly` branch is archived as tag `archive/BLE-Shelly`.
 - Web UI: ~82 entities in production, 10 sorting groups, embedded 2025.4 v3 frontend.
 
 ## Device facts

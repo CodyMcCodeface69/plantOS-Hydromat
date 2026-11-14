@@ -51,15 +51,15 @@ the decisions already taken. Tick steps off here and write the numbers and detai
 - [x] 1.4 `Taskfile.yml`: point `decode` and `IDFMON` at the project-local `.platformio`. Add `task test`.
 - [x] 1.5 `BLE-Shelly`: tag `archive/BLE-Shelly`, push the tag, delete the remote branch. Copy `huge_app.csv` into the
       notes for 2.7. Record in `LOG.md`.
-- [ ] 1.6 Docs: delete what is finished or contradicted by code (`MIGRATION_GUIDE.md`, `TODOFSMUNIFICATION.md`,
+- [x] 1.6 Docs: delete what is finished or contradicted by code (`MIGRATION_GUIDE.md`, `TODOFSMUNIFICATION.md`,
       `FSMUNIFICATIONPLAN.md`, `docs/fixes/*` condensed into one short note, stale performance analyses,
       `PINOUT_CHANGE.md`). Keep: `DESK_DISPLAY_FIRMWARE.md` (contract), `WEBUI_PERFORMANCE_CLEANUP_PLAN.md`,
       `MOTHERPLANT_CHAMBER_PLAN.md`, the Hetzner docs, the German control-logic docs and the CSV if they still match
       (else `docs/archive/`). `CHANGELOG.md`: keep, don't rewrite history. Fix the `PINOUT.md` header date.
-- [ ] 1.7 `TODO.md`: reorganize, don't delete. Drop done items and the `/home/cody` reference, keep the owner's open items
+- [x] 1.7 `TODO.md`: reorganize, don't delete. Drop done items and the `/home/cody` reference, keep the owner's open items
       in their wording, add a short "from the overhaul" section at the end.
 - [x] 1.8 Stale pin labels (DS18B20 "GPIO23" → GPIO3, old pump GPIOs in switch comments).
-- [ ] 1.9 Update `AGENTS.md` and `MAP.md` to the new tree. Check `git branch -a`.
+- [x] 1.9 Update `AGENTS.md` and `MAP.md` to the new tree. Check `git branch -a`.
 
 ## Phase 2: lean and fast (`02-lean-fast.md`)
 

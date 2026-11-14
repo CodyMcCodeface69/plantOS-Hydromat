@@ -40,3 +40,13 @@ Work is split across subagents with path ownership; only one agent builds at a t
 - Noted for later: the "WiFi Scan" button blocks the loop for seconds (candidate for the debug package);
   `secrets.example.yaml` lists keys the YAML never reads; `task reboot` posts to a possibly stale entity URL.
 - Running: host tests (0.3), docs cleanup (1.6/1.7), UI evaluation (4), config-level flash savings (2.1/2.7/2.8).
+
+## 2026-11-14: docs cleanup (1.6, 1.7, 1.9) and findings (Fable, subagents)
+- `docs/` 10,647 → 3,159 lines (1,626 current + archive). New: `docs/README.md` (index + trust), `docs/CONTROL_LOGIC.md`,
+  `docs/LESSONS.md`. `PINOUT.md` rewritten against the YAML (old max durations and "relay board" were wrong).
+  `TODO.md` 619 → 252 lines, open items kept in the owner's wording. `AGENTS.md`, `MAP.md`, `WEAKNESSES.md` updated.
+- **Findings, not fixed (owner questions parked):** EC dose formula inverted → every EC step doses the full calendar
+  amount; ASG soft-start never configured.
+- To fix with the controller work (2.4): `FSMINFO.md` says PH_MIXING 120 s but the code scales 30-600 s; stale comments
+  in `controller.cpp/.h` cite deleted or archived docs and `/home/cody/...`; `controller.h:952` comment contradicts the function.
+- For presets (3.3): pH dosing uses `getTankVolumeDelta()` (27.4 L), not the total volume.

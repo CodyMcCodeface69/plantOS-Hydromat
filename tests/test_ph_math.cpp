@@ -1,7 +1,7 @@
 // pH dosing math of the controller.
 // Real code under test: components/plantos_controller/controller.cpp
 //   calculateAcidDoseML, updatePhKFactor, calculatePhMixingDuration,
-//   calculateRobustPhAverage, isPhStable, handlePhCalculating, handlePhProcessing
+//   calculateRobustPhAverage, handlePhCalculating, handlePhProcessing
 #include "minitest.h"
 #include "fixture.h"
 
@@ -15,17 +15,17 @@ TEST(acid_dose, formula_with_production_tank) {
   ControllerFixture f;  // tank delta volume 27.4 L
   f.ctrl.ph_K_ = 0.07f;
   // (6.50 - 5.85) * 27.4 * 0.07 = 1.2467
-  CHECK_NEAR(f.ctrl.calculateAcidDoseML(6.5f, 6.0f), 1.2467f, 1e-3);
+  CHECK_NEAR(f.ctrl.calculateAcidDoseML(6.5f), 1.2467f, 1e-3);
   // (7.00 - 5.85) * 27.4 * 0.07 = 2.2057
-  CHECK_NEAR(f.ctrl.calculateAcidDoseML(7.0f, 6.0f), 2.2057f, 1e-3);
+  CHECK_NEAR(f.ctrl.calculateAcidDoseML(7.0f), 2.2057f, 1e-3);
 }
 
 TEST(acid_dose, zero_at_or_below_fixed_target_5_85) {
   ControllerFixture f;
   f.ctrl.ph_K_ = 0.07f;
-  CHECK_EQ(f.ctrl.calculateAcidDoseML(5.85f, 6.0f), 0.0f);
-  CHECK_EQ(f.ctrl.calculateAcidDoseML(5.5f, 6.0f), 0.0f);
-  CHECK_EQ(f.ctrl.calculateAcidDoseML(0.0f, 6.0f), 0.0f);
+  CHECK_EQ(f.ctrl.calculateAcidDoseML(5.85f), 0.0f);
+  CHECK_EQ(f.ctrl.calculateAcidDoseML(5.5f), 0.0f);
+  CHECK_EQ(f.ctrl.calculateAcidDoseML(0.0f), 0.0f);
 }
 
 TEST(acid_dose, tiny_delta_is_raised_to_minimum_dose) {
@@ -34,25 +34,15 @@ TEST(acid_dose, tiny_delta_is_raised_to_minimum_dose) {
   // (5.90 - 5.85) * 27.4 * 0.07 = 0.096 mL -> clamped UP to 0.5 mL.
   // Any pH above 5.85 therefore doses at least 0.5 mL; the "dose too small" branch in
   // handlePhCalculating (dose < 0.5) can only be hit by the 0.0 return.
-  CHECK_NEAR(f.ctrl.calculateAcidDoseML(5.9f, 6.0f), 0.5f, 1e-6);
-  CHECK_NEAR(f.ctrl.calculateAcidDoseML(5.86f, 6.0f), 0.5f, 1e-6);
+  CHECK_NEAR(f.ctrl.calculateAcidDoseML(5.9f), 0.5f, 1e-6);
+  CHECK_NEAR(f.ctrl.calculateAcidDoseML(5.86f), 0.5f, 1e-6);
 }
 
 TEST(acid_dose, clamped_to_maximum_10_ml) {
   ControllerFixture f;
   f.ctrl.ph_K_ = 0.5f;
   // (9.0 - 5.85) * 27.4 * 0.5 = 43.2 -> 10
-  CHECK_NEAR(f.ctrl.calculateAcidDoseML(9.0f, 6.0f), 10.0f, 1e-6);
-}
-
-TEST(acid_dose, second_parameter_is_ignored) {
-  ControllerFixture f;
-  f.ctrl.ph_K_ = 0.07f;
-  float a = f.ctrl.calculateAcidDoseML(6.5f, 5.0f);
-  float b = f.ctrl.calculateAcidDoseML(6.5f, 6.2f);
-  float c = f.ctrl.calculateAcidDoseML(6.5f, 9.0f);
-  CHECK_EQ(a, b);
-  CHECK_EQ(b, c);
+  CHECK_NEAR(f.ctrl.calculateAcidDoseML(9.0f), 10.0f, 1e-6);
 }
 
 TEST(acid_dose, uses_delta_volume_not_total_volume) {
@@ -61,14 +51,14 @@ TEST(acid_dose, uses_delta_volume_not_total_volume) {
   f.hal.tank_volume_delta = 20.0f;
   f.hal.total_tank_volume = 99.0f;
   // (6.85 - 5.85) * 20 * 0.1 = 2.0
-  CHECK_NEAR(f.ctrl.calculateAcidDoseML(6.85f, 6.0f), 2.0f, 1e-3);
+  CHECK_NEAR(f.ctrl.calculateAcidDoseML(6.85f), 2.0f, 1e-3);
 }
 
 TEST(acid_dose, without_hal_assumes_10_liters) {
   plantos_controller::PlantOSController ctrl;
   ctrl.ph_K_ = 0.1f;
   // (6.85 - 5.85) * 10 * 0.1 = 1.0
-  CHECK_NEAR(ctrl.calculateAcidDoseML(6.85f, 6.0f), 1.0f, 1e-3);
+  CHECK_NEAR(ctrl.calculateAcidDoseML(6.85f), 1.0f, 1e-3);
 }
 
 TEST(acid_dose, k_factor_defaults) {
@@ -188,7 +178,7 @@ TEST(ph_mixing, without_hal_assumes_10_liters) {
 }
 
 // ---------------------------------------------------------------------------
-// calculateRobustPhAverage (trimmed mean over ph_readings_) and isPhStable
+// calculateRobustPhAverage (trimmed mean over ph_readings_)
 // ---------------------------------------------------------------------------
 
 TEST(ph_average, empty_and_single) {
@@ -236,25 +226,6 @@ TEST(ph_average, does_not_modify_the_buffer) {
   f.ctrl.calculateRobustPhAverage();
   CHECK_EQ(f.ctrl.ph_readings_[0], 9.0f);
   CHECK_EQ(f.ctrl.ph_readings_.size(), 3u);
-}
-
-TEST(ph_stable, needs_three_readings) {
-  ControllerFixture f;
-  CHECK(!f.ctrl.isPhStable());
-  f.ctrl.ph_readings_ = {6.0f, 6.0f};
-  CHECK(!f.ctrl.isPhStable());
-  f.ctrl.ph_readings_ = {6.0f, 6.0f, 6.0f};
-  CHECK(f.ctrl.isPhStable());
-}
-
-TEST(ph_stable, only_last_three_within_0_1) {
-  ControllerFixture f;
-  f.ctrl.ph_readings_ = {9.0f, 3.0f, 6.00f, 6.05f, 6.08f};
-  CHECK(f.ctrl.isPhStable());
-  f.ctrl.ph_readings_ = {6.0f, 6.0f, 6.0f, 6.0f, 6.2f};
-  CHECK(!f.ctrl.isPhStable());
-  f.ctrl.ph_readings_ = {6.00f, 6.15f, 6.05f};
-  CHECK(!f.ctrl.isPhStable());
 }
 
 // ---------------------------------------------------------------------------

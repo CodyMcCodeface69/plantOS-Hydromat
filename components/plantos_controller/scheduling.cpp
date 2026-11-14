@@ -22,13 +22,13 @@ bool PlantOSController::isNightModeHours() const {
     // Priority: CalendarManager light schedule (if available) → YAML config fallback.
 
     if (!time_source_) {
-        ESP_LOGW(TAG, "Time source not configured - cannot determine night mode hours");
+        ESP_LOGD(TAG, "Night mode: no time source");
         return false;
     }
 
     auto now = time_source_->now();
     if (!now.is_valid()) {
-        ESP_LOGW(TAG, "NTP time not synchronized yet - cannot determine night mode hours");
+        ESP_LOGD(TAG, "Night mode: time not synced yet");
         return false;
     }
 
@@ -70,50 +70,6 @@ int32_t PlantOSController::getLocalDateOrdinal() {
     uint32_t d = now.day_of_month;
 
     return schedule_math::daysFromCivil(y, m, d);
-}
-
-uint8_t PlantOSController::getCurrentGrowDay() {
-    // Automatic day calculation if grow start date and time source are configured
-    if (grow_start_timestamp_ > 0 && time_source_ != nullptr) {
-        // Get current time from NTP
-        auto now = time_source_->now();
-
-        // Check if time is valid (NTP synchronized)
-        if (now.is_valid()) {
-            // Get current Unix timestamp
-            int64_t current_timestamp = now.timestamp;
-
-            // Calculate days elapsed since grow start
-            int32_t days_elapsed = schedule_math::growDaysElapsed(current_timestamp, grow_start_timestamp_);
-
-            // Handle negative elapsed time (clock not set or start date in future)
-            if (days_elapsed < 0) {
-                ESP_LOGW(TAG, "Grow start date is in the future or clock not synchronized - using day 1");
-                return 1;
-            }
-
-            // Calculate current day (1-120, wraps around)
-            uint8_t current_day = schedule_math::growDayFromElapsed(days_elapsed);
-
-            ESP_LOGD(TAG, "Auto-calculated grow day: %d (elapsed: %d days since start)",
-                     current_day, days_elapsed);
-
-            return current_day;
-        } else {
-            ESP_LOGW(TAG, "NTP time not synchronized yet - falling back to calendar day counter");
-        }
-    }
-
-    // Fallback: Use calendar manager's manual day counter (NVS-persisted)
-    if (calendar_manager_) {
-        uint8_t manual_day = calendar_manager_->get_current_day();
-        ESP_LOGD(TAG, "Using calendar manager day counter: %d", manual_day);
-        return manual_day;
-    }
-
-    // Ultimate fallback: Day 1
-    ESP_LOGW(TAG, "No grow start date or calendar manager - defaulting to day 1");
-    return 1;
 }
 
 // ============================================================================
@@ -162,52 +118,32 @@ bool PlantOSController::shouldTriggerAutoFeeding() {
     }
 
     // ========================================================================
-    // CHECK 6: Not already fed today
+    // CHECK 6: Not already fed today (local date, survives reboots via NVS)
     // ========================================================================
-    int64_t today = getCurrentDateTimestamp();
-    if (today == 0) {
-        ESP_LOGW(TAG, "[AUTO-FEEDING] NTP time unavailable - cannot check date");
+    int32_t today = getLocalDateOrdinal();
+    if (today <= 0) {
+        ESP_LOGD(TAG, "[AUTO-FEEDING] no valid time - cannot check date");
         return false;
     }
 
-    // Check in-memory cache first
-    if (last_auto_feed_date_ == today) {
-        return false;
-    }
-
-    // ========================================================================
-    // CHECK 7: Verify no NVS event for today (power cycle recovery)
-    // ========================================================================
-    if (psm_) {
-        char date_key[32];
-        snprintf(date_key, sizeof(date_key), "AUTOFEED_%lld", (long long)today);
-
-        esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-        if (strncmp(event.eventID, date_key, sizeof(event.eventID)) == 0) {
-            // Event exists - feeding already triggered today
-            ESP_LOGI(TAG, "[AUTO-FEEDING] Already fed today - cached from NVS");
-            last_auto_feed_date_ = today;  // Update cache
-            return false;
-        }
-    }
-
-    // All checks passed - trigger feeding
-    return true;
+    return today != lastAutoFeedDay();
 }
 
-int64_t PlantOSController::getCurrentDateTimestamp() {
-    // Use the LOCAL calendar date (timezone-adjusted) so the daily feeding limit
-    // rolls over at local midnight, consistent with the calendar day advance.
-    int32_t today_ordinal = getLocalDateOrdinal();
-
-    if (today_ordinal <= 0) {
-        ESP_LOGW(TAG, "[AUTO-FEEDING] NTP time unavailable");
-        return 0;
+int32_t PlantOSController::lastAutoFeedDay() {
+    if (last_auto_feed_day_ < 0) {
+        last_auto_feed_day_ = psm_ ? psm_->loadInt32(NVS_KEY_AUTO_FEED_DAY, 0) : 0;
     }
+    return last_auto_feed_day_;
+}
 
-    // Return a unique, stable per-local-day key (local days since epoch scaled to
-    // a seconds-granularity timestamp). Used only for equality + NVS key purposes.
-    return static_cast<int64_t>(today_ordinal) * 86400;
+void PlantOSController::markAutoFeedDay(int32_t day) {
+    if (day <= 0 || day == lastAutoFeedDay()) {
+        return;
+    }
+    last_auto_feed_day_ = day;
+    if (psm_) {
+        psm_->saveInt32(NVS_KEY_AUTO_FEED_DAY, day);
+    }
 }
 
 // ============================================================================
@@ -249,70 +185,47 @@ bool PlantOSController::shouldTriggerAutoReservoirChange() {
     }
 
     // ========================================================================
-    // CHECK 5: Not already done this week
+    // CHECK 5: Not already done this week (survives reboots via NVS)
     // ========================================================================
-    int64_t current_week = getCurrentWeekNumber();
+    int32_t current_week = getCurrentWeekNumber();
     if (current_week == 0) {
-        ESP_LOGW(TAG, "[AUTO-RES] NTP time unavailable - cannot check week");
+        ESP_LOGD(TAG, "[AUTO-RES] no valid time - cannot check week");
         return false;
     }
 
-    // Check in-memory cache first
-    if (last_auto_reservoir_change_week_ == current_week) {
+    if (current_week == lastAutoResWeek()) {
         return false;  // Already done this week
     }
 
-    // ========================================================================
-    // CHECK 6: Verify no NVS event for this week (power cycle recovery)
-    // ========================================================================
-    if (psm_) {
-        char week_key[32];
-        snprintf(week_key, sizeof(week_key), "AUTORES_%lld", (long long)current_week);
-
-        esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-        if (strncmp(event.eventID, week_key, sizeof(event.eventID)) == 0) {
-            // Event exists - reservoir change already triggered this week
-            ESP_LOGI(TAG, "[AUTO-RES] Already done this week - cached from NVS");
-            last_auto_reservoir_change_week_ = current_week;  // Update cache
-            return false;
-        }
-    }
-
-    // All checks passed - trigger reservoir change
-    ESP_LOGI(TAG, "[AUTO-RES] All conditions met - triggering reservoir change");
     return true;
 }
 
-int64_t PlantOSController::getCurrentWeekNumber() {
-    if (!hal_) {
-        return 0;
+int32_t PlantOSController::lastAutoResWeek() {
+    if (last_auto_res_week_ < 0) {
+        last_auto_res_week_ = psm_ ? psm_->loadInt32(NVS_KEY_AUTO_RES_WEEK, 0) : 0;
     }
+    return last_auto_res_week_;
+}
 
-    // Get current Unix timestamp
-    int64_t now = hal_->getCurrentTimestamp();
-
-    if (now == 0) {
-        ESP_LOGW(TAG, "[AUTO-RES] NTP time unavailable");
-        return 0;
+void PlantOSController::markAutoResWeek(int32_t week) {
+    if (week <= 0 || week == lastAutoResWeek()) {
+        return;
     }
+    last_auto_res_week_ = week;
+    if (psm_) {
+        psm_->saveInt32(NVS_KEY_AUTO_RES_WEEK, week);
+    }
+}
 
-    // Week number = whole weeks since the Unix epoch (UTC)
-    return schedule_math::weekNumber(now);
+int32_t PlantOSController::getCurrentWeekNumber() {
+    // Local calendar week (same local date source as the feed date and night mode)
+    int32_t today = getLocalDateOrdinal();
+    return today > 0 ? schedule_math::weekNumber(today) : 0;
 }
 
 uint8_t PlantOSController::getCurrentDayOfWeek() {
-    if (!hal_) {
-        return 255;
-    }
-
-    // Get current Unix timestamp
-    int64_t now = hal_->getCurrentTimestamp();
-
-    if (now == 0) {
-        return 255;
-    }
-
-    // 0=Sunday, 1=Monday, ..., 6=Saturday (UTC day)
-    return schedule_math::dayOfWeek(now);
+    // 0=Sunday, 1=Monday, ..., 6=Saturday (local day), 255 = no valid time
+    int32_t today = getLocalDateOrdinal();
+    return today > 0 ? schedule_math::dayOfWeek(today) : 255;
 }
 } // namespace plantos_controller

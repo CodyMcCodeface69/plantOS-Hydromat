@@ -30,10 +30,14 @@ All build output goes to `tests/build/` (git-ignored).
 | File | Real code under test |
 |---|---|
 | `test_calendar.cpp` | `CalendarManager`: JSON parse of the schedule from `plantOS.yaml`, lookup, defaults, mS→µS conversion, day counter + NVS, `sync_to_date` |
-| `test_ph_math.cpp` | `calculateAcidDoseML`, `updatePhKFactor`, `calculatePhMixingDuration`, `calculateRobustPhAverage`, `isPhStable`, `handlePhProcessing`, `handlePhCalculating` |
+| `test_ph_math.cpp` | `calculateAcidDoseML`, `updatePhKFactor`, `calculatePhMixingDuration`, `calculateRobustPhAverage`, `handlePhProcessing`, `handlePhCalculating` |
 | `test_ec_math.cpp` | `updateEcKFactor`, `handleEcProcessing`, `handleEcCalculating`, `handleEcFeeding`, `handleEcMeasuring`, `handleFeeding`, `startMotherNutrients` |
-| `test_time_logic.cpp` | `isNightModeHours`, `getLocalDateOrdinal`, `getCurrentGrowDay`, auto-feed and auto-reservoir triggers, the pH slot schedule and date sync in `handleIdle` |
-| `test_pure_math.cpp` | Free functions in `plantos_controller/dosing_math.*` and `schedule_math.*`, called directly: grow-light window (incl. wrap past midnight), night-hour window, `daysFromCivil`, grow day, week/weekday, pH check slots, acid dose, K-factor updates, mixing time, robust average, EC window/doses |
+| `test_time_logic.cpp` | `isNightModeHours`, `getLocalDateOrdinal`, auto-feed and auto-reservoir triggers, the pH slot schedule and date sync in `handleIdle` |
+| `test_pure_math.cpp` | Free functions in `plantos_controller/dosing_math.*` and `schedule_math.*`, called directly: grow-light window (incl. wrap past midnight), night-hour window, `daysFromCivil`, week/weekday, pH check slots, acid dose, K-factor updates, mixing time, robust average, EC window/doses |
+| `test_start_guards.cpp` | `start*()` and `canStart()`: state and hardware each start needs, the state it enters |
+| `test_ph_calibration.cpp` | `handlePhCalibrating` driven through all 3 points (command times and reading counts pinned), failures |
+| `test_water_ops.cpp` | `handleWaterFilling`, `handleWaterEmptying`, `handleFeedFilling` tick by tick: success, timeouts, refusals |
+| `test_idle_parts.cpp` | PSM hold check in IDLE/NIGHT, grow light schedule (`controlGrowLight`) |
 | `test_robust_averager.cpp` | `sensor_filter/RobustAverager.h` |
 | `test_safety_gate.cpp` | `ActuatorSafetyGate`: debounce, max duration, watchdog, interlock, ramping, cycling |
 
@@ -75,8 +79,8 @@ Not compiled: `plantos_hal/hal.cpp` (ESP-IDF HTTP, FreeRTOS), the sensor compone
 
 Limits to keep in mind: the host is 64-bit x86 and the device a 32-bit RISC-V; `float` math is
 the same IEEE single precision, but ArduinoJson's memory pool sizes differ, so "JSON too big for
-the pool" cannot be tested here. Function-local `static` variables in the controller
-(`handleIdle`, `handleEcFeeding`, `loop`) keep their value between tests.
+the pool" cannot be tested here. The controller has no function-local `static`
+state any more (moved to members on 2026-11-14), so every fixture starts clean.
 
 ## Add a test
 

@@ -35,9 +35,6 @@ float phMixingDurationRawMs(float volume_L);
 /// more than two readings), average the rest. Empty input gives 0.
 float robustAverage(const std::vector<float> &readings);
 
-/// True when there are at least three readings and the last three span <= threshold.
-bool lastThreeWithin(const std::vector<float> &readings, float threshold);
-
 /// Largest absolute difference between any two of three values.
 float maxPairwiseDiff(float a, float b, float c);
 

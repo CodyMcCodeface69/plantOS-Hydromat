@@ -54,7 +54,7 @@ LedBehaviorSystem::LedBehaviorSystem()
 
     // Initialize default behaviors for each state
     // These will be created on-demand in transitionToBehavior()
-    ESP_LOGI(TAG, "LED Behavior System initialized");
+    ESP_LOGD(TAG, "LED Behavior System initialized");
 }
 
 void LedBehaviorSystem::update(ControllerState state, uint32_t stateElapsed, plantos_hal::HAL* hal) {
@@ -106,112 +106,112 @@ void LedBehaviorSystem::transitionToBehavior(ControllerState newState) {
     switch (newState) {
         case ControllerState::INIT:
             newBehavior = std::make_unique<BootSequenceBehavior>();
-            ESP_LOGI(TAG, "LED: Boot Sequence (R→Y→G)");
+            ESP_LOGD(TAG, "LED: Boot Sequence (R→Y→G)");
             break;
 
         case ControllerState::IDLE:
             newBehavior = std::make_unique<SolidYellowBehavior>();
-            ESP_LOGI(TAG, "LED: Solid Yellow (Idle)");
+            ESP_LOGD(TAG, "LED: Solid Yellow (Idle)");
             break;
 
         case ControllerState::NIGHT:
             newBehavior = std::make_unique<SolidYellowBehavior>();
-            ESP_LOGI(TAG, "LED: Solid Yellow (Night Mode)");
+            ESP_LOGD(TAG, "LED: Solid Yellow (Night Mode)");
             break;
 
         case ControllerState::SHUTDOWN:
             newBehavior = std::make_unique<SolidYellowBehavior>();
-            ESP_LOGI(TAG, "LED: Solid Yellow (Shutdown)");
+            ESP_LOGD(TAG, "LED: Solid Yellow (Shutdown)");
             break;
 
         case ControllerState::PAUSE:
             newBehavior = std::make_unique<SolidOrangeBehavior>();
-            ESP_LOGI(TAG, "LED: Solid Orange (Pause)");
+            ESP_LOGD(TAG, "LED: Solid Orange (Pause)");
             break;
 
         case ControllerState::ERROR:
             newBehavior = std::make_unique<ErrorFlashBehavior>();
-            ESP_LOGI(TAG, "LED: Error Flash (Red)");
+            ESP_LOGD(TAG, "LED: Error Flash (Red)");
             break;
 
         case ControllerState::PH_PROCESSING:
             newBehavior = std::make_unique<YellowPulseBehavior>();
-            ESP_LOGI(TAG, "LED: Yellow Pulse (pH Processing)");
+            ESP_LOGD(TAG, "LED: Yellow Pulse (pH Processing)");
             break;
 
         case ControllerState::PH_MEASURING:
             newBehavior = std::make_unique<YellowPulseBehavior>();
-            ESP_LOGI(TAG, "LED: Yellow Pulse (pH Measuring)");
+            ESP_LOGD(TAG, "LED: Yellow Pulse (pH Measuring)");
             break;
 
         case ControllerState::PH_CALCULATING:
             newBehavior = std::make_unique<YellowFastBlinkBehavior>();
-            ESP_LOGI(TAG, "LED: Yellow Fast Blink (pH Calculating)");
+            ESP_LOGD(TAG, "LED: Yellow Fast Blink (pH Calculating)");
             break;
 
         case ControllerState::PH_INJECTING:
             newBehavior = std::make_unique<CyanPulseBehavior>();
-            ESP_LOGI(TAG, "LED: Cyan Pulse (pH Injecting)");
+            ESP_LOGD(TAG, "LED: Cyan Pulse (pH Injecting)");
             break;
 
         case ControllerState::PH_MIXING:
             newBehavior = std::make_unique<BluePulseBehavior>();
-            ESP_LOGI(TAG, "LED: Blue Pulse (pH Mixing)");
+            ESP_LOGD(TAG, "LED: Blue Pulse (pH Mixing)");
             break;
 
         case ControllerState::PH_CALIBRATING:
             newBehavior = std::make_unique<YellowFastBlinkBehavior>();
-            ESP_LOGI(TAG, "LED: Yellow Fast Blink (pH Calibrating)");
+            ESP_LOGD(TAG, "LED: Yellow Fast Blink (pH Calibrating)");
             break;
 
         case ControllerState::FEEDING:
             newBehavior = std::make_unique<OrangePulseBehavior>();
-            ESP_LOGI(TAG, "LED: Orange Pulse (Feeding)");
+            ESP_LOGD(TAG, "LED: Orange Pulse (Feeding)");
             break;
 
         case ControllerState::WATER_FILLING:
             newBehavior = std::make_unique<BlueSolidBehavior>();
-            ESP_LOGI(TAG, "LED: Blue Solid (Water Filling)");
+            ESP_LOGD(TAG, "LED: Blue Solid (Water Filling)");
             break;
 
         case ControllerState::WATER_EMPTYING:
             newBehavior = std::make_unique<PurplePulseBehavior>();
-            ESP_LOGI(TAG, "LED: Purple Pulse (Water Emptying)");
+            ESP_LOGD(TAG, "LED: Purple Pulse (Water Emptying)");
             break;
 
         case ControllerState::FEED_FILLING:
             newBehavior = std::make_unique<FeedFillingBehavior>();
-            ESP_LOGI(TAG, "LED: Blue Solid (Feed Filling)");
+            ESP_LOGD(TAG, "LED: Blue Solid (Feed Filling)");
             break;
 
         case ControllerState::EC_PROCESSING:
             newBehavior = std::make_unique<YellowPulseBehavior>();
-            ESP_LOGI(TAG, "LED: Yellow Pulse (EC Processing)");
+            ESP_LOGD(TAG, "LED: Yellow Pulse (EC Processing)");
             break;
 
         case ControllerState::EC_CALCULATING:
             newBehavior = std::make_unique<YellowFastBlinkBehavior>();
-            ESP_LOGI(TAG, "LED: Yellow Fast Blink (EC Calculating)");
+            ESP_LOGD(TAG, "LED: Yellow Fast Blink (EC Calculating)");
             break;
 
         case ControllerState::EC_FEEDING:
             newBehavior = std::make_unique<OrangePulseBehavior>();
-            ESP_LOGI(TAG, "LED: Orange Pulse (EC Feeding)");
+            ESP_LOGD(TAG, "LED: Orange Pulse (EC Feeding)");
             break;
 
         case ControllerState::EC_MIXING:
             newBehavior = std::make_unique<BluePulseBehavior>();
-            ESP_LOGI(TAG, "LED: Blue Pulse (EC Mixing)");
+            ESP_LOGD(TAG, "LED: Blue Pulse (EC Mixing)");
             break;
 
         case ControllerState::EC_MEASURING:
             newBehavior = std::make_unique<YellowPulseBehavior>();
-            ESP_LOGI(TAG, "LED: Yellow Pulse (EC Measuring)");
+            ESP_LOGD(TAG, "LED: Yellow Pulse (EC Measuring)");
             break;
 
         case ControllerState::EC_CALIBRATING:
             newBehavior = std::make_unique<YellowFastBlinkBehavior>();
-            ESP_LOGI(TAG, "LED: Yellow Fast Blink (EC Calibrating)");
+            ESP_LOGD(TAG, "LED: Yellow Fast Blink (EC Calibrating)");
             break;
 
         default:

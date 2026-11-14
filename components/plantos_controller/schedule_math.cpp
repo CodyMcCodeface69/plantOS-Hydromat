@@ -35,27 +35,13 @@ int32_t daysFromCivil(int32_t y, uint32_t m, uint32_t d) {
     return days;
 }
 
-int32_t growDaysElapsed(int64_t now_ts, int64_t grow_start_ts) {
-    int64_t seconds_elapsed = now_ts - grow_start_ts;
-    return static_cast<int32_t>(seconds_elapsed / 86400);  // 86400 seconds per day
+int32_t weekNumber(int32_t local_days) {
+    return local_days / 7;
 }
 
-uint8_t growDayFromElapsed(int32_t days_elapsed) {
-    return static_cast<uint8_t>((days_elapsed % 120) + 1);
-}
-
-int64_t weekNumber(int64_t timestamp) {
-    int64_t days_since_epoch = timestamp / 86400;
-    int64_t weeks_since_epoch = days_since_epoch / 7;
-
-    return weeks_since_epoch;
-}
-
-uint8_t dayOfWeek(int64_t timestamp) {
-    // Unix epoch (Jan 1, 1970) was a Thursday (day 4)
-    // (days_since_epoch + 4) % 7 gives: 0=Sunday, 1=Monday, ..., 6=Saturday
-    int64_t days_since_epoch = timestamp / 86400;
-    return (days_since_epoch + 4) % 7;
+uint8_t dayOfWeek(int32_t local_days) {
+    // 1970-01-01 was a Thursday (4): 0=Sunday, 1=Monday, ..., 6=Saturday
+    return static_cast<uint8_t>((local_days + 4) % 7);
 }
 
 PhCheckSlot phCheckDue(int64_t now_ts, int64_t last_check_ts, uint32_t seconds_since_midnight,

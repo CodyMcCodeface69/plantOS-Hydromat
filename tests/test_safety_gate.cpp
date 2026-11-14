@@ -334,11 +334,10 @@ TEST(gate_cycling, air_pump_normal_mode_waits_for_first_state_poll) {
   f.gate.updateActualState("AirPump", false);  // first poll: pump is off
   f.gate.enableCycling("AirPump", false);
   CHECK_EQ(f.hal.count("stop_sequence", "AirPump", true), 1);
-  // SUSPECT (minor): this path does not update the tracked state, so the gate still reports
-  // OFF until the next Shelly poll calls updateActualState().
-  CHECK(!f.gate.getState("AirPump"));
-
-  CHECK(f.gate.stopAirPumpSequence(true));  // the direct API does update tracking
+  // Fixed 2026-11-14: this path updates the tracked state at once (before: stale OFF until
+  // the next Shelly poll called updateActualState()).
   CHECK(f.gate.getState("AirPump"));
   CHECK(!f.gate.stopAirPumpSequence(true));  // debounced
+  f.gate.enableCycling("AirPump", false);    // already ON: no second HTTP command
+  CHECK_EQ(f.hal.count("stop_sequence", "AirPump", true), 1);
 }

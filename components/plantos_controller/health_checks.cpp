@@ -16,24 +16,6 @@ namespace plantos_controller {
 // Hardware detection and monitoring
 // ============================================================================
 
-void PlantOSController::checkHardwareStatus() {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED || !hal_) {
-        return;
-    }
-
-    // Check temperature sensor availability
-    if (!hal_->hasTemperature()) {
-        // Temperature sensor not configured - this is informational only
-        ESP_LOGD(TAG, "Temperature sensor not configured");
-    } else {
-        // Temperature sensor is configured - check if it's responding
-        // We'll detect failures when trying to use it during operations
-    }
-
-    // Water level sensors are checked during WATER_FILLING and WATER_EMPTYING operations
-    // We don't need to check them here since they're only used during those specific states
-}
-
 void PlantOSController::checkShellyHealth() {
     if (!hal_) {
         return;
@@ -61,7 +43,7 @@ void PlantOSController::checkShellyHealth() {
     uint32_t uptime = hal_->getShellyUptime();
 
     ESP_LOGD(TAG, "Shelly health status: %s (uptime: %us)",
-             reachable ? "ONLINE" : "OFFLINE", uptime);
+             reachable ? "ONLINE" : "OFFLINE", (unsigned)uptime);
 
     // Update CentralStatusLogger with result
     std::vector<ShellyDeviceInfo> devices;
@@ -103,7 +85,7 @@ void PlantOSController::checkTemperatureAlerts() {
         status_logger_.clearAlert("TEMP_HIGH");
         status_logger_.clearAlert("TEMP_LOW");
         ESP_LOGE(TAG, "[TEMP_ALERT] %s", msg);
-        temp_health_.recordFailure(hal_->getSystemTime());
+        temp_alert_active_ = true;
     } else if (temp > 28.0f) {
         char msg[64];
         snprintf(msg, sizeof(msg), "Water temp high: %.1f\xC2\xB0""C (warn: >28\xC2\xB0""C)", temp);
@@ -111,7 +93,7 @@ void PlantOSController::checkTemperatureAlerts() {
         status_logger_.clearAlert("TEMP_CRITICAL");
         status_logger_.clearAlert("TEMP_LOW");
         ESP_LOGW(TAG, "[TEMP_ALERT] %s", msg);
-        temp_health_.recordFailure(hal_->getSystemTime());
+        temp_alert_active_ = true;
     } else if (temp < 15.0f) {
         char msg[64];
         snprintf(msg, sizeof(msg), "Water temp low: %.1f\xC2\xB0""C (warn: <15\xC2\xB0""C)", temp);
@@ -119,15 +101,15 @@ void PlantOSController::checkTemperatureAlerts() {
         status_logger_.clearAlert("TEMP_CRITICAL");
         status_logger_.clearAlert("TEMP_HIGH");
         ESP_LOGW(TAG, "[TEMP_ALERT] %s", msg);
-        temp_health_.recordFailure(hal_->getSystemTime());
+        temp_alert_active_ = true;
     } else {
         status_logger_.clearAlert("TEMP_CRITICAL");
         status_logger_.clearAlert("TEMP_HIGH");
         status_logger_.clearAlert("TEMP_LOW");
-        if (!temp_health_.isOK()) {
+        if (temp_alert_active_) {
             ESP_LOGI(TAG, "[TEMP_ALERT] Temperature back in normal range: %.1f\xC2\xB0""C", temp);
         }
-        temp_health_.recordSuccess();
+        temp_alert_active_ = false;
     }
 }
 
@@ -145,7 +127,6 @@ void PlantOSController::checkSensorPlausibility() {
             char msg[80];
             snprintf(msg, sizeof(msg), "pH %.2f outside valid range [3.0-10.0] - sensor error?", ph);
             status_logger_.updateAlertStatus("PH_PLAUSIBILITY", msg);
-            ph_health_.recordFailure(now);
             ESP_LOGE(TAG, "[PLAUSIBILITY] %s", msg);
         } else {
             // Rate-of-change check: > 1.0 pH/min = likely sensor error
@@ -161,16 +142,13 @@ void PlantOSController::checkSensorPlausibility() {
                                  "pH change %.2f pH/min exceeds 1.0/min limit (%.2f→%.2f in %llds)",
                                  rate, last_ph_plausibility_value_, ph, (long long)dt_s);
                         status_logger_.updateAlertStatus("PH_PLAUSIBILITY", msg);
-                        ph_health_.recordFailure(now);
                         ESP_LOGW(TAG, "[PLAUSIBILITY] %s", msg);
                     } else {
                         status_logger_.clearAlert("PH_PLAUSIBILITY");
-                        ph_health_.recordSuccess();
                     }
                 }
             } else {
                 status_logger_.clearAlert("PH_PLAUSIBILITY");
-                ph_health_.recordSuccess();
             }
 
             // Update tracking values
@@ -189,7 +167,6 @@ void PlantOSController::checkSensorPlausibility() {
             char msg[80];
             snprintf(msg, sizeof(msg), "EC %.1f uS/cm outside valid range [0-5000] - sensor error?", ec);
             status_logger_.updateAlertStatus("EC_PLAUSIBILITY", msg);
-            ec_health_.recordFailure(now);
             ESP_LOGE(TAG, "[PLAUSIBILITY] %s", msg);
         } else {
             // Jump check: > 1000 µS/cm between consecutive 1-min checks = suspicious
@@ -201,11 +178,9 @@ void PlantOSController::checkSensorPlausibility() {
                              "EC jump %.1f uS/cm between checks (%.1f→%.1f) exceeds 1000 uS/cm limit",
                              jump, last_ec_plausibility_value_, ec);
                     status_logger_.updateAlertStatus("EC_PLAUSIBILITY", msg);
-                    ec_health_.recordFailure(now);
                     ESP_LOGW(TAG, "[PLAUSIBILITY] %s", msg);
                 } else {
                     status_logger_.clearAlert("EC_PLAUSIBILITY");
-                    ec_health_.recordSuccess();
                 }
             }
             last_ec_plausibility_value_ = ec;
@@ -265,48 +240,4 @@ void PlantOSController::checkCalibrationReminders() {
     }
 }
 
-// ============================================================================
-// Operation retry helpers
-// ============================================================================
-
-void PlantOSController::initOperationRetry(const std::string& operation_name, uint8_t max_retries) {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return;
-    }
-
-    retry_state_.reset(operation_name, max_retries);
-    ESP_LOGI(TAG, "Operation retry initialized: %s (max retries: %u)",
-             operation_name.c_str(), max_retries);
-}
-
-bool PlantOSController::canRetryOperation() {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return false;
-    }
-
-    return retry_state_.canRetry();
-}
-
-void PlantOSController::recordOperationStep(const std::string& step_name) {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return;
-    }
-
-    retry_state_.completed_steps.push_back(step_name);
-    ESP_LOGD(TAG, "Operation step completed: %s", step_name.c_str());
-}
-
-void PlantOSController::retryOperation() {
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return;
-    }
-
-    retry_state_.incrementRetry();
-
-    ESP_LOGW(TAG, "Retrying operation '%s': attempt %u/%u (backoff: %u ms)",
-             retry_state_.operation_name.c_str(),
-             retry_state_.retry_count + 1,
-             retry_state_.max_retries,
-             retry_state_.backoff_delay_ms);
-}
 } // namespace plantos_controller

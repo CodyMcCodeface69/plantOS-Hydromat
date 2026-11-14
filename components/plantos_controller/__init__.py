@@ -7,7 +7,6 @@ Phase 8: Full Controller FSM with PSM integration and CentralStatusLogger owners
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
-from datetime import datetime
 
 # Define namespaces
 plantos_controller_ns = cg.esphome_ns.namespace('plantos_controller')
@@ -66,7 +65,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_NIGHT_MODE_ENABLED, default=False): cv.boolean,
     cv.Optional(CONF_NIGHT_MODE_START_HOUR, default=22): cv.int_range(min=0, max=23),
     cv.Optional(CONF_NIGHT_MODE_END_HOUR, default=8): cv.int_range(min=0, max=23),
-    cv.Optional(CONF_ENHANCED_ERROR_HANDLING, default=False): cv.boolean,
+    cv.Optional(CONF_ENHANCED_ERROR_HANDLING, default=True): cv.boolean,  # ignored, always on
     cv.Optional(CONF_ALERT_SERVICE): cv.use_id(AlertService),
     cv.Optional(CONF_PH_K_FACTOR, default=0.25): cv.float_range(min=0.01, max=0.50),
 }).extend(cv.COMPONENT_SCHEMA)
@@ -99,18 +98,8 @@ async def to_code(config):
         time_source = await cg.get_variable(config[CONF_TIME_SOURCE])
         cg.add(var.setTimeSource(time_source))
 
-    # Configure grow start date (optional, enables automatic day calculation)
-    if CONF_GROW_START_DATE in config:
-        # Parse date string (YYYY-MM-DD format) to Unix timestamp
-        date_str = config[CONF_GROW_START_DATE]
-        try:
-            # Parse YYYY-MM-DD format
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            # Get timestamp (seconds since epoch at midnight UTC)
-            timestamp = int(dt.timestamp())
-            cg.add(var.setGrowStartDate(timestamp))
-        except ValueError as e:
-            raise cv.Invalid(f"Invalid date format '{date_str}'. Use YYYY-MM-DD format (e.g., '2025-12-30')")
+    # grow_start_date: accepted for config compatibility only. The grow day comes from the
+    # calendar's NVS day counter, advanced at local midnight (CalendarManager::sync_to_date).
 
     # Configure status logger settings
     cg.add(var.configureStatusLogger(
@@ -127,9 +116,8 @@ async def to_code(config):
         config[CONF_NIGHT_MODE_END_HOUR]
     ))
 
-    # Enable enhanced error handling compile flag if configured
-    if config[CONF_ENHANCED_ERROR_HANDLING]:
-        cg.add_define("PLANTOS_ENHANCED_ERROR_HANDLING")
+    # enhanced_error_handling: accepted for config compatibility only. The retry / duration
+    # adaptation / alert-context path is always compiled in (production ran with `true`).
 
     # Inject AlertService dependency (optional)
     if CONF_ALERT_SERVICE in config:

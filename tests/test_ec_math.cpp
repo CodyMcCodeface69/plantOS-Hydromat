@@ -123,9 +123,9 @@ TEST(ec_processing, multiplier_scales_target_but_not_tolerance) {
 TEST(ec_processing, multiplier_setter_clamps_to_0_1_and_2_0) {
   ControllerFixture f;
   f.ctrl.setEcTargetMultiplier(5.0f);
-  CHECK_NEAR(f.ctrl.getEcTargetMultiplier(), 2.0f, 1e-6);
+  CHECK_NEAR(f.ctrl.ec_target_multiplier_, 2.0f, 1e-6);
   f.ctrl.setEcTargetMultiplier(0.0f);
-  CHECK_NEAR(f.ctrl.getEcTargetMultiplier(), 0.1f, 1e-6);
+  CHECK_NEAR(f.ctrl.ec_target_multiplier_, 0.1f, 1e-6);
 }
 
 TEST(ec_processing, skipped_without_sensor_calendar_or_target) {

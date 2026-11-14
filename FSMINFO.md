@@ -219,7 +219,9 @@ The PlantOS Controller implements a unified Finite State Machine (FSM) with 16 s
      │  - Prompt user (10s) │
      │  - 5 batches × 20    │
      │    readings (1/sec)  │
-     │  - Wait 30s between  │
+     │  - back to back (the │
+     │    30s wait between  │
+     │    batches never ran)│
      │  - Verify stability  │
      │    (±0.1 pH)         │
      │  - Send calib cmd    │
@@ -507,7 +509,8 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | AUTOMATIC TRIGGER         | PRECONDITION       | TRANSITION TO        | DESCRIPTION |
 |---------------------------|--------------------|----------------------|-------------|
 | Every 2 hours (in IDLE)    | System in IDLE<br>**Auto pH correction enabled** (switch 04_10)<br>**Not in night mode hours** | PH_PROCESSING        | Periodic pH monitoring (**NOT triggered in NIGHT or when night mode hours are active**)<br>Skipped silently when 04_10 switch is OFF or 22:00–09:00 |
-| **Automatic Feeding** ⚡   | **Water level LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)**<br>System in IDLE<br>Auto-feeding enabled (switch **04_11**)<br>NOT in NIGHT/SHUTDOWN/PAUSE<br>NOT already fed today (NVS check) | **FEED_FILLING → FEEDING → EC_FEEDING** | **Once-per-day automatic feeding when water reaches LOW level**<br>Stores date to NVS: `AUTOFEED_<unix_timestamp>`<br>Prevents duplicate feeds after power cycles<br>Resets at midnight UTC (new calendar day)<br>Toggle via Web UI switch: **04_11_Auto EC/Feeding Correction** |
+| **Automatic Feeding** ⚡   | **Water level LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)**<br>System in IDLE<br>Auto-feeding enabled (switch **04_11**)<br>NOT in NIGHT/SHUTDOWN/PAUSE<br>NOT already fed today (NVS check) | **FEED_FILLING → FEEDING → EC_FEEDING** | **Once-per-day automatic feeding when water reaches LOW level**<br>Stores the local date (days since 1970-01-01) in its own NVS key `AutoFeedDay` (int32, written only when it changes)<br>Prevents duplicate feeds after power cycles<br>Resets at local midnight (same date as the calendar day advance)<br>Toggle via Web UI switch: **04_11_Auto EC/Feeding Correction** |
+| Auto reservoir change (weekly) | System in IDLE<br>Auto reservoir change enabled (switch)<br>Not in night mode hours<br>Local weekday == configured day (0=Sun..6=Sat)<br>Not already done this local week (NVS `AutoResWeek`) | WATER_EMPTYING → FEED_FILLING → FEEDING → pH | Weekday and week index come from the LOCAL date (`getLocalDateOrdinal()`, same as night mode and the feed date; UTC-based until 2026-11-14). The week index is `local_days / 7` (rolls over on Thursdays). The week is stored in its own NVS key `AutoResWeek` (int32, written only when it changes) |
 | Night mode hours start     | IDLE + night mode enabled + current hour in range | NIGHT | Automatic transition to night mode |
 | Night mode hours end       | NIGHT + (night mode disabled OR hour out of range) | IDLE | Automatic transition back to idle |
 | PSM recovery check         | Boot from INIT     | SHUTDOWN or PAUSE    | Restore persisted state after power loss |
@@ -611,11 +614,13 @@ Sent to pH sensor before all critical readings:
 ## 9. Automatic Feeding Daily Limit ⚡
 **Prevents excessive feeding through NVS-backed daily tracking**:
 - **Trigger Condition**: Water level reaches LOW state (HIGH=OFF, LOW=OFF, EMPTY=ON)
-- **Daily Limit**: Maximum 1 automatic feed per calendar day (midnight UTC to midnight UTC)
-- **NVS Tracking**: Stores date as `AUTOFEED_<unix_timestamp>` event in persistent storage
-- **Power Cycle Recovery**: After power loss, checks NVS for today's feed event to prevent duplicates
-- **In-Memory Cache**: Tracks `last_auto_feed_date_` to avoid repeated NVS reads
-- **Time Source Required**: Needs NTP synchronization to calculate current date (Unix timestamp / 86400)
+- **Daily Limit**: Maximum 1 automatic feed per local calendar day (local midnight to local midnight)
+- **NVS Tracking**: Stores the local date ordinal (days since 1970-01-01) under the NVS key `AutoFeedDay` (int32).
+  It is separate from the single PSM event slot, so the `FEED_OPERATION` event that `startFeed()` logs does not
+  erase it. Written only when the day changes (at most once a day). Until 2026-11-14 the marker was an
+  `AUTOFEED_<ts>` PSM event that `startFeed()` overwrote at once, so a reboot on a fed day could feed twice.
+- **Power Cycle Recovery**: `last_auto_feed_day_` is read from NVS on the first trigger check after boot
+- **Time Source Required**: Needs NTP synchronization to know the local date (`getLocalDateOrdinal()`)
 - **Blocked States**: NIGHT, SHUTDOWN, PAUSE, ERROR states prevent automatic feeding
 - **Web UI Control**: Switch "04_11_Auto EC/Feeding Correction" (default: ON, persisted to NVS)
 - **Safety**: Prevents overfeeding if water level fluctuates near LOW threshold multiple times per day

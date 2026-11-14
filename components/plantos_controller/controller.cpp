@@ -8,6 +8,7 @@
 #include "esphome/components/alert_service/alert_service.h"
 #include <algorithm> // for std::sort, std::min, std::max
 #include <cmath>    // for std::sqrt
+#include <cstring>  // for strcmp
 
 // PlantOS controller core: setup(), loop(), FSM dispatch, transitionTo(), the public API and the
 // INIT / IDLE / NIGHT / SHUTDOWN / PAUSE / ERROR handlers.
@@ -35,8 +36,6 @@ PlantOSController::PlantOSController() {
 // ============================================================================
 
 void PlantOSController::setup() {
-    ESP_LOGI(TAG, "PlantOS Unified Controller initializing...");
-
     // Initialize status logger
     status_logger_.begin();
 
@@ -51,38 +50,29 @@ void PlantOSController::setup() {
     }
 
     if (psm_) {
-        ESP_LOGI(TAG, "PSM configured - State persistence enabled");
-
         // Load auto-feeding state from NVS
         auto_feeding_enabled_ = psm_->loadState(NVS_KEY_AUTO_FEED_ENABLE, true);
-        ESP_LOGI(TAG, "Auto-feeding: %s", auto_feeding_enabled_ ? "ENABLED" : "DISABLED");
 
         // Load auto-fill state from NVS (default OFF - safer)
         auto_fill_enabled_ = psm_->loadState(NVS_KEY_AUTO_FILL_ENABLE, false);
-        ESP_LOGI(TAG, "Auto-fill: %s", auto_fill_enabled_ ? "ENABLED" : "DISABLED");
 
         // Load auto pH correction state from NVS (default ON)
         auto_ph_correction_enabled_ = psm_->loadState(NVS_KEY_AUTO_PH_CORR, true);
-        ESP_LOGI(TAG, "Auto pH correction: %s", auto_ph_correction_enabled_ ? "ENABLED" : "DISABLED");
 
         // Load adaptive pH K-factor from NVS
         ph_K_ = psm_->loadFloat(NVS_KEY_PH_K, 0.07f);
-        ESP_LOGI(TAG, "pH K-factor loaded from NVS: %.4f", ph_K_);
 
         // Load adaptive EC K-factor from NVS
         ec_K_feed_ = psm_->loadFloat(NVS_KEY_EC_K, 0.00015f);
-        ESP_LOGI(TAG, "EC K-factor loaded from NVS: %.4f", ec_K_feed_);
-
-        // Initialize last feed date (will be loaded from NVS on first check)
-        last_auto_feed_date_ = 0;
 
         // Load calibration timestamps from NVS (Phase 7)
         last_ph_calibration_ts_ = (int64_t)psm_->loadInt32(NVS_KEY_PH_CALIB_TS, 0);
         last_ec_calibration_ts_ = (int64_t)psm_->loadInt32(NVS_KEY_EC_CALIB_TS, 0);
-        ESP_LOGI(TAG, "pH last calibrated: %lld s, EC last calibrated: %lld s",
+        ESP_LOGI(TAG, "NVS: auto feed=%d fill=%d pH=%d, pH K=%.4f, EC K=%.6f, calibrated pH=%lld EC=%lld",
+                 auto_feeding_enabled_, auto_fill_enabled_, auto_ph_correction_enabled_, ph_K_, ec_K_feed_,
                  (long long)last_ph_calibration_ts_, (long long)last_ec_calibration_ts_);
     } else {
-        ESP_LOGW(TAG, "PSM not configured - State persistence disabled");
+        ESP_LOGW(TAG, "No PSM - state persistence disabled");
     }
 
     // Register temperature change callback (ISR-safe - no logging in callback!)
@@ -95,33 +85,21 @@ void PlantOSController::setup() {
             last_temperature_ = temp;
             temperature_changed_ = true;
         });
-        ESP_LOGI(TAG, "Temperature sensor callback registered (ISR-safe)");
     } else {
-        ESP_LOGW(TAG, "Temperature sensor not available - temperature compensation disabled");
+        ESP_LOGW(TAG, "No temperature sensor - pH temperature compensation off");
     }
 
     // Initialize periodic pH check timer
     last_ph_check_time_ = esphome::millis();
     if (hal_->hasTime()) {
         last_ph_check_timestamp_ = hal_->getCurrentTimestamp();
-        ESP_LOGI(TAG, "Time source available - using clock-based pH scheduling");
     } else {
         last_ph_check_timestamp_ = 0;
-        ESP_LOGW(TAG, "No time source - using fallback boot-time based pH scheduling");
     }
-
-    uint32_t ph_interval_hours = hal_->get_ph_reading_interval() / 3600000;  // Convert ms to hours
-    uint32_t ph_interval_days = ph_interval_hours / 24;
-
-    if (ph_interval_days > 0) {
-        ESP_LOGI(TAG, "Periodic pH monitoring: every %u day%s (%u hours)",
-                 ph_interval_days, ph_interval_days > 1 ? "s" : "", ph_interval_hours);
-    } else {
-        ESP_LOGI(TAG, "Periodic pH monitoring: every %u hours", ph_interval_hours);
-    }
+    ESP_LOGI(TAG, "Periodic pH check every %u h (%s)", (unsigned)(hal_->get_ph_reading_interval() / 3600000),
+             hal_->hasTime() ? "clock slots" : "no clock yet: uptime based");
 
     // Always start in INIT state for boot sequence
-    ESP_LOGI(TAG, "Controller initialized - Starting INIT boot sequence");
     transitionTo(ControllerState::INIT);
 }
 
@@ -140,11 +118,41 @@ void PlantOSController::loop() {
     // calling ESP_LOGI from ISR which causes alignment crashes on RISC-V.
     if (temperature_changed_) {
         temperature_changed_ = false;  // Clear flag
-        if (status_logger_.isVerboseMode()) {
-            ESP_LOGI(TAG, "Temperature changed: %.1f°C", last_temperature_);
-        }
+        ESP_LOGD(TAG, "Temperature changed: %.1f C", last_temperature_);
     }
 
+    updateStatusReport();
+
+    // Call state-specific handler
+    switch (current_state_) {
+        case ControllerState::INIT: handleInit(); break;
+        case ControllerState::IDLE: handleIdle(); break;
+        case ControllerState::NIGHT: handleNight(); break;
+        case ControllerState::SHUTDOWN: handleShutdown(); break;
+        case ControllerState::PAUSE: handlePause(); break;
+        case ControllerState::ERROR: handleError(); break;
+        case ControllerState::PH_PROCESSING: handlePhProcessing(); break;
+        case ControllerState::PH_MEASURING: handlePhMeasuring(); break;
+        case ControllerState::PH_CALCULATING: handlePhCalculating(); break;
+        case ControllerState::PH_INJECTING: handlePhInjecting(); break;
+        case ControllerState::PH_MIXING: handlePhMixing(); break;
+        case ControllerState::PH_CALIBRATING: handlePhCalibrating(); break;
+        case ControllerState::FEEDING: handleFeeding(); break;
+        case ControllerState::WATER_FILLING: handleWaterFilling(); break;
+        case ControllerState::WATER_EMPTYING: handleWaterEmptying(); break;
+        case ControllerState::FEED_FILLING: handleFeedFilling(); break;
+        case ControllerState::EC_PROCESSING: handleEcProcessing(); break;
+        case ControllerState::EC_CALCULATING: handleEcCalculating(); break;
+        case ControllerState::EC_FEEDING: handleEcFeeding(); break;
+        case ControllerState::EC_MIXING: handleEcMixing(); break;
+        case ControllerState::EC_MEASURING: handleEcMeasuring(); break;
+        case ControllerState::EC_CALIBRATING: handleEcCalibrating(); break;
+    }
+
+    controlGrowLight();
+}
+
+void PlantOSController::updateStatusReport() {
     // Check if we should print periodic status report (or one was requested on demand)
     bool forced_report = status_report_requested_;
     if (status_logger_.shouldPrintStatusReport() || forced_report) {
@@ -293,98 +301,9 @@ void PlantOSController::loop() {
             status_logger_.logWaterLevelStatus(false, false, false, false);  // Sensors offline
         }
     }
+}
 
-    // Call state-specific handler
-    switch (current_state_) {
-        case ControllerState::INIT:
-            handleInit();
-            break;
-
-        case ControllerState::IDLE:
-            handleIdle();
-            break;
-
-        case ControllerState::NIGHT:
-            handleNight();
-            break;
-
-        case ControllerState::SHUTDOWN:
-            handleShutdown();
-            break;
-
-        case ControllerState::PAUSE:
-            handlePause();
-            break;
-
-        case ControllerState::ERROR:
-            handleError();
-            break;
-
-        case ControllerState::PH_PROCESSING:
-            handlePhProcessing();
-            break;
-
-        case ControllerState::PH_MEASURING:
-            handlePhMeasuring();
-            break;
-
-        case ControllerState::PH_CALCULATING:
-            handlePhCalculating();
-            break;
-
-        case ControllerState::PH_INJECTING:
-            handlePhInjecting();
-            break;
-
-        case ControllerState::PH_MIXING:
-            handlePhMixing();
-            break;
-
-        case ControllerState::PH_CALIBRATING:
-            handlePhCalibrating();
-            break;
-
-        case ControllerState::FEEDING:
-            handleFeeding();
-            break;
-
-        case ControllerState::WATER_FILLING:
-            handleWaterFilling();
-            break;
-
-        case ControllerState::WATER_EMPTYING:
-            handleWaterEmptying();
-            break;
-
-        case ControllerState::FEED_FILLING:
-            handleFeedFilling();
-            break;
-
-        case ControllerState::EC_PROCESSING:
-            handleEcProcessing();
-            break;
-
-        case ControllerState::EC_CALCULATING:
-            handleEcCalculating();
-            break;
-
-        case ControllerState::EC_FEEDING:
-            handleEcFeeding();
-            break;
-
-        case ControllerState::EC_MIXING:
-            handleEcMixing();
-            break;
-
-        case ControllerState::EC_MEASURING:
-            handleEcMeasuring();
-            break;
-
-        case ControllerState::EC_CALIBRATING:
-            handleEcCalibrating();
-            break;
-    }
-
+void PlantOSController::controlGrowLight() {
     // ========================================================================
     // Time-based Light Control
     // ========================================================================
@@ -411,28 +330,19 @@ void PlantOSController::loop() {
             bool should_be_on = schedule_math::lightShouldBeOn(current_minutes, schedule.light_on_time,
                                                                schedule.light_off_time);
 
-            // Track previous state to avoid redundant commands
-            static bool previous_light_state = false;
-            static bool first_run = true;
-
             // Update light state if changed (or on first run)
             // Uses requestPump to go through ASG for proper tracking
-            if (first_run || previous_light_state != should_be_on) {
+            if (grow_light_first_run_ || grow_light_on_ != should_be_on) {
+                ESP_LOGI(TAG, "Grow light schedule: %s (day %d, %02d:%02d-%02d:%02d)", should_be_on ? "ON" : "OFF",
+                         schedule.day_number, schedule.light_on_time / 60, schedule.light_on_time % 60,
+                         schedule.light_off_time / 60, schedule.light_off_time % 60);
                 if (should_be_on) {
-                    ESP_LOGI(TAG, "Grow light schedule: Turning ON (Day %d, Schedule: %02d:%02d ON / %02d:%02d OFF)",
-                             schedule.day_number,
-                             schedule.light_on_time / 60, schedule.light_on_time % 60,
-                             schedule.light_off_time / 60, schedule.light_off_time % 60);
                     requestPump("GrowLight", true, 0);  // 0 = no duration limit
                 } else {
-                    ESP_LOGI(TAG, "Grow light schedule: Turning OFF (Day %d, Schedule: %02d:%02d ON / %02d:%02d OFF)",
-                             schedule.day_number,
-                             schedule.light_on_time / 60, schedule.light_on_time % 60,
-                             schedule.light_off_time / 60, schedule.light_off_time % 60);
                     requestPump("GrowLight", false);
                 }
-                previous_light_state = should_be_on;
-                first_run = false;
+                grow_light_on_ = should_be_on;
+                grow_light_first_run_ = false;
             }
         }
     }
@@ -452,8 +362,6 @@ void PlantOSController::handleInit() {
     // We check here (not in setup()) because PSM might initialize after controller
     if (elapsed < 100 && !boot_restore_pending_) {
         if (psm_) {
-            ESP_LOGI(TAG, "Checking PSM for persisted state...");
-
             // Check if we were in SHUTDOWN or PAUSE state before power loss
             if (psm_->hasEvent()) {
                 esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
@@ -462,40 +370,37 @@ void PlantOSController::handleInit() {
                 // Check if event ID is non-empty (not a cleared event)
                 if (!eventID.empty()) {
                     if (eventID == "STATE_SHUTDOWN") {
-                        ESP_LOGW(TAG, "RECOVERY: SHUTDOWN state found in PSM (age: %lld sec) - will restore after INIT",
-                                 psm_->getEventAge());
+                        ESP_LOGW(TAG, "Recovery: SHUTDOWN in PSM (age %lld s), restoring after INIT",
+                                 (long long)psm_->getEventAge());
                         boot_restore_state_ = ControllerState::SHUTDOWN;
                         boot_restore_pending_ = true;
                     } else if (eventID == "STATE_PAUSE") {
-                        ESP_LOGW(TAG, "RECOVERY: PAUSE state found in PSM (age: %lld sec) - will restore after INIT",
-                                 psm_->getEventAge());
+                        ESP_LOGW(TAG, "Recovery: PAUSE in PSM (age %lld s), restoring after INIT",
+                                 (long long)psm_->getEventAge());
                         boot_restore_state_ = ControllerState::PAUSE;
                         boot_restore_pending_ = true;
                     } else if (eventID == "WATER_FILLING") {
-                        ESP_LOGW(TAG, "RECOVERY: Interrupted WATER_FILLING operation found (age: %lld sec)", psm_->getEventAge());
-                        ESP_LOGW(TAG, "RECOVERY: Force-closing water valve to prevent overflow");
+                        ESP_LOGW(TAG, "Recovery: WATER_FILLING interrupted (age %lld s), closing water valve, PSM cleared",
+                                 (long long)psm_->getEventAge());
                         // Close valve via SafetyGate
                         if (safety_gate_) {
                             safety_gate_->executeCommand(WATER_VALVE, false, 0);
                         }
                         // Clear PSM event
                         psm_->clearEvent();
-                        ESP_LOGI(TAG, "RECOVERY: Water valve closed, PSM event cleared");
                     } else if (eventID == "WATER_EMPTYING") {
-                        ESP_LOGW(TAG, "RECOVERY: Interrupted WATER_EMPTYING operation found (age: %lld sec)", psm_->getEventAge());
-                        ESP_LOGW(TAG, "RECOVERY: Force-stopping wastewater pump");
+                        ESP_LOGW(TAG, "Recovery: WATER_EMPTYING interrupted (age %lld s), stopping wastewater pump, PSM cleared",
+                                 (long long)psm_->getEventAge());
                         // Stop pump via SafetyGate
                         if (safety_gate_) {
                             safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
                         }
                         // Clear PSM event
                         psm_->clearEvent();
-                        ESP_LOGI(TAG, "RECOVERY: Wastewater pump stopped, PSM event cleared");
                     } else {
                         // Some other operation was interrupted - log warning
-                        ESP_LOGW(TAG, "RECOVERY: Interrupted operation found: %s (status: %d, age: %lld sec)",
-                                 eventID.c_str(), event.status, psm_->getEventAge());
-                        ESP_LOGW(TAG, "Operation was likely interrupted by power loss - check if recovery needed");
+                        ESP_LOGW(TAG, "Recovery: %s interrupted (status %d, age %lld s), no automatic action",
+                                 eventID.c_str(), event.status, (long long)psm_->getEventAge());
                         if (alert_service_) {
                             alert_service_->alert(alert_service::AlertLevel::WARNING,
                                 "Operation interrupted",
@@ -507,7 +412,7 @@ void PlantOSController::handleInit() {
                     ESP_LOGD(TAG, "PSM event is empty (cleared) - no restoration needed");
                 }
             } else {
-                ESP_LOGI(TAG, "No PSM event found - clean boot");
+                ESP_LOGD(TAG, "No PSM event - clean boot");
             }
         }
     }
@@ -522,33 +427,17 @@ void PlantOSController::handleInit() {
         uint32_t now = hal_->getSystemTime();
 
         last_sensor_health_check_time_ = now;
-        ESP_LOGI(TAG, "BOOT: Cooldowns initialized");
 
-        // Boot sensor check - log all available sensor readings
-        ESP_LOGI(TAG, "BOOT SENSOR CHECK:");
-        if (hal_->hasPhValue()) {
-            ESP_LOGI(TAG, "  pH        : %.2f", hal_->readPH());
-        } else {
-            ESP_LOGW(TAG, "  pH        : NOT AVAILABLE");
-        }
-        if (hal_->hasECValue()) {
-            ESP_LOGI(TAG, "  EC        : %.1f uS/cm (%.3f mS/cm)", hal_->readEC(), hal_->readEC() / 1000.0f);
-        } else {
-            ESP_LOGW(TAG, "  EC        : NOT AVAILABLE");
-        }
-        if (hal_->hasTemperature()) {
-            ESP_LOGI(TAG, "  Temp      : %.1f\xC2\xB0""C", hal_->readTemperature());
-        } else {
-            ESP_LOGW(TAG, "  Temp      : NOT AVAILABLE");
-        }
+        // Boot sensor check: one line, "-" = not available
+        char ph_s[8] = "-", ec_s[10] = "-", t_s[8] = "-", lvl_s[8] = "-";
+        if (hal_->hasPhValue()) snprintf(ph_s, sizeof(ph_s), "%.2f", hal_->readPH());
+        if (hal_->hasECValue()) snprintf(ec_s, sizeof(ec_s), "%.0f", hal_->readEC());
+        if (hal_->hasTemperature()) snprintf(t_s, sizeof(t_s), "%.1f", hal_->readTemperature());
         if (hal_->hasWaterLevelSensors()) {
-            ESP_LOGI(TAG, "  WaterLevel: HIGH=%s LOW=%s EMPTY=%s",
-                     hal_->readWaterLevelHigh() ? "ON" : "off",
-                     hal_->readWaterLevelLow()  ? "ON" : "off",
-                     hal_->readWaterLevelEmpty() ? "ON" : "off");
-        } else {
-            ESP_LOGW(TAG, "  WaterLevel: NOT CONFIGURED");
+            snprintf(lvl_s, sizeof(lvl_s), "%d%d%d", hal_->readWaterLevelHigh() ? 1 : 0,
+                     hal_->readWaterLevelLow() ? 1 : 0, hal_->readWaterLevelEmpty() ? 1 : 0);
         }
+        ESP_LOGI(TAG, "Boot sensors: pH %s, EC %s uS/cm, water %s C, level H/L/E %s", ph_s, ec_s, t_s, lvl_s);
 
         // Reboot notification via AlertService
         if (alert_service_) {
@@ -559,14 +448,11 @@ void PlantOSController::handleInit() {
     }
 
     if (elapsed >= INIT_DURATION) {
-        ESP_LOGI(TAG, "Boot sequence complete");
-
         // Check if we need to restore a persisted state from PSM
         if (boot_restore_pending_) {
             boot_restore_pending_ = false;
 
             if (boot_restore_state_ == ControllerState::SHUTDOWN) {
-                ESP_LOGW(TAG, "RECOVERY: Restoring SHUTDOWN state from power loss");
                 if (alert_service_) {
                     alert_service_->alert(alert_service::AlertLevel::WARNING,
                         "State restored: SHUTDOWN",
@@ -574,7 +460,6 @@ void PlantOSController::handleInit() {
                 }
                 transitionTo(ControllerState::SHUTDOWN);
             } else if (boot_restore_state_ == ControllerState::PAUSE) {
-                ESP_LOGW(TAG, "RECOVERY: Restoring PAUSE state from power loss");
                 if (alert_service_) {
                     alert_service_->alert(alert_service::AlertLevel::WARNING,
                         "State restored: PAUSE",
@@ -592,45 +477,33 @@ void PlantOSController::handleInit() {
     }
 }
 
-void PlantOSController::handleIdle() {
-    // Breathing green - waiting for commands
-    // This is the default ready state
-
-    uint32_t elapsed = getStateElapsed();
-
-    // Periodically check PSM for SHUTDOWN or PAUSE states every 5 seconds
-    // This handles cases where:
-    // 1. State was set while system was running
-    // 2. State restoration from INIT failed due to timing issues
-    // 3. Component initialization order caused PSM to be unavailable during INIT
-    static uint32_t last_psm_check = 0;
-    uint32_t now = hal_->getSystemTime();
-
-    if (now - last_psm_check >= 5000) {  // Check every 5 seconds
-        last_psm_check = now;
-
-        if (psm_ && psm_->hasEvent()) {
-            esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-            std::string eventID(event.eventID);
-
-            ESP_LOGD(TAG, ">>> IDLE PSM CHECK: EventID='%s', Status=%d, Age=%lld sec",
-                     eventID.c_str(), event.status, psm_->getEventAge());
-
-            // Check for persistent states that should override IDLE
-            if (!eventID.empty()) {
-                if (eventID == "STATE_SHUTDOWN") {
-                    ESP_LOGW(TAG, ">>> PSM check: SHUTDOWN state detected - transitioning from IDLE");
-                    transitionTo(ControllerState::SHUTDOWN);
-                    return;
-                } else if (eventID == "STATE_PAUSE") {
-                    ESP_LOGW(TAG, ">>> PSM check: PAUSE state detected - transitioning from IDLE");
-                    transitionTo(ControllerState::PAUSE);
-                    return;
-                }
-            }
-        }
+bool PlantOSController::checkPersistedHoldState(uint32_t &last_check_ms, uint32_t now) {
+    // Every 5 s in IDLE / NIGHT: a STATE_SHUTDOWN or STATE_PAUSE event in the PSM wins. This covers
+    // a state set while running, a restore in INIT that failed on timing, and component init order.
+    if (now - last_check_ms < 5000) {
+        return false;
     }
+    last_check_ms = now;
+    if (!psm_ || !psm_->hasEvent()) {
+        return false;
+    }
+    esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+    ESP_LOGD(TAG, "%s PSM check: '%s' status %d age %lld s", stateName(current_state_), event.eventID,
+             event.status, (long long)psm_->getEventAge());
+    ControllerState hold;
+    if (strcmp(event.eventID, "STATE_SHUTDOWN") == 0) {
+        hold = ControllerState::SHUTDOWN;
+    } else if (strcmp(event.eventID, "STATE_PAUSE") == 0) {
+        hold = ControllerState::PAUSE;
+    } else {
+        return false;
+    }
+    ESP_LOGW(TAG, "PSM holds %s - leaving %s", event.eventID, stateName(current_state_));
+    transitionTo(hold);
+    return true;
+}
 
+void PlantOSController::syncCalendarDate() {
     // ========================================================================
     // CALENDAR DAY AUTO-ADVANCE - Sync grow day to real-world local date
     // ========================================================================
@@ -649,7 +522,9 @@ void PlantOSController::handleIdle() {
             }
         }
     }
+}
 
+bool PlantOSController::checkPeriodicPh(uint32_t now) {
     // ========================================================================
     // PERIODIC pH MONITORING - Time-based scheduling aligned to midnight
     // ========================================================================
@@ -676,16 +551,6 @@ void PlantOSController::handleIdle() {
         bool should_trigger = ph_slot.due;
 
         if (should_trigger) {
-            if (ph_slot.multi_day) {
-                ESP_LOGI(TAG, "Multi-day pH check: %lld days since last check (interval: %lld days)",
-                         ph_slot.days_since_last, ph_slot.interval_days);
-            } else {
-                ESP_LOGI(TAG, "Daily pH check slot: %02u:%02u (slot %u of %u)",
-                         ph_slot.slot_hour, ph_slot.slot_minute, ph_slot.slot, ph_slot.slots_per_day);
-            }
-        }
-
-        if (should_trigger) {
             last_ph_check_timestamp_ = current_timestamp;
             last_ph_check_time_ = now;  // Update fallback timer too
 
@@ -693,13 +558,16 @@ void PlantOSController::handleIdle() {
                 ESP_LOGD(TAG, "Automatic pH check skipped — %s",
                          !auto_ph_correction_enabled_ ? "auto pH correction disabled" : "night mode active");
             } else {
-                ESP_LOGI(TAG, "========================================================");
-                ESP_LOGI(TAG, "  AUTOMATIC pH CHECK (time-based: every %u hours)",
-                         ph_interval_ms / 3600000);
-                ESP_LOGI(TAG, "========================================================");
+                if (ph_slot.multi_day) {
+                    ESP_LOGI(TAG, "Auto pH check: %lld days since last (interval %lld days)",
+                             (long long)ph_slot.days_since_last, (long long)ph_slot.interval_days);
+                } else {
+                    ESP_LOGI(TAG, "Auto pH check: slot %02u:%02u", (unsigned)ph_slot.slot_hour,
+                             (unsigned)ph_slot.slot_minute);
+                }
 
                 transitionTo(ControllerState::PH_PROCESSING);
-                return;  // Exit IDLE immediately
+                return true;  // Exit IDLE immediately
             }
         }
     } else {
@@ -711,68 +579,29 @@ void PlantOSController::handleIdle() {
                 ESP_LOGD(TAG, "Automatic pH check skipped — %s",
                          !auto_ph_correction_enabled_ ? "auto pH correction disabled" : "night mode active");
             } else {
-                ESP_LOGW(TAG, "========================================================");
-                ESP_LOGW(TAG, "  AUTOMATIC pH CHECK (fallback mode: no time source)");
-                ESP_LOGW(TAG, "  Using boot-time based interval: every %u hours", ph_interval_ms / 3600000);
-                ESP_LOGW(TAG, "========================================================");
+                ESP_LOGW(TAG, "Auto pH check (no clock: every %u h since boot)", (unsigned)(ph_interval_ms / 3600000));
 
                 transitionTo(ControllerState::PH_PROCESSING);
-                return;  // Exit IDLE immediately
+                return true;  // Exit IDLE immediately
             }
         }
     }
+    return false;
+}
 
-    // ========================================================================
-    // POST-FILL EC CHECK - triggered by auto_ec_check_pending_ after WATER_FILLING
-    // Requires: auto-feeding enabled, not night mode hours
-    // ========================================================================
-    if (auto_ec_check_pending_ && auto_feeding_enabled_ && !(night_mode_enabled_ && isNightModeHours())) {
-        ESP_LOGI(TAG, "========================================================");
-        ESP_LOGI(TAG, "  EC CHECK TRIGGERED (post water fill)");
-        ESP_LOGI(TAG, "========================================================");
-        transitionTo(ControllerState::EC_PROCESSING);
-        return;
-    }
-
-    // Check if night mode hours started - transition to NIGHT
-    if (night_mode_enabled_ && isNightModeHours()) {
-        ESP_LOGI(TAG, "Night mode hours started - transitioning to NIGHT state");
-        transitionTo(ControllerState::NIGHT);
-        return;
-    }
-
-    // ========================================================================
-    // SHELLY HEALTH CHECK - Ping Shelly device periodically (every 30 seconds)
-    // ========================================================================
-    checkShellyHealth();
-
+bool PlantOSController::checkAutoTriggers() {
     // ========================================================================
     // AUTOMATIC FEEDING CHECK - Once per day when water level reaches LOW
     // ========================================================================
     if (shouldTriggerAutoFeeding()) {
-        ESP_LOGI(TAG, "========================================");
-        ESP_LOGI(TAG, "AUTO-FEEDING TRIGGERED");
-        ESP_LOGI(TAG, "========================================");
-        ESP_LOGI(TAG, "[AUTO-FEEDING] Water level at LOW - triggering daily feed");
+        ESP_LOGI(TAG, "Auto-feed: level LOW (H/L/E=001), not fed today");
 
-        // Record today's date
-        int64_t today = getCurrentDateTimestamp();
-        if (today > 0) {
-            last_auto_feed_date_ = today;
-
-            // Save to NVS with unique key per date
-            if (psm_) {
-                char date_key[32];
-                snprintf(date_key, sizeof(date_key), "AUTOFEED_%lld", (long long)today);
-                psm_->logEvent(date_key, 0);  // 0 = STARTED
-
-                ESP_LOGI(TAG, "[AUTO-FEEDING] Stored trigger date: %lld", (long long)today);
-            }
-        }
+        // Record today's local date (own NVS key, so it survives the PSM event that startFeed() logs)
+        markAutoFeedDay(getLocalDateOrdinal());
 
         // Start feeding sequence
         startFeed();
-        return;
+        return true;
     }
 
     // ========================================================================
@@ -787,12 +616,9 @@ void PlantOSController::handleIdle() {
         bool tank_empty = (!high && !low && empty);
 
         if (tank_empty && !(night_mode_enabled_ && isNightModeHours())) {
-            ESP_LOGI(TAG, "========================================");
-            ESP_LOGI(TAG, "AUTO-FILL TRIGGERED");
-            ESP_LOGI(TAG, "========================================");
-            ESP_LOGI(TAG, "[AUTO-FILL] EMPTY sensor active - starting water fill sequence");
+            ESP_LOGI(TAG, "Auto-fill: level LOW (H/L/E=001)");
             startFillTank();
-            return;
+            return true;
         }
     }
 
@@ -800,28 +626,55 @@ void PlantOSController::handleIdle() {
     // AUTOMATIC RESERVOIR CHANGE CHECK - Once per week on configured day
     // ========================================================================
     if (shouldTriggerAutoReservoirChange()) {
-        ESP_LOGI(TAG, "========================================");
-        ESP_LOGI(TAG, "  AUTO RESERVOIR CHANGE TRIGGERED");
-        ESP_LOGI(TAG, "  (Weekly schedule - Day %d)", auto_reservoir_change_day_);
-        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "Auto reservoir change: weekday %d", auto_reservoir_change_day_);
 
-        // Record this week's trigger
-        int64_t current_week = getCurrentWeekNumber();
-        if (current_week > 0) {
-            last_auto_reservoir_change_week_ = current_week;
-
-            // Save to NVS with unique key per week
-            if (psm_) {
-                char week_key[32];
-                snprintf(week_key, sizeof(week_key), "AUTORES_%lld", (long long)current_week);
-                psm_->logEvent(week_key, 0);  // 0 = STARTED
-
-                ESP_LOGI(TAG, "[AUTO-RES] Stored trigger week: %lld", (long long)current_week);
-            }
-        }
+        // Record this week (own NVS key, so it survives the PSM event that startReservoirChange() logs)
+        markAutoResWeek(getCurrentWeekNumber());
 
         // Start reservoir change sequence
         startReservoirChange();
+        return true;
+    }
+    return false;
+}
+
+void PlantOSController::handleIdle() {
+    // Breathing green - waiting for commands. Order matters: PSM hold, date sync, periodic pH,
+    // post-fill EC check, night, Shelly health, auto-feed / auto-fill / auto reservoir change,
+    // sensor health.
+    uint32_t now = hal_->getSystemTime();
+    if (checkPersistedHoldState(idle_psm_check_ms_, now)) {
+        return;
+    }
+
+    syncCalendarDate();
+
+    if (checkPeriodicPh(now)) {
+        return;
+    }
+
+    // ========================================================================
+    // POST-FILL EC CHECK - triggered by auto_ec_check_pending_ after WATER_FILLING
+    // Requires: auto-feeding enabled, not night mode hours
+    // ========================================================================
+    if (auto_ec_check_pending_ && auto_feeding_enabled_ && !(night_mode_enabled_ && isNightModeHours())) {
+        ESP_LOGI(TAG, "EC check after water fill");
+        transitionTo(ControllerState::EC_PROCESSING);
+        return;
+    }
+
+    // Check if night mode hours started - transition to NIGHT
+    if (night_mode_enabled_ && isNightModeHours()) {
+        transitionTo(ControllerState::NIGHT);
+        return;
+    }
+
+    // ========================================================================
+    // SHELLY HEALTH CHECK - Ping Shelly device periodically (every 30 seconds)
+    // ========================================================================
+    checkShellyHealth();
+
+    if (checkAutoTriggers()) {
         return;
     }
 
@@ -841,49 +694,13 @@ void PlantOSController::handleIdle() {
 void PlantOSController::handleNight() {
     // Dim breathing green - night mode active
     // Similar to IDLE but no automatic pH monitoring, feeding, or water management
-
-    uint32_t elapsed = getStateElapsed();
-
-    // Periodically check PSM for SHUTDOWN or PAUSE states every 5 seconds
-    // This handles cases where:
-    // 1. State was set while system was running
-    // 2. State restoration from INIT failed due to timing issues
-    // 3. Component initialization order caused PSM to be unavailable during INIT
-    static uint32_t last_psm_check = 0;
-    uint32_t now = hal_->getSystemTime();
-
-    if (now - last_psm_check >= 5000) {  // Check every 5 seconds
-        last_psm_check = now;
-
-        if (psm_ && psm_->hasEvent()) {
-            esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-            std::string eventID(event.eventID);
-
-            ESP_LOGD(TAG, ">>> NIGHT PSM CHECK: EventID='%s', Status=%d, Age=%lld sec",
-                     eventID.c_str(), event.status, psm_->getEventAge());
-
-            // Check for persistent states that should override NIGHT
-            if (!eventID.empty()) {
-                if (eventID == "STATE_SHUTDOWN") {
-                    ESP_LOGW(TAG, ">>> PSM check: SHUTDOWN state detected - transitioning from NIGHT");
-                    transitionTo(ControllerState::SHUTDOWN);
-                    return;
-                } else if (eventID == "STATE_PAUSE") {
-                    ESP_LOGW(TAG, ">>> PSM check: PAUSE state detected - transitioning from NIGHT");
-                    transitionTo(ControllerState::PAUSE);
-                    return;
-                }
-            }
-        }
+    if (checkPersistedHoldState(night_psm_check_ms_, hal_->getSystemTime())) {
+        return;
     }
 
     // Check if night mode hours ended - transition back to IDLE
     if (!night_mode_enabled_ || !isNightModeHours()) {
-        if (!night_mode_enabled_) {
-            ESP_LOGI(TAG, "Night mode disabled - transitioning to IDLE state");
-        } else {
-            ESP_LOGI(TAG, "Night mode hours ended - transitioning to IDLE state");
-        }
+        ESP_LOGI(TAG, "Night mode %s", night_mode_enabled_ ? "hours ended" : "disabled");
         transitionTo(ControllerState::IDLE);
         return;
     }
@@ -897,27 +714,17 @@ void PlantOSController::handleShutdown() {
     // All actuators OFF, calendar/time-based events disabled
     // Persists across power cycles - must use setToIdle() to exit
 
-    uint32_t elapsed = getStateElapsed();
-
     // On entry: Turn off all pumps and valves for safety (only once!)
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
         turnOffAllPumps();
-        ESP_LOGI(TAG, "SHUTDOWN state ACTIVE - all actuators OFF, calendar disabled");
 
         // Persist SHUTDOWN state to NVS
         if (psm_) {
-            ESP_LOGW(TAG, ">>> SAVING TO PSM: STATE_SHUTDOWN (status=1)");
             psm_->logEvent("STATE_SHUTDOWN", 1);  // 1 = ENTERED_SHUTDOWN
-
-            // Verify it was saved
-            if (psm_->hasEvent()) {
-                auto event = psm_->getLastEvent();
-                ESP_LOGW(TAG, ">>> PSM VERIFICATION: EventID='%s', Status=%d",
-                         event.eventID, event.status);
-            }
+            ESP_LOGI(TAG, "SHUTDOWN logged to PSM (%s)", psm_->hasEvent() ? "saved" : "NOT saved");
         } else {
-            ESP_LOGE(TAG, ">>> PSM NOT AVAILABLE - SHUTDOWN STATE NOT PERSISTED!");
+            ESP_LOGE(TAG, "No PSM - SHUTDOWN not persisted");
         }
 
         // Update status logger
@@ -935,26 +742,16 @@ void PlantOSController::handlePause() {
     // Actuators maintain current state, calendar/time-based events disabled
     // Persists across power cycles - must use setToIdle() to exit
 
-    uint32_t elapsed = getStateElapsed();
-
     // On entry: Log state change (only once!)
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
-        ESP_LOGI(TAG, "PAUSE state ACTIVE - actuators maintained, calendar disabled");
 
         // Persist PAUSE state to NVS
         if (psm_) {
-            ESP_LOGW(TAG, ">>> SAVING TO PSM: STATE_PAUSE (status=1)");
             psm_->logEvent("STATE_PAUSE", 1);  // 1 = ENTERED_PAUSE
-
-            // Verify it was saved
-            if (psm_->hasEvent()) {
-                auto event = psm_->getLastEvent();
-                ESP_LOGW(TAG, ">>> PSM VERIFICATION: EventID='%s', Status=%d",
-                         event.eventID, event.status);
-            }
+            ESP_LOGI(TAG, "PAUSE logged to PSM (%s)", psm_->hasEvent() ? "saved" : "NOT saved");
         } else {
-            ESP_LOGE(TAG, ">>> PSM NOT AVAILABLE - PAUSE STATE NOT PERSISTED!");
+            ESP_LOGE(TAG, "No PSM - PAUSE not persisted");
         }
 
         return;
@@ -974,15 +771,15 @@ void PlantOSController::handleError() {
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
         turnOffAllPumps();
-        ESP_LOGE(TAG, "ERROR state: All pumps OFF for safety");
+        ESP_LOGE(TAG, "ERROR: all pumps OFF");
         return;
     }
 
     // Wait 5 seconds to display error
     if (elapsed >= ERROR_DURATION) {
-        if (ENHANCED_ERROR_HANDLING_ENABLED) {
+        {
             // Resolve all active alerts (keep history for debugging)
-            ESP_LOGI(TAG, "Error timeout - resolving alerts and restarting to INIT");
+            ESP_LOGI(TAG, "Error timeout - resolving alerts, restart via INIT");
 
             // Original alerts
             status_logger_.resolveAlert("PH_CRITICAL");
@@ -1008,12 +805,6 @@ void PlantOSController::handleError() {
             status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_HIGH");
             status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_EMPTY");
             status_logger_.resolveAlert("HARDWARE_WATER_SENSORS_MISSING");
-        } else {
-            // Legacy: clear alerts (backward compatible)
-            ESP_LOGI(TAG, "Error timeout - clearing alerts and restarting to INIT");
-            status_logger_.clearAlert("PH_CRITICAL");
-            status_logger_.clearAlert("PH_MAX_ATTEMPTS");
-            status_logger_.resolveAlert("SENSOR_CRITICAL");
         }
 
         transitionTo(ControllerState::INIT);
@@ -1024,107 +815,119 @@ void PlantOSController::handleError() {
 // Public API
 // ============================================================================
 
-void PlantOSController::startPhCorrection() {
-    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start pH correction - system not in IDLE or NIGHT state (state: %d)", static_cast<int>(current_state_));
-        return;
-    }
-
-    // Prevent pH correction during night mode
+bool PlantOSController::canStart(Operation op, const char **reason) const {
+    // Every manual or automatic start needs IDLE (NIGHT blocks all operations).
     if (current_state_ == ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start pH correction - system in NIGHT mode");
-        return;
+        *reason = "night mode";
+        return false;
     }
+    if (current_state_ != ControllerState::IDLE) {
+        *reason = "busy";
+        return false;
+    }
+    // Hardware each operation needs
+    switch (op) {
+        case Operation::FILL:
+            if (!hal_ || !hal_->hasWaterLevelSensors()) {
+                *reason = "no water level sensors (overflow risk)";
+                return false;
+            }
+            break;
+        case Operation::DRAIN:
+        case Operation::RESERVOIR_CHANGE:
+            if (!hal_->isShellyEnabled()) {
+                *reason = "Shelly integration disabled (no wastewater pump)";
+                return false;
+            }
+            break;
+        case Operation::PH_CALIBRATION:
+            if (!hal_->isPhSensorReady()) {
+                *reason = "pH sensor not responding (UART GPIO18/19)";
+                return false;
+            }
+            break;
+        case Operation::EC_CALIBRATION:
+            if (!hal_->hasECValue()) {
+                *reason = "no EC reading";
+                return false;
+            }
+            break;
+        default:
+            break;
+    }
+    return true;
+}
 
-    ESP_LOGI(TAG, "Starting pH correction sequence");
+bool PlantOSController::startAllowed(Operation op, const char *name) {
+    const char *reason = "";
+    if (canStart(op, &reason)) {
+        return true;
+    }
+    ESP_LOGW(TAG, "Cannot start %s: %s (state %s)", name, reason, stateName(current_state_));
+    return false;
+}
 
-    // Reset pH correction state
+void PlantOSController::resetPhCycle() {
     ph_attempt_count_ = 0;
     ph_readings_.clear();
     ph_current_ = 0.0f;
+    ph_dose_ml_ = 0.0f;
     ph_dose_duration_ms_ = 0;
     ph_cycle_start_ph_ = 0.0f;
     ph_cycle_total_ml_ = 0.0f;
     ph_cycle_water_filled_ = false;
     ph_cycle_aborted_ = false;
+}
+
+void PlantOSController::startPhCorrection() {
+    if (!startAllowed(Operation::PH_CORRECTION, "pH correction")) return;
+
+    ESP_LOGI(TAG, "Manual pH correction");
+    resetPhCycle();
 
     // Manual trigger always uses the normal 30s stabilization: clear any stale
     // post-feed/post-fill intent flags that may linger from an aborted auto-flow.
     ph_post_fill_stabilize_ = false;
     ph_post_feed_stabilize_ = false;
 
-    // Initialize operation retry framework (max 3 retries for pH correction)
-    initOperationRetry("PH_CORRECTION", 3);
-
-    // Log event for crash recovery persistence
     if (psm_) {
         psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
     }
-
     transitionTo(ControllerState::PH_MEASURING);
 }
 
 void PlantOSController::startPhCalibration() {
-    if (current_state_ != ControllerState::IDLE) {
-        ESP_LOGW(TAG, "Cannot start pH calibration - system not in IDLE state (state: %s)",
-                 getStateAsString().c_str());
-        return;
-    }
+    if (!startAllowed(Operation::PH_CALIBRATION, "pH calibration")) return;
 
-    // Check if sensor hardware is actually connected and responding
-    if (!hal_->isPhSensorReady()) {
-        ESP_LOGE(TAG, "Cannot start pH calibration - sensor hardware not responding");
-        ESP_LOGE(TAG, "Check UART connection (TX=GPIO18, RX=GPIO19) and power to sensor");
-        ESP_LOGE(TAG, "Verify sensor shows up in Central Status Logger");
-        return;
-    }
+    ESP_LOGI(TAG, "Starting 3-point pH calibration: 7.00 -> 4.00 -> 10.01, follow the prompts");
 
-    ESP_LOGI(TAG, "===============================================");
-    ESP_LOGI(TAG, "  STARTING 3-POINT pH CALIBRATION SEQUENCE");
-    ESP_LOGI(TAG, "===============================================");
-    ESP_LOGI(TAG, "Calibration points: 4.00 (low), 7.00 (mid), 10.01 (high)");
-    ESP_LOGI(TAG, "Follow the prompts to insert probe into each solution");
-
-    // Enable verbose mode for detailed UART logging during calibration
+    // Verbose UART logging of the pH sensor during calibration
     hal_->setPhVerbose(true);
-    ESP_LOGI(TAG, "Verbose mode ENABLED for calibration sequence");
 
-    // Reset calibration state
     calib_step_ = CalibrationStep::MID_PROMPT;
     calib_step_start_time_ = esphome::millis();
+    logPhCalibrationPrompt(0);
 
-    // Log event for crash recovery persistence
     if (psm_) {
         psm_->logEvent("PH_CALIBRATION", 0);  // 0 = STARTED
     }
-
     transitionTo(ControllerState::PH_CALIBRATING);
 }
 
 void PlantOSController::startFeeding() {
-    if (current_state_ == ControllerState::IDLE) {
-        ESP_LOGI(TAG, "Starting feeding sequence");
+    if (!startAllowed(Operation::FEEDING, "feeding")) return;
 
-        // Log event for crash recovery persistence
-        if (psm_) {
-            psm_->logEvent("FEEDING", 0);  // 0 = STARTED
-        }
-
-        transitionTo(ControllerState::FEEDING);
-    } else if (current_state_ == ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start feeding - system in NIGHT mode");
-    } else {
-        ESP_LOGW(TAG, "Cannot start feeding - system busy");
+    ESP_LOGI(TAG, "Manual feeding");
+    if (psm_) {
+        psm_->logEvent("FEEDING", 0);  // 0 = STARTED
     }
+    transitionTo(ControllerState::FEEDING);
 }
 
 void PlantOSController::startMotherNutrients(float liters) {
-    if (current_state_ != ControllerState::IDLE) {
-        ESP_LOGW(TAG, "[MOTHER_MIX] Cannot start - system busy (state: %s)", getStateAsString().c_str());
-        return;
-    }
+    if (!startAllowed(Operation::MOTHER_MIX, "mother mix")) return;
     if (liters <= 0.0f || liters > 15.0f) {
-        ESP_LOGW(TAG, "[MOTHER_MIX] Invalid volume: %.1f L (must be 1-15)", liters);
+        ESP_LOGW(TAG, "Mother mix: invalid volume %.1f L (1-15)", liters);
         return;
     }
 
@@ -1136,141 +939,67 @@ void PlantOSController::startMotherNutrients(float liters) {
     feeding_manual_mode_ = false;
     is_mother_mix_ = true;
 
-    ESP_LOGI(TAG, "===============================================");
-    ESP_LOGI(TAG, "  MOTHER PLANT NUTRIENT MIX");
-    ESP_LOGI(TAG, "===============================================");
-    ESP_LOGI(TAG, "  Volume : %.1f L", liters);
-    ESP_LOGI(TAG, "  Dose A : %.2f mL  (%.2f mL/L)", ec_dose_A_ml_, MOTHER_MIX_A_ML_PER_L);
-    ESP_LOGI(TAG, "  Dose B : %.2f mL  (%.2f mL/L)", ec_dose_B_ml_, MOTHER_MIX_B_ML_PER_L);
-    ESP_LOGI(TAG, "  Dose C : %.2f mL  (%.2f mL/L)", ec_dose_C_ml_, MOTHER_MIX_C_ML_PER_L);
-    ESP_LOGI(TAG, "  Sequence: A → B → C → IDLE (no EC loop, no mixing wait)");
-    ESP_LOGI(TAG, "===============================================");
+    ESP_LOGI(TAG, "Mother mix %.1f L: A %.2f mL, B %.2f mL, C %.2f mL (A->B->C->IDLE, no EC loop)",
+             liters, ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
 
     if (psm_) psm_->logEvent("MOTHER_MIX", 0);
     transitionTo(ControllerState::EC_FEEDING);
 }
 
 void PlantOSController::startFillTank() {
-    if (current_state_ == ControllerState::IDLE) {
-        // SAFETY: Never fill without water level sensors - the valve would run
-        // blind on a timeout with no feedback, risking tank overflow
-        if (!hal_ || !hal_->hasWaterLevelSensors()) {
-            ESP_LOGE(TAG, "Cannot start fill - water level sensors unavailable (overflow risk)");
-            return;
-        }
+    // SAFETY: canStart(FILL) refuses without water level sensors - the valve would run
+    // blind on a timeout with no feedback, risking tank overflow
+    if (!startAllowed(Operation::FILL, "fill")) return;
 
-        ESP_LOGI(TAG, "Starting tank fill with auto pH correction");
+    ESP_LOGI(TAG, "Tank fill (then EC check and pH correction)");
+    auto_ph_correction_pending_ = true;
 
-        // Set flag for auto pH correction after fill
-        auto_ph_correction_pending_ = true;
-
-        // Log event for crash recovery persistence
-        if (psm_) {
-            psm_->logEvent("WATER_FILL", 0);  // 0 = STARTED
-        }
-
-        transitionTo(ControllerState::WATER_FILLING);
-    } else if (current_state_ == ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start fill - system in NIGHT mode");
-    } else {
-        ESP_LOGW(TAG, "Cannot start fill - system busy");
+    if (psm_) {
+        psm_->logEvent("WATER_FILL", 0);  // 0 = STARTED
     }
+    transitionTo(ControllerState::WATER_FILLING);
 }
 
 void PlantOSController::startEmptyTank() {
-    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start tank drain - system busy");
-        return;
-    }
-
-    if (current_state_ == ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start tank drain - system in NIGHT mode");
-        return;
-    }
-
     // The wastewater pump is a Shelly socket - no Shelly, no drain
-    if (!hal_->isShellyEnabled()) {
-        ESP_LOGE(TAG, "Cannot start tank drain - Shelly integration disabled (wastewater pump unavailable)");
-        return;
-    }
+    if (!startAllowed(Operation::DRAIN, "tank drain")) return;
 
-    ESP_LOGI(TAG, "========================================================");
-    ESP_LOGI(TAG, "  STARTING TANK DRAIN");
-    ESP_LOGI(TAG, "========================================================");
-    ESP_LOGI(TAG, "Draining tank via wastewater pump until EMPTY sensor triggers");
-    ESP_LOGI(TAG, "");
-
-    // Log event for crash recovery persistence
+    ESP_LOGI(TAG, "Tank drain until EMPTY sensor clears");
     if (psm_) {
         psm_->logEvent("WATER_EMPTY", 0);  // 0 = STARTED
     }
-
     transitionTo(ControllerState::WATER_EMPTYING);
 }
 
 void PlantOSController::startFeed() {
-    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start feed - system busy");
-        return;
-    }
+    if (!startAllowed(Operation::FEED, "feed")) return;
 
-    // Prevent feed during night mode
-    if (current_state_ == ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start feed - system in NIGHT mode");
-        return;
-    }
-
-    if (current_state_ == ControllerState::IDLE) {
-        ESP_LOGI(TAG, "===============================================");
-        ESP_LOGI(TAG, "  STARTING FEED OPERATION");
-        ESP_LOGI(TAG, "===============================================");
-        ESP_LOGI(TAG, "Sequence: Fill tank → Add nutrients → pH correction");
-
-        // SAFETY CHECK: Verify tank is empty (both sensors OFF) before filling
-        if (hal_ && hal_->hasWaterLevelSensors()) {
-            bool high_sensor = hal_->readWaterLevelHigh();
-            bool low_sensor = hal_->readWaterLevelLow();
-
-            if (high_sensor || low_sensor) {
-                ESP_LOGE(TAG, "FEED ABORTED: Tank must be empty before starting!");
-                ESP_LOGE(TAG, "Water level sensors: HIGH=%s, LOW=%s",
-                         high_sensor ? "ON" : "OFF", low_sensor ? "ON" : "OFF");
-                ESP_LOGE(TAG, "Please drain the tank manually until both sensors show OFF");
-                return;
-            }
-
-            ESP_LOGI(TAG, "Water level check PASSED: Tank is empty (both sensors OFF)");
-        } else {
-            ESP_LOGW(TAG, "Water level sensors not available - skipping pre-fill check");
+    // SAFETY CHECK: Verify tank is empty (HIGH and LOW off) before filling
+    if (hal_ && hal_->hasWaterLevelSensors()) {
+        bool high_sensor = hal_->readWaterLevelHigh();
+        bool low_sensor = hal_->readWaterLevelLow();
+        if (high_sensor || low_sensor) {
+            ESP_LOGE(TAG, "Feed refused: tank not empty (HIGH=%d LOW=%d), drain it first", high_sensor, low_sensor);
+            return;
         }
-
-        // Set flag for auto pH correction after feeding
-        auto_ph_correction_pending_ = true;
-
-        // Set operation context: normal feed uses delta volume (LOW→HIGH)
-        is_reservoir_change_ = false;
-        ESP_LOGI(TAG, "Operation context: NORMAL FEED (using tank volume delta)");
-
-        // Log event for crash recovery persistence
-        if (psm_) {
-            psm_->logEvent("FEED_OPERATION", 0);  // 0 = STARTED
-        }
-
-        // Start with filling
-        transitionTo(ControllerState::FEED_FILLING);
     } else {
-        ESP_LOGW(TAG, "Cannot start Feed operation - system busy");
+        ESP_LOGW(TAG, "Feed: no water level sensors - skipping pre-fill check");
     }
+
+    ESP_LOGI(TAG, "Feed: fill -> nutrients (delta volume) -> pH correction");
+    auto_ph_correction_pending_ = true;
+    is_reservoir_change_ = false;  // normal feed doses for the delta volume (LOW->HIGH)
+
+    if (psm_) {
+        psm_->logEvent("FEED_OPERATION", 0);  // 0 = STARTED
+    }
+    transitionTo(ControllerState::FEED_FILLING);
 }
 
 void PlantOSController::startEcCheck() {
-    if (current_state_ != ControllerState::IDLE) {
-        ESP_LOGW(TAG, "Cannot start EC check - system not in IDLE state (state: %s)",
-                 getStateAsString().c_str());
-        return;
-    }
+    if (!startAllowed(Operation::EC_CHECK, "EC check")) return;
 
-    ESP_LOGI(TAG, "Manual EC check triggered");
+    ESP_LOGI(TAG, "Manual EC check");
     ec_pre_feeding_ = 0.0f;
     ec_total_ml_per_L_ = 0.0f;
     ec_attempt_count_ = 0;
@@ -1279,19 +1008,14 @@ void PlantOSController::startEcCheck() {
 }
 
 void PlantOSController::startEcCalibration() {
-    if (current_state_ != ControllerState::IDLE) {
-        ESP_LOGW(TAG, "Cannot start EC calibration - system not in IDLE state (state: %s)",
-                 getStateAsString().c_str());
+    if (!startAllowed(Operation::EC_CALIBRATION, "EC calibration")) {
+        if (current_state_ == ControllerState::IDLE) {  // refused for the sensor, not the state
+            status_logger_.updateAlertStatus("EC_CALIB_ERROR", "EC sensor not available for calibration");
+        }
         return;
     }
 
-    if (!hal_->hasECValue()) {
-        ESP_LOGE(TAG, "Cannot start EC calibration - no EC sensor reading available");
-        status_logger_.updateAlertStatus("EC_CALIB_ERROR", "EC sensor not available for calibration");
-        return;
-    }
-
-    ESP_LOGI(TAG, "Starting EC single-point calibration (target: %.1f uS/cm)", ec_calib_target_);
+    ESP_LOGI(TAG, "Starting EC calibration (target %.1f uS/cm)", ec_calib_target_);
     ec_calib_step_ = ECCalibStep::RINSE_PROMPT;
     ec_calib_step_start_time_ = hal_->getSystemTime();
     ec_calib_readings_.clear();
@@ -1301,96 +1025,59 @@ void PlantOSController::startEcCalibration() {
 }
 
 void PlantOSController::startReservoirChange() {
-    if (current_state_ != ControllerState::IDLE && current_state_ != ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start Reservoir Change - system busy");
-        return;
-    }
-
-    // Prevent reservoir change during night mode
-    if (current_state_ == ControllerState::NIGHT) {
-        ESP_LOGW(TAG, "Cannot start Reservoir Change - system in NIGHT mode");
-        return;
-    }
-
     // The wastewater pump is a Shelly socket - no Shelly, no drain
-    if (!hal_->isShellyEnabled()) {
-        ESP_LOGE(TAG, "Cannot start Reservoir Change - Shelly integration disabled (wastewater pump unavailable)");
-        return;
-    }
+    if (!startAllowed(Operation::RESERVOIR_CHANGE, "reservoir change")) return;
 
-    ESP_LOGI(TAG, "========================================================");
-    ESP_LOGI(TAG, "  STARTING RESERVOIR CHANGE SEQUENCE");
-    ESP_LOGI(TAG, "========================================================");
-    ESP_LOGI(TAG, "Sequence: Empty tank → Fill → Add nutrients → pH correction");
-    ESP_LOGI(TAG, "");
-
-    // Set flag for auto pH correction after feeding
+    ESP_LOGI(TAG, "Reservoir change: drain -> fill -> nutrients (total volume) -> pH correction");
     auto_ph_correction_pending_ = true;
+    is_reservoir_change_ = true;  // reservoir change doses for the total volume (EMPTY->HIGH)
 
-    // Set operation context: reservoir change uses total volume (EMPTY→HIGH)
-    is_reservoir_change_ = true;
-    ESP_LOGI(TAG, "Operation context: RESERVOIR CHANGE (using total tank volume)");
-
-    // Log event for crash recovery persistence
     if (psm_) {
         psm_->logEvent("RESERVOIR_CHANGE", 0);  // 0 = STARTED
     }
-
-    // Start with emptying tank using wastewater pump (Shelly Socket 2)
-    ESP_LOGI(TAG, "Starting empty phase - activating wastewater pump via Shelly");
     transitionTo(ControllerState::WATER_EMPTYING);
 }
 
 void PlantOSController::emergencyStop() {
-    ESP_LOGW(TAG, "========================================================");
-    ESP_LOGW(TAG, "  EMERGENCY STOP - ALL PUMPS OFF");
-    ESP_LOGW(TAG, "========================================================");
+    ESP_LOGW(TAG, "EMERGENCY STOP - all pumps off");
     turnOffAllPumps();
     transitionTo(ControllerState::SHUTDOWN);
 }
 
 void PlantOSController::setToShutdown() {
-    ESP_LOGI(TAG, "Transitioning to SHUTDOWN state");
+    ESP_LOGI(TAG, "SHUTDOWN requested");
     transitionTo(ControllerState::SHUTDOWN);
 }
 
 void PlantOSController::setToPause() {
-    ESP_LOGI(TAG, "Transitioning to PAUSE state");
+    ESP_LOGI(TAG, "PAUSE requested");
     transitionTo(ControllerState::PAUSE);
 }
 
 void PlantOSController::setToIdle() {
     if (current_state_ == ControllerState::SHUTDOWN || current_state_ == ControllerState::PAUSE) {
-        ESP_LOGI(TAG, "Exiting %s state to IDLE",
-                 current_state_ == ControllerState::SHUTDOWN ? "SHUTDOWN" : "PAUSE");
+        ESP_LOGI(TAG, "Resume from %s", stateName(current_state_));
 
         // Clear PSM persistence
         if (psm_) {
             psm_->clearEvent();
         }
-
-        // Update status logger
         status_logger_.updateMaintenanceMode(false);
-
         transitionTo(ControllerState::IDLE);
     } else {
-        ESP_LOGW(TAG, "setToIdle() called but not in SHUTDOWN or PAUSE state (current: %d)",
-                 static_cast<int>(current_state_));
+        ESP_LOGW(TAG, "Resume ignored: not in SHUTDOWN/PAUSE (state %s)", stateName(current_state_));
     }
 }
 
 void PlantOSController::activateAirPump() {
-    ESP_LOGI(TAG, "Activating air pump (WiFi on_connect)");
-
-    // Send single command to turn on air pump
-    // Uses unlimited duration (0) as this is the initial activation
-    if (!requestPump(AIR_PUMP, true, 0, true)) {  // forceExecute=true to bypass debouncing
-        ESP_LOGW(TAG, "Air pump activation failed - pump may not be configured");
+    // Single forced ON command (WiFi on_connect), unlimited duration, bypasses debouncing
+    if (!requestPump(AIR_PUMP, true, 0, true)) {
+        ESP_LOGW(TAG, "Air pump activation (WiFi connect) rejected");
     }
 }
 
 void PlantOSController::resetToInit() {
-    ESP_LOGI(TAG, "Manual reset requested");
+    ESP_LOGI(TAG, "Reset to INIT requested");
     turnOffAllPumps();
     transitionTo(ControllerState::INIT);
 }
@@ -1400,22 +1087,20 @@ void PlantOSController::configureStatusLogger(bool enableReports, uint32_t repor
     status_logger_.set420Mode(enable420Mode);
 }
 
-std::string PlantOSController::getStateAsString() const {
-    // State name mapping for string representation
-    const char* state_names[] = {
+const char *PlantOSController::stateName(ControllerState state) {
+    static const char *const NAMES[] = {
         "INIT", "IDLE", "NIGHT", "SHUTDOWN", "PAUSE", "ERROR",
         "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
         "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING",
         "EC_PROCESSING", "EC_CALCULATING", "EC_FEEDING", "EC_MIXING", "EC_MEASURING",
         "EC_CALIBRATING"
     };
+    int i = static_cast<int>(state);
+    return (i >= 0 && i < static_cast<int>(sizeof(NAMES) / sizeof(NAMES[0]))) ? NAMES[i] : "UNKNOWN";
+}
 
-    int state_index = static_cast<int>(current_state_);
-    if (state_index >= 0 && state_index < 22) {
-        return std::string(state_names[state_index]);
-    }
-
-    return "UNKNOWN";
+std::string PlantOSController::getStateAsString() const {
+    return std::string(stateName(current_state_));
 }
 
 // ============================================================================
@@ -1427,38 +1112,16 @@ void PlantOSController::transitionTo(ControllerState newState) {
         return; // Already in this state
     }
 
-    // State name mapping for readable logging
-    const char* state_names[] = {
-        "INIT", "IDLE", "NIGHT", "SHUTDOWN", "PAUSE", "ERROR",
-        "PH_PROCESSING", "PH_MEASURING", "PH_CALCULATING", "PH_INJECTING", "PH_MIXING", "PH_CALIBRATING",
-        "FEEDING", "WATER_FILLING", "WATER_EMPTYING", "FEED_FILLING",
-        "EC_PROCESSING", "EC_CALCULATING", "EC_FEEDING", "EC_MIXING", "EC_MEASURING",
-        "EC_CALIBRATING"
-    };
+    const char* newStateName = stateName(newState);
+    ESP_LOGI(TAG, "State %s -> %s (after %us)", stateName(current_state_), newStateName,
+             (unsigned)(getStateElapsed() / 1000));
 
-    const char* oldStateName = state_names[static_cast<int>(current_state_)];
-    const char* newStateName = state_names[static_cast<int>(newState)];
-
-    ESP_LOGI(TAG, "State transition: %s → %s", oldStateName, newStateName);
-
-    // Update status logger with new state
     status_logger_.updateControllerState(newStateName);
-
-    // Verbose mode: Log detailed state transition info
-    if (status_logger_.isVerboseMode()) {
-        ESP_LOGI(TAG, "[VERBOSE] State change details:");
-        ESP_LOGI(TAG, "[VERBOSE]   Previous state: %s", oldStateName);
-        ESP_LOGI(TAG, "[VERBOSE]   New state: %s", newStateName);
-        ESP_LOGI(TAG, "[VERBOSE]   Time in previous state: %u ms", getStateElapsed());
-    }
 
     current_state_ = newState;
     state_start_time_ = esphome::millis();
     state_counter_ = 0;
     state_entry_executed_ = false;  // Reset entry flag for new state
-
-    // LED behavior transition is handled automatically in loop()
-    // via led_behaviors_->update()
 }
 
 uint32_t PlantOSController::getStateElapsed() const {
@@ -1469,88 +1132,75 @@ uint32_t PlantOSController::getStateElapsed() const {
 // Actuator Control Helpers
 // ============================================================================
 
-bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint32_t durationSec, bool forceExecute) {
+bool PlantOSController::requestPump(const char *pumpId, bool state, uint32_t durationSec, bool forceExecute) {
     if (!safety_gate_) {
-        ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", pumpId.c_str());
+        ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", pumpId);
         return false;
     }
 
-    // Verbose mode: Log actuator commands
-    if (status_logger_.isVerboseMode()) {
-        ESP_LOGI(TAG, "[VERBOSE] Actuator command: %s → %s for %u seconds (force=%s)",
-                 pumpId.c_str(), state ? "ON" : "OFF", durationSec, forceExecute ? "YES" : "NO");
-    }
+    ESP_LOGD(TAG, "Actuator %s %s for %us%s", pumpId, state ? "ON" : "OFF", (unsigned)durationSec,
+             forceExecute ? " (forced)" : "");
 
-    return safety_gate_->executeCommand(pumpId.c_str(), state, durationSec, forceExecute);
+    return safety_gate_->executeCommand(pumpId, state, durationSec, forceExecute);
 }
 
-bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool state, uint32_t requestedDurationSec, bool forceExecute) {
-    // If enhanced error handling is disabled, use legacy behavior
-    if (!ENHANCED_ERROR_HANDLING_ENABLED) {
-        return requestPump(pumpId, state, requestedDurationSec, forceExecute);
-    }
-
+bool PlantOSController::requestPumpAdaptive(const char *pumpId, bool state, uint32_t requestedDurationSec, bool forceExecute) {
     // Try original request first
-    bool approved = safety_gate_->executeCommand(pumpId.c_str(), state, requestedDurationSec, forceExecute);
+    bool approved = safety_gate_->executeCommand(pumpId, state, requestedDurationSec, forceExecute);
     if (approved) {
-        // Success - verbose log if enabled
-        if (status_logger_.isVerboseMode()) {
-            ESP_LOGI(TAG, "[VERBOSE] Actuator command approved: %s → %s for %u seconds",
-                     pumpId.c_str(), state ? "ON" : "OFF", requestedDurationSec);
-        }
+        ESP_LOGD(TAG, "Actuator %s %s for %us", pumpId, state ? "ON" : "OFF", (unsigned)requestedDurationSec);
         return true;
     }
 
     // Request was rejected - analyze rejection type
-    bool current_state = safety_gate_->getState(pumpId.c_str());
+    bool current_state = safety_gate_->getState(pumpId);
 
     // Check for debouncing rejection (actuator already in requested state)
     if (current_state == state) {
         // Debouncing rejection - NO RETRY (already executing)
         ESP_LOGD(TAG, "%s debouncing rejection - already %s (no retry)",
-                 pumpId.c_str(), state ? "ON" : "OFF");
+                 pumpId, state ? "ON" : "OFF");
         return false;
     }
 
     // Duration violation - TRY TO ADAPT
     if (state && requestedDurationSec > 0) {
-        uint32_t adapted_duration = safety_gate_->getAdaptedDuration(pumpId.c_str(), requestedDurationSec);
+        uint32_t adapted_duration = safety_gate_->getAdaptedDuration(pumpId, requestedDurationSec);
 
         // Check if adaptation is possible
         if (adapted_duration > 0 && adapted_duration < requestedDurationSec) {
             // Duration can be adapted - log comprehensive error with adaptation
             status_logger_.updateAlertWithContext(
-                "DURATION_ADAPTED_" + pumpId,
+                std::string("DURATION_ADAPTED_") + pumpId,
                 "Duration adapted to " + std::to_string(adapted_duration) + "s",
                 "SafetyGate rejected: Duration " + std::to_string(requestedDurationSec) +
                     "s exceeds max " + std::to_string(adapted_duration) + "s",
                 "System adapted duration automatically. Consider increasing max duration in config or reducing dose.",
-                retry_state_.getContextString(),
+                "State " + getStateAsString(),
                 "Retrying with adapted duration " + std::to_string(adapted_duration) + "s",
                 0
             );
 
             // Retry with adapted duration
-            approved = safety_gate_->executeCommand(pumpId.c_str(), state, adapted_duration, forceExecute);
+            approved = safety_gate_->executeCommand(pumpId, state, adapted_duration, forceExecute);
 
             if (approved) {
                 // Adaptation successful - mark alert as resolved
-                ESP_LOGI(TAG, "%s duration adapted successfully: %us → %us",
-                         pumpId.c_str(), requestedDurationSec, adapted_duration);
-                status_logger_.resolveAlert("DURATION_ADAPTED_" + pumpId);
+                ESP_LOGW(TAG, "%s duration cut by SafetyGate: %us -> %us", pumpId,
+                         (unsigned)requestedDurationSec, (unsigned)adapted_duration);
+                status_logger_.resolveAlert(std::string("DURATION_ADAPTED_") + pumpId);
                 return true;
             } else {
                 // Even adapted duration was rejected (should not happen)
-                ESP_LOGE(TAG, "%s rejected even after adaptation to %us",
-                         pumpId.c_str(), adapted_duration);
+                ESP_LOGE(TAG, "%s rejected even after adaptation to %us", pumpId, (unsigned)adapted_duration);
             }
         }
     }
 
     // Could not adapt or adaptation failed - comprehensive error
-    std::string rejection_reason = "SafetyGate rejected " + pumpId + " command";
+    std::string rejection_reason = std::string("SafetyGate rejected ") + pumpId + " command";
     if (state && requestedDurationSec > 0) {
-        uint32_t max_duration = safety_gate_->getMaxDurationSeconds(pumpId.c_str());
+        uint32_t max_duration = safety_gate_->getMaxDurationSeconds(pumpId);
         if (max_duration > 0 && requestedDurationSec > max_duration) {
             rejection_reason += " (duration " + std::to_string(requestedDurationSec) +
                               "s exceeds max " + std::to_string(max_duration) + "s)";
@@ -1562,12 +1212,12 @@ bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool stat
     }
 
     status_logger_.updateAlertWithContext(
-        "SAFETY_GATE_REJECT_" + pumpId,
+        std::string("SAFETY_GATE_REJECT_") + pumpId,
         rejection_reason,
-        "SafetyGate rejected command: " + pumpId + " " + (state ? "ON" : "OFF") +
+        std::string("SafetyGate rejected command: ") + pumpId + " " + (state ? "ON" : "OFF") +
             " for " + std::to_string(requestedDurationSec) + "s",
         "Check SafetyGate configuration, verify pump is not stuck, check duration limits in plantOS.yaml",
-        retry_state_.getContextString(),
+        "State " + getStateAsString(),
         "Operation aborted. Manual intervention may be required.",
         0
     );
@@ -1575,23 +1225,19 @@ bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool stat
     return false;
 }
 
-bool PlantOSController::requestValve(const std::string& valveId, bool state, uint32_t durationSec) {
+bool PlantOSController::requestValve(const char *valveId, bool state, uint32_t durationSec) {
     if (!safety_gate_) {
-        ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", valveId.c_str());
+        ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", valveId);
         return false;
     }
 
-    // Verbose mode: Log actuator commands
-    if (status_logger_.isVerboseMode()) {
-        ESP_LOGI(TAG, "[VERBOSE] Valve command: %s → %s for %u seconds",
-                 valveId.c_str(), state ? "OPEN" : "CLOSED", durationSec);
-    }
+    ESP_LOGD(TAG, "Valve %s %s for %us", valveId, state ? "OPEN" : "CLOSED", (unsigned)durationSec);
 
-    return safety_gate_->executeCommand(valveId.c_str(), state, durationSec);
+    return safety_gate_->executeCommand(valveId, state, durationSec);
 }
 
 void PlantOSController::turnOffAllPumps() {
-    ESP_LOGI(TAG, "Emergency stop - turning off all pumps");
+    ESP_LOGD(TAG, "All pumps and valves OFF");
 
     if (!safety_gate_) {
         return;
@@ -1607,7 +1253,7 @@ void PlantOSController::turnOffAllPumps() {
     // Stop any running AirPump Shelly sequence and turn OFF
     if (safety_gate_) {
         if (safety_gate_->stopAirPumpSequence(false)) {
-            ESP_LOGI(TAG, "AirPump Shelly sequence stopped - pump OFF");
+            ESP_LOGD(TAG, "AirPump Shelly sequence stopped - pump OFF");
         } else {
             // Debounced (already OFF) or deferred - use simple command as fallback
             requestPump(AIR_PUMP, false);
@@ -1630,15 +1276,7 @@ float PlantOSController::readPH() {
         return 0.0f;
     }
 
-    float ph = hal_->readPH();
-
-    // Verbose mode: Log sensor readings (sample every 10th reading to avoid spam)
-    static uint32_t reading_counter = 0;
-    if (status_logger_.isVerboseMode() && (++reading_counter % 10 == 0)) {
-        ESP_LOGI(TAG, "[VERBOSE] pH sensor reading: %.2f", ph);
-    }
-
-    return ph;
+    return hal_->readPH();
 }
 
 bool PlantOSController::hasPhValue() {
@@ -1694,7 +1332,7 @@ void PlantOSController::setAutoReservoirChangeEnabled(bool enabled) {
 
 void PlantOSController::setAutoReservoirChangeDay(uint8_t day) {
     if (day > 6) {
-        ESP_LOGW(TAG, "Invalid day of week %d, clamping to 6 (Saturday)", day);
+        ESP_LOGW(TAG, "Weekday %d invalid, using 6", day);
         day = 6;
     }
 
@@ -1704,8 +1342,7 @@ void PlantOSController::setAutoReservoirChangeDay(uint8_t day) {
         psm_->saveState(NVS_KEY_AUTO_RES_DAY, static_cast<int>(day));
     }
 
-    const char* day_names[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-    ESP_LOGI(TAG, "Auto reservoir change day set to: %d (%s)", day, day_names[day]);
+    ESP_LOGI(TAG, "Auto reservoir change weekday: %d (0=Sun)", day);
 }
 
 } // namespace plantos_controller

@@ -257,9 +257,10 @@ void ActuatorSafetyGate::enableCycling(const char* actuatorID, bool enabled) {
                 return;
             }
 
-            // State differs - send command via HAL
+            // State differs - send command via the gate's own stopAirPumpSequence(), which also
+            // updates the tracked state (before: stale until the next Shelly poll)
             ESP_LOGI(TAG, "AirPump Shelly cycling stopped - turning ON for continuous operation");
-            hal_->stopAirPumpSequence(true);
+            stopAirPumpSequence(true);
         }
         return;  // Don't use internal cycling logic for AirPump
     }

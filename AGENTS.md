@@ -17,7 +17,7 @@ change, night mode and grow-light scheduling over a 120-day grow calendar. The s
 
 - **Toolchain**: ESPHome **2025.4.2** (from the Nix flake), framework ESP-IDF, single-core RISC-V
 - **Board**: Waveshare ESP32-C6-DEV-KIT-N8. The YAML uses `esp32-c6-devkitc-1`.
-- **Size**: `plantOS.yaml` has ~2700 lines (+ ~700 in `packages/debug.yaml`); custom C++ has ~18k lines in `components/`
+- **Size**: `plantOS.yaml` has ~2100 lines (+ `packages/debug.yaml`); custom C++ is in `components/`
 - **Branch**: `main`
 - **Device**: `plantos` at http://192.168.0.201 (web_server v3, port 80)
 
@@ -88,7 +88,7 @@ Layer 3  plantos_hal          ONLY place touching hardware: GPIO/PWM outputs, se
 | `WastewaterPump` | Shelly socket 2 | HTTP |
 | `GrowLight` | Shelly socket 3 | HTTP |
 
-The `on_boot` lambda at the top of `plantOS.yaml` sets the max durations and the PWM sync.
+Max durations are set under `actuator_safety_gate: max_durations:`; the PWM sliders are bound through `plantos_hal: pump_*_pwm_number:`.
 Pump flow rates (mL/s) are configured in the `plantos_hal:` block.
 
 ### Sensors and pins
@@ -129,20 +129,25 @@ Components used in `plantOS.yaml`:
 | `plantos_hal` (~2.5k) | Shelly HTTP runs in a FreeRTOS worker task (`shellyTaskLoop`, `esp_http_client`, 2 s timeout, poll every 30 s). Main thread ↔ task only via two queues; results are applied in `ESPHomeHAL::loop()`. The runtime switch "Shelly Integration" (`setShellyEnabled`) turns it off. |
 | `actuator_safety_gate` (~1.5k) | |
 | `ezo_ph_uart`, `sensor_filter`, `tds_sensor` | sensors |
-| `calendar_manager` | 120-day schedule JSON in YAML (doses in mL/L, pH range, EC target). Day is kept in NVS. |
+| `calendar_manager` | Phase tables per preset (`calendars: anzucht / mutter / haupt`, each a list of phases from `from_day`; the last phase holds forever). Validated and turned into `const` tables at build time by `phase_tables.py`. Day and sync date are kept per calendar in NVS (`calendar_slot_0..2`). Doses in mL/L, EC in mS/cm in YAML and µS/cm in C++. |
 | `persistent_state_manager`, `wdt_manager`, `i2c_scanner`, `alert_service` | support services |
 
 `includes/wifi_scan.h` is pulled in through `esphome: includes:` for the "WiFi Scan" button lambda.
 
-## plantOS.yaml layout (approximate line numbers)
+## plantOS.yaml layout (approximate line numbers, grep before trusting them)
 
 ```
-9 packages (commented out) · 19 esphome/on_boot · 75 logger · 109 wifi · 194 web_server (10 sorting_groups)
-242 api · 258 mqtt (TLS, Hetzner; publishes plantos/vitals every 30 s) · 275 http_request
-302 external_components · 328 uart · 356 light (internal) · 391 output · 447 sensor · 610 binary_sensor
-694 text_sensor · 811 button · 1537 plantos_hal · 1618 plantos_controller · 1664 ASG · 1696 ezo_ph_uart
-1795 calendar_manager · 1936 switch · 2374 number (13) · 2659 interval · 2698 script
+22 packages · 26 esphome (no on_boot lambda) · 107 logger · 127 wifi · 183 web_server (10 sorting_groups)
+233 api · 249 mqtt (TLS, Hetzner; publishes plantos/vitals every 30 s) · 280 external_components · 306 uart
+334 light (internal) · 369 output · 419 sensor · 582 binary_sensor · 648 text_sensor · 730 button
+1047 plantos_hal · 1133 plantos_controller · 1167 ASG · 1213 ezo_ph_uart · 1312 calendar_manager (phase tables)
+then switch · number · interval (no script section)
 ```
+
+YAML lambdas are one call each into `components/plantos_controller/operator_api.cpp` (manual actuator switches, pump and
+valve tests, day change, text getters). Put new UI logic there, not into a lambda. Boot-time configuration is declarative:
+`actuator_safety_gate: max_durations:` / `air_pump_cycling:`, `plantos_hal: pump_*_pwm_number:`,
+`plantos_controller: ph_k_factor_number:`.
 
 **Debug package:** `packages/debug.yaml` holds the debug-only entities (verbose log switches,
 direct GPIO switches, HAL mirror text sensors, Shelly and GPIO test buttons). Production builds

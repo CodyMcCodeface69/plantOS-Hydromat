@@ -81,7 +81,7 @@ Order by expected gain per risk. Measure after each step and stop a line of work
       First move mechanically (commit), then simplify per file (separate commits, each with `TEST_ON_DEVICE.md` rows):
       shared "start operation" guard, shared mixing/settling timer, one retry helper, `std::string` → `const char*`/enum
       where it is only a label. Shrink `controller.h` to the API that is really called.
-- [ ] 2.5 **YAML lambdas → C++.** Move the `on_boot` configuration (max durations, PWM sync) into component config or
+- [x] 2.5 **YAML lambdas → C++.** Move the `on_boot` configuration (max durations, PWM sync) into component config or
       controller setup, collapse the button/switch/number lambdas to one-line calls, and remove per-lambda logging.
       Goal: no business logic left in `plantOS.yaml`, and far fewer than 110 lambdas.
 - [ ] 2.6 **`ezo_ph_uart` `delay()`**: turn the command paths into a small non-blocking state machine. High risk without
@@ -123,7 +123,7 @@ Preset (3 fixed slots: anzucht, mutter, haupt)
       Second line of defense: the ASG rejects commands for actuators the active preset lacks.
       Open detail to settle while coding: pH mixing without AIR_PUMP uses the time-only path (longer settle time,
       placeholder → `TO_MEASURE.md`).
-- [ ] 3.2 **Calendar as phases.** Replace the 120-line JSON with a YAML list per preset
+- [x] 3.2 **Calendar as phases.** Replace the 120-line JSON with a YAML list per preset
       (`from_day`, pH range, doses A/B/C, light on/off, EC target/tolerance), validated in Python at build time and emitted
       as `const` arrays (no runtime JSON parse, `ArduinoJson` drops out of the calendar). Lookup = last phase with
       `from_day <= day`; past the end holds the last phase. A script check proves the Haupt phases expand to exactly

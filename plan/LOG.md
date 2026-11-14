@@ -119,3 +119,25 @@ Work is split across subagents with path ownership; only one agent builds at a t
   next fill never opens the valve and "times out". To fix with `state_entry_executed_` in the next step.
   EC formula and double accumulation untouched (owner question).
 - **Next:** 2.5 YAML lambdas → C++, 2.3 `CentralStatusLogger`, the fill/drain entry-gate fix; then phase 3.
+
+## 2026-11-15: YAML lambdas → C++ (2.5), fill/drain entry fix, calendar phase tables (3.2) (Opus subagents)
+- **Build green at the merge of both: flash 1,381,070 B (75.3 %), RAM 37,036 B.** Host tests 232. Debug build links.
+  Start of sprint: 1,583,438 B (86.3 %).
+- 2.5: flash 1,425,590 → 1,407,722. YAML 2,711 → 2,002 lines, `ESP_LOG` in YAML 227 → 3, lambdas 113 → 92 (each one call).
+  `on_boot` lambda gone: max durations under `actuator_safety_gate: max_durations:`, air pump cycling periods, PWM
+  sliders bound through `plantos_hal`, K-factor number through `plantos_controller`. New
+  `plantos_controller/operator_api.cpp` holds the logic of the manual switches, pump/valve tests, day change and the
+  text getters (host-tested). `grow_start_date` and `enhanced_error_handling` keys removed.
+- **3-layer rule violations fixed:** the eight pump test buttons went straight to the HAL (Emergency Stop could not stop
+  them); manual GPIO/Shelly switches and the valve test skipped the controller. All go Controller → ASG → HAL now.
+- Deliberate removals from production: "WiFi Scan" button (blocks the loop; now in the debug package with its include).
+- Fill/drain entry fix (`9a7c5a0`): WATER_FILLING/EMPTYING open once per state entry via `state_entry_executed_`.
+- 3.2 (`bf6659b`): `calendars:` with phase lists per preset; Haupt = 18 phases, proven equal to the 120-row golden table
+  two ways. Per-calendar NVS slots, migration of the old day into Haupt, old keys left in place (rollback safe).
+  Day counter is `uint16_t`, no wrap at 120, last phase holds. Placeholders for Mutter/Anzucht are in `TO_MEASURE.md`.
+  `CalendarManager::set_active_calendar()` exists but nothing calls it yet (3.3).
+- **Left for 3.3:** `uint8_t` day copies at `ph_control.cpp` (~246), `controller.cpp` (~277), `ec_control.cpp` (~38),
+  the "Day %d / 120" text in a YAML lambda / `operator_api` and in `CentralStatusLogger.cpp` (~470).
+- Owner note: the phase names from `docs/Hydroponik_Zielwerttabelle.csv` are shifted against the schedule values
+  (days 78-98 carry "Späte Blüte" values under the "Mittlere Blüte" weeks). Labels only.
+- **Next:** 3.1 + 3.3-3.7 (preset store, capability gate in `canStart`, switch, UI), then 2.3, 2.6 if time, wrap-up.

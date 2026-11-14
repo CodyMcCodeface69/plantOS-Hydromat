@@ -421,13 +421,7 @@ output:
     frequency: 1000 Hz
     zero_means_zero: true
 
-  # NOTE: Wastewater pump now controlled via Shelly Plus 4PM Socket 2 (HTTP control)
-  # GPIO-based control removed to free GPIO23 for DS18B20 temperature sensor
-  # - platform: ledc
-  #   id: pump_wastewater_output
-  #   pin: GPIO23
-  #   frequency: 1000 Hz
-  #   zero_means_zero: true
+  # NOTE: The wastewater pump has no GPIO output. It runs on Shelly Plus 4PM socket 2 (HTTP).
 
 ################################################################################
 # 1-Wire Bus: For DS18B20 Temperature Sensor
@@ -2170,7 +2164,7 @@ switch:
   # Nutrient Pump Switches (Grow = NutrientPumpA, Micro = NutrientPumpB, Bloom = NutrientPumpC)
   - platform: template
     id: pump_grow_switch
-    name: "Grow Pump"    # NutrientPumpA → nutrient_A_ml_per_liter (GPIO20)
+    name: "Grow Pump"    # NutrientPumpA → nutrient_A_ml_per_liter (GPIO5, PP_2)
     optimistic: true
     restore_mode: ALWAYS_OFF
     web_server:
@@ -2189,7 +2183,7 @@ switch:
 
   - platform: template
     id: pump_micro_switch
-    name: "Micro Pump"   # NutrientPumpB → nutrient_B_ml_per_liter (GPIO21)
+    name: "Micro Pump"   # NutrientPumpB → nutrient_B_ml_per_liter (GPIO6, PP_3)
     optimistic: true
     restore_mode: ALWAYS_OFF
     web_server:
@@ -2208,7 +2202,7 @@ switch:
 
   - platform: template
     id: pump_bloom_switch
-    name: "Bloom Pump"   # NutrientPumpC → nutrient_C_ml_per_liter (GPIO22)
+    name: "Bloom Pump"   # NutrientPumpC → nutrient_C_ml_per_liter (GPIO7, PP_4)
     optimistic: true
     restore_mode: ALWAYS_OFF
     web_server:

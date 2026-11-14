@@ -104,7 +104,7 @@ struct UARTDeviceInfo {
  */
 struct OneWireDeviceInfo {
     std::string name;        // Device name (e.g., "DS18B20 Temperature")
-    std::string port;        // GPIO pin (e.g., "GPIO23")
+    std::string port;        // GPIO pin (e.g., "GPIO3")
     bool ready;              // Whether device is ready and responding
     bool critical;           // Whether device is critical for operation
     std::string status;      // Additional status info (e.g., "22.5°C", "Not responding")

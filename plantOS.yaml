@@ -305,7 +305,7 @@ external_components:
   # Points to local custom components directory
   # ESPHome will compile and link C++ code from here alongside generated code
   - source: components
-    components: [sensor_dummy, sensor_filter, ezo_ph_uart,
+    components: [sensor_filter, ezo_ph_uart,
                  actuator_safety_gate, calendar_manager, persistent_state_manager,
                  i2c_scanner, wdt_manager, plantos_hal,
                  plantos_controller, tds_sensor, alert_service]

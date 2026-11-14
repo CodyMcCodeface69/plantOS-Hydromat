@@ -40,7 +40,7 @@ namespace sensor_filter {
  * EXAMPLE CONFIGURATION:
  * ```yaml
  * sensor:
- *   - platform: sensor_dummy
+ *   - platform: ezo_ph_uart
  *     id: raw_sensor
  *     name: "Raw Sensor"
  *     update_interval: 500ms

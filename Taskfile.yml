@@ -102,7 +102,7 @@ tasks:
           echo ""
 
           # ESP32-C6 uses RISC-V toolchain (not Xtensa)
-          TOOLCHAIN_PREFIX="$HOME/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-"
+          TOOLCHAIN_PREFIX="${PLATFORMIO_CORE_DIR:-.platformio}/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-"
 
           if [ -n "$ELF_FILE" ]; then
             idf-monitor --port "$device" --target esp32c6 --toolchain-prefix "$TOOLCHAIN_PREFIX" "$ELF_FILE"
@@ -179,7 +179,7 @@ tasks:
           fi
 
           # ESP32-C6 uses RISC-V toolchain (not Xtensa)
-          TOOLCHAIN_PREFIX="$HOME/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-"
+          TOOLCHAIN_PREFIX="${PLATFORMIO_CORE_DIR:-.platformio}/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-"
 
           # Connect with esp-idf-monitor with auto-reconnect
           while true; do
@@ -429,7 +429,7 @@ tasks:
     cmds:
       - |
         bash -c '
-          ADDR2LINE="$HOME/.platformio/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-addr2line"
+          ADDR2LINE="${PLATFORMIO_CORE_DIR:-.platformio}/packages/toolchain-riscv32-esp/bin/riscv32-esp-elf-addr2line"
           ELF_FILE=".esphome/build/plantos/.pioenvs/plantos/firmware.elf"
 
           if [ ! -f "$ADDR2LINE" ]; then

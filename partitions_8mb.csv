@@ -1,0 +1,10 @@
+# 8 MB layout for the Waveshare ESP32-C6-DEV-KIT-N8. Opt-in only, see the esp32: block in plantOS.yaml.
+# otadata, phy_init, app0 and nvs keep the offsets of today's 4 MB layout, so a USB flash keeps the
+# NVS contents (grow day, pH K-factor, calibration, PSM state, restored entity values).
+# ESPHome's generated 8 MB layout would move nvs to 0x790000 and start with an empty NVS.
+# Name,   Type, SubType, Offset,   Size
+otadata,  data, ota,     0x9000,   0x2000
+phy_init, data, phy,     0xB000,   0x1000
+app0,     app,  ota_0,   0x10000,  0x380000
+nvs,      data, nvs,     0x390000, 0x6D000
+app1,     app,  ota_1,   0x400000, 0x380000

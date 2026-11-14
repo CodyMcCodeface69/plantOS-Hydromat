@@ -63,6 +63,19 @@ esphome:
 esp32:
   board: esp32-c6-devkitc-1
   variant: esp32c6
+  # 8 MB flash, prepared but OFF. The board has 8 MB; the build uses ESPHome's 4 MB layout
+  # (2 x 1792 KB app slots, nvs at 0x390000 / 436 KB). To switch, uncomment both lines:
+  #  - Needs ONE flash over USB (`task flash`). An OTA cannot rewrite the partition table or the
+  #    bootloader, so never OTA an 8 MB build onto a device that still has the 4 MB layout.
+  #    After the switch every build must keep these lines; going back also needs USB.
+  #  - partitions_8mb.csv keeps otadata, phy_init, app0 and nvs at today's offsets and sizes and
+  #    grows both app slots to 3584 KB. The USB flash does not erase nvs, so grow day, pH K-factor,
+  #    TDS/EC calibration, PSM state and restored entity values survive.
+  #  - Without the `partitions:` line ESPHome generates 2 x 3840 KB app slots and moves nvs to
+  #    0x790000: the device would then start with an EMPTY NVS (grow day 1, default K-factors,
+  #    TDS/EC calibration and PSM state lost). Do not use flash_size alone.
+  # flash_size: 8MB
+  # partitions: partitions_8mb.csv
   framework:
     # ESP-IDF is chosen over Arduino for:
     # - Better RISC-V support on ESP32-C6 (newer chip architecture)

@@ -72,23 +72,6 @@ TEST(schedule_math, days_from_civil) {
   CHECK_EQ(daysFromCivil(2026, 11, 14), 20771);  // 56*365 + 14 + 304 + 13
 }
 
-TEST(schedule_math, grow_days_elapsed_truncates) {
-  using schedule_math::growDaysElapsed;
-  CHECK_EQ(growDaysElapsed(DAY - 1, 0), 0);
-  CHECK_EQ(growDaysElapsed(DAY, 0), 1);
-  CHECK_EQ(growDaysElapsed(-1, 0), 0);           // less than a day before start -> 0, not -1
-  CHECK_EQ(growDaysElapsed(-DAY, 0), -1);
-  CHECK_EQ(growDaysElapsed(1000 * DAY + 5, 990 * DAY), 10);
-}
-
-TEST(schedule_math, grow_day_wraps_after_120) {
-  using schedule_math::growDayFromElapsed;
-  CHECK_EQ((int)growDayFromElapsed(0), 1);
-  CHECK_EQ((int)growDayFromElapsed(119), 120);
-  CHECK_EQ((int)growDayFromElapsed(120), 1);
-  CHECK_EQ((int)growDayFromElapsed(239), 120);
-}
-
 TEST(schedule_math, week_number_and_weekday_are_utc) {
   CHECK_EQ(schedule_math::weekNumber(0), 0);
   CHECK_EQ(schedule_math::weekNumber(7 * DAY - 1), 0);
@@ -177,9 +160,6 @@ TEST(dosing_math, robust_average) {
 }
 
 TEST(dosing_math, stability_helpers) {
-  CHECK(!dosing_math::lastThreeWithin({6.0f, 6.05f}, 0.1f));
-  CHECK(dosing_math::lastThreeWithin({9.0f, 6.0f, 6.05f, 6.08f}, 0.1f));  // only the last three count
-  CHECK(!dosing_math::lastThreeWithin({6.0f, 6.2f, 6.1f}, 0.1f));
   CHECK_NEAR(dosing_math::maxPairwiseDiff(1.0f, 3.0f, 2.0f), 2.0f, 1e-6);
   CHECK_NEAR(dosing_math::maxPairwiseDiff(5.0f, 5.0f, 5.0f), 0.0f, 1e-6);
 }

@@ -141,15 +141,6 @@ public:
         alert_service_ = service;
     }
 
-    /**
-     * Set Grow Start Date
-     * OPTIONAL - Unix timestamp of day 1 of grow cycle (midnight UTC)
-     * Enables automatic day calculation: current_day = (current_time - start_date) / 86400 % 120 + 1
-     */
-    void setGrowStartDate(int64_t timestamp) {
-        grow_start_timestamp_ = timestamp;
-    }
-
     void set_ph_k_factor(float k) { ph_K_ = k; }
     float get_ph_k_factor() const { return ph_K_; }
     void set_ph_k_update_callback(std::function<void(float)> cb) {
@@ -184,12 +175,6 @@ public:
         grow_light_schedule_enabled_ = enabled;
         ESP_LOGI("controller", "Grow light schedule control %s", enabled ? "ENABLED" : "DISABLED");
     }
-
-    /**
-     * Check if grow light schedule control is enabled
-     * @return true if schedule control is enabled
-     */
-    bool isGrowLightScheduleEnabled() const { return grow_light_schedule_enabled_; }
 
     // ========================================================================
     // Public API for External Control (ESPHome services, buttons, etc.)
@@ -311,11 +296,6 @@ public:
     }
 
     /**
-     * Get current EC target multiplier
-     */
-    float getEcTargetMultiplier() const { return ec_target_multiplier_; }
-
-    /**
      * Enable or disable automatic feeding
      * When enabled, feeding triggers automatically once per day when water level reaches LOW
      * Conditions: IDLE state, not NIGHT/SHUTDOWN/PAUSE, sensors show LOW level (HIGH=OFF, LOW=OFF, EMPTY=ON)
@@ -351,12 +331,6 @@ public:
      * @param day Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
      */
     void setAutoReservoirChangeDay(uint8_t day);
-
-    /**
-     * Get day of week for automatic reservoir change
-     * @return Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
-     */
-    uint8_t getAutoReservoirChangeDay() const { return auto_reservoir_change_day_; }
 
     /**
      * Set controller to SHUTDOWN state
@@ -431,17 +405,6 @@ public:
      */
     void configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode, bool enable420Mode);
 
-    /**
-     * Calculate current grow day number (1-120)
-     * If grow_start_timestamp is configured and time_source is available:
-     *   - Gets current time from NTP
-     *   - Calculates days elapsed since start date
-     *   - Returns (days_elapsed % 120) + 1
-     * Otherwise falls back to calendar_manager's manual day counter
-     * @return Current day number (1-120)
-     */
-    uint8_t getCurrentGrowDay();
-
 private:
     /**
      * Get today's LOCAL calendar date as a days-since-epoch ordinal.
@@ -460,9 +423,6 @@ private:
     esphome::calendar_manager::CalendarManager* calendar_manager_{nullptr};
     esphome::time::RealTimeClock* time_source_{nullptr};
     alert_service::AlertService* alert_service_{nullptr};
-
-    // Grow cycle configuration
-    int64_t grow_start_timestamp_{0};  // Unix timestamp of day 1 (0 = not configured)
 
     // Real-world calendar day auto-advance (delta catch-up via SNTP)
     bool did_initial_date_sync_{false};  // Has the first post-NTP date sync run?
@@ -892,12 +852,9 @@ private:
     // ========================================================================
 
     /**
-     * Calculate required acid pump duration based on pH difference
-     * @param current_ph Current pH reading
-     * @param target_ph_max Upper bound of target pH range
-     * @return Dosing duration in milliseconds
+     * Acid dose in mL to bring current_ph down to PH_CORRECTION_TARGET (5.85)
      */
-    float calculateAcidDoseML(float current_ph, float target_ph_max);
+    float calculateAcidDoseML(float current_ph);
 
     /**
      * Perform robust average of pH readings
@@ -905,12 +862,6 @@ private:
      * @return Robust average pH value
      */
     float calculateRobustPhAverage();
-
-    /**
-     * Check if pH reading is stable (consecutive readings within threshold)
-     * @return true if pH has stabilized
-     */
-    bool isPhStable();
 
     /**
      * Update adaptive pH K-factor after a completed correction cycle
@@ -954,74 +905,10 @@ private:
     // pH correction parameters
     static constexpr float PH_TARGET_MIN = 5.5f;
     static constexpr float PH_TARGET_MAX = 6.5f;
-    static constexpr uint32_t PH_MAX_ITERATIONS = 5;
 
     // ========================================================================
-    // ENHANCED ERROR HANDLING & RETRY LOGIC
+    // Sensor retry (pH measuring)
     // ========================================================================
-
-    /**
-     * OperationRetryState - Tracks retry attempts for current operation
-     *
-     * This structure is reset at the start of each major operation (pH correction,
-     * feeding, water operations) and tracks retry attempts during that operation.
-     */
-    struct OperationRetryState {
-        std::string operation_name;      // "pH_CORRECTION", "FEEDING_PUMP_A", etc.
-        uint8_t retry_count;             // Current retry attempt (0 = first try)
-        uint8_t max_retries;             // Maximum retries allowed
-        uint32_t last_retry_time;        // millis() of last retry attempt
-        uint32_t backoff_delay_ms;       // Current backoff delay
-
-        // Track what completed successfully for context
-        std::vector<std::string> completed_steps;  // e.g., ["NutrientPumpA", "NutrientPumpB"]
-
-        OperationRetryState()
-            : operation_name(""), retry_count(0), max_retries(3),
-              last_retry_time(0), backoff_delay_ms(0) {}
-
-        void reset(const std::string& op_name, uint8_t max_retry = 3) {
-            operation_name = op_name;
-            retry_count = 0;
-            max_retries = max_retry;
-            last_retry_time = 0;
-            backoff_delay_ms = 1000;  // Start with 1 second
-            completed_steps.clear();
-        }
-
-        bool canRetry() const {
-            return retry_count < max_retries;
-        }
-
-        void incrementRetry() {
-            retry_count++;
-            last_retry_time = esphome::millis();
-            // Exponential backoff: 1s, 2s, 4s, 8s...
-            backoff_delay_ms = std::min(static_cast<uint32_t>(backoff_delay_ms * 2), static_cast<uint32_t>(10000));  // Cap at 10s
-        }
-
-        bool isBackoffComplete(uint32_t current_time) const {
-            if (retry_count == 0) return true;  // First try, no backoff
-            return (current_time - last_retry_time) >= backoff_delay_ms;
-        }
-
-        std::string getContextString() const {
-            std::string context = operation_name;
-            context += " (attempt " + std::to_string(retry_count + 1) + "/" + std::to_string(max_retries + 1) + ")";
-            if (!completed_steps.empty()) {
-                context += ", completed: [";
-                for (size_t i = 0; i < completed_steps.size(); i++) {
-                    if (i > 0) context += ", ";
-                    context += completed_steps[i];
-                }
-                context += "]";
-            }
-            return context;
-        }
-    };
-
-    // Current retry state for active operation
-    OperationRetryState retry_state_;
 
     /**
      * SensorRetryState - Tracks consecutive sensor read failures
@@ -1063,67 +950,10 @@ private:
     SensorRetryState sensor_retry_state_;
 
     // ========================================================================
-    // SENSOR HEALTH - 3-Tier Model (Phase 7)
+    // SENSOR HEALTH (Phase 7)
     // ========================================================================
 
-    /**
-     * SensorTier - Three-tier degradation model for ambient sensor health
-     *
-     * OK       → sensor reading is valid
-     * STOPPED  → first failure detected, operations suspended for this sensor
-     * RETRYING → retry attempts in progress (with 60s interval)
-     * FAILED   → max retries exhausted, alert remains until manual recovery
-     */
-    enum class SensorTier { OK, STOPPED, RETRYING, FAILED };
-
-    struct SensorHealth {
-        SensorTier tier{SensorTier::OK};
-        uint8_t retry_count{0};
-        uint8_t max_retries{3};
-        uint32_t last_retry_time{0};
-        static constexpr uint32_t RETRY_INTERVAL_MS = 60000;  // 60s between retries
-
-        void recordFailure(uint32_t now) {
-            last_retry_time = now;
-            if (tier == SensorTier::OK) {
-                tier = SensorTier::STOPPED;
-                retry_count = 1;
-            } else if (tier == SensorTier::STOPPED || tier == SensorTier::RETRYING) {
-                retry_count++;
-                tier = (retry_count >= max_retries) ? SensorTier::FAILED : SensorTier::RETRYING;
-            }
-            // FAILED stays FAILED until recordSuccess()
-        }
-
-        void recordSuccess() {
-            tier = SensorTier::OK;
-            retry_count = 0;
-            last_retry_time = 0;
-        }
-
-        bool canRetry(uint32_t now) const {
-            if (tier == SensorTier::FAILED) return false;
-            if (retry_count == 0) return true;
-            return (now - last_retry_time) >= RETRY_INTERVAL_MS;
-        }
-
-        bool isFailed() const { return tier == SensorTier::FAILED; }
-        bool isOK() const { return tier == SensorTier::OK; }
-
-        const char* tierName() const {
-            switch (tier) {
-                case SensorTier::OK:       return "OK";
-                case SensorTier::STOPPED:  return "STOPPED";
-                case SensorTier::RETRYING: return "RETRYING";
-                case SensorTier::FAILED:   return "FAILED";
-                default:                   return "UNKNOWN";
-            }
-        }
-    };
-
-    SensorHealth ph_health_;
-    SensorHealth ec_health_;
-    SensorHealth temp_health_;
+    bool temp_alert_active_{false};  // a temperature alert fired since the last in-range reading
 
     // Sensor plausibility tracking (Phase 7)
     float last_ph_plausibility_value_{0.0f};    // Previous pH for rate-of-change check
@@ -1147,11 +977,6 @@ private:
 
     // Helper methods for enhanced error handling
     bool requestPumpAdaptive(const std::string& pumpId, bool state, uint32_t requested_duration_sec, bool forceExecute);
-    void initOperationRetry(const std::string& operation_name, uint8_t max_retries);
-    bool canRetryOperation();
-    void recordOperationStep(const std::string& step_name);
-    void retryOperation();
-    void checkHardwareStatus();
 
     /**
      * Check Shelly device health via HTTP ping

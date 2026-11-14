@@ -1047,9 +1047,6 @@ void PlantOSController::startPhCorrection() {
     ph_post_fill_stabilize_ = false;
     ph_post_feed_stabilize_ = false;
 
-    // Initialize operation retry framework (max 3 retries for pH correction)
-    initOperationRetry("PH_CORRECTION", 3);
-
     // Log event for crash recovery persistence
     if (psm_) {
         psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
@@ -1514,7 +1511,7 @@ bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool stat
                 "SafetyGate rejected: Duration " + std::to_string(requestedDurationSec) +
                     "s exceeds max " + std::to_string(adapted_duration) + "s",
                 "System adapted duration automatically. Consider increasing max duration in config or reducing dose.",
-                retry_state_.getContextString(),
+                "State " + getStateAsString(),
                 "Retrying with adapted duration " + std::to_string(adapted_duration) + "s",
                 0
             );
@@ -1556,7 +1553,7 @@ bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool stat
         "SafetyGate rejected command: " + pumpId + " " + (state ? "ON" : "OFF") +
             " for " + std::to_string(requestedDurationSec) + "s",
         "Check SafetyGate configuration, verify pump is not stuck, check duration limits in plantOS.yaml",
-        retry_state_.getContextString(),
+        "State " + getStateAsString(),
         "Operation aborted. Manual intervention may be required.",
         0
     );

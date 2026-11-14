@@ -20,13 +20,6 @@ bool hourInNightWindow(uint8_t hour, uint8_t start_hour, uint8_t end_hour);
 /// Days since 1970-01-01 for a proleptic Gregorian civil date (Howard Hinnant's days_from_civil).
 int32_t daysFromCivil(int32_t y, uint32_t m, uint32_t d);
 
-/// Whole days between the grow start and now (truncates toward zero, so it is 0 for less
-/// than one day before the start).
-int32_t growDaysElapsed(int64_t now_ts, int64_t grow_start_ts);
-
-/// Grow day 1..120 for a non-negative day count, wrapping after day 120.
-uint8_t growDayFromElapsed(int32_t days_elapsed);
-
 /// Weeks since the Unix epoch from a UTC timestamp. Weeks therefore roll over on Thursday
 /// 00:00 UTC (known oddity, kept as is).
 int64_t weekNumber(int64_t timestamp);

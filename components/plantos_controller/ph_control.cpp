@@ -309,9 +309,6 @@ void PlantOSController::handlePhCalculating() {
             updatePhKFactor(ph_cycle_start_ph_, ph_current_, ph_cycle_total_ml_);
         }
 
-        // Record successful completion of pH correction operation
-        recordOperationStep("pH_CORRECTION_SUCCESS");
-
         // Resolve any active pH-related alerts
         status_logger_.resolveAlert("PH_TOO_LOW");
         {
@@ -347,9 +344,8 @@ void PlantOSController::handlePhCalculating() {
         return;
     }
 
-    // pH is too high - calculate required acid dose to reach midpoint of target range
-    float ph_dose_target = (target_min + target_max) / 2.0f;
-    float dose_ml = calculateAcidDoseML(ph_current_, ph_dose_target);
+    // pH is too high - dose toward PH_CORRECTION_TARGET
+    float dose_ml = calculateAcidDoseML(ph_current_);
 
     // Check minimum dose threshold (avoid tiny corrections)
     if (dose_ml < 0.5f) {
@@ -1072,12 +1068,10 @@ uint32_t PlantOSController::calculatePhMixingDuration() const {
     return duration_ms_int;
 }
 
-float PlantOSController::calculateAcidDoseML(float current_ph, float target_ph_max) {
+float PlantOSController::calculateAcidDoseML(float current_ph) {
     // Adaptive K-factor formula (docs/CONTROL_LOGIC.md):
     // dose_ml = (current_ph - PH_CORRECTION_TARGET) * tank_volume_L * ph_K_
-    //
     // PH_CORRECTION_TARGET (5.85) is the biological target, not the trigger threshold.
-    // target_ph_max is the trigger threshold (from calendar), kept as parameter for callers.
 
     float ph_delta = current_ph - PH_CORRECTION_TARGET;
     if (ph_delta <= 0.0f) {
@@ -1139,11 +1133,5 @@ void PlantOSController::updatePhKFactor(float ph_before, float ph_after, float m
 float PlantOSController::calculateRobustPhAverage() {
     // Trimmed mean of ph_readings_ (10 % dropped from each end)
     return dosing_math::robustAverage(ph_readings_);
-}
-
-bool PlantOSController::isPhStable() {
-    // Need at least 3 readings; the last 3 must be within 0.1 pH
-    constexpr float STABILITY_THRESHOLD = 0.1f;
-    return dosing_math::lastThreeWithin(ph_readings_, STABILITY_THRESHOLD);
 }
 } // namespace plantos_controller

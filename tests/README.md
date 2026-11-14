@@ -30,10 +30,10 @@ All build output goes to `tests/build/` (git-ignored).
 | File | Real code under test |
 |---|---|
 | `test_calendar.cpp` | `CalendarManager`: JSON parse of the schedule from `plantOS.yaml`, lookup, defaults, mS→µS conversion, day counter + NVS, `sync_to_date` |
-| `test_ph_math.cpp` | `calculateAcidDoseML`, `updatePhKFactor`, `calculatePhMixingDuration`, `calculateRobustPhAverage`, `isPhStable`, `handlePhProcessing`, `handlePhCalculating` |
+| `test_ph_math.cpp` | `calculateAcidDoseML`, `updatePhKFactor`, `calculatePhMixingDuration`, `calculateRobustPhAverage`, `handlePhProcessing`, `handlePhCalculating` |
 | `test_ec_math.cpp` | `updateEcKFactor`, `handleEcProcessing`, `handleEcCalculating`, `handleEcFeeding`, `handleEcMeasuring`, `handleFeeding`, `startMotherNutrients` |
-| `test_time_logic.cpp` | `isNightModeHours`, `getLocalDateOrdinal`, `getCurrentGrowDay`, auto-feed and auto-reservoir triggers, the pH slot schedule and date sync in `handleIdle` |
-| `test_pure_math.cpp` | Free functions in `plantos_controller/dosing_math.*` and `schedule_math.*`, called directly: grow-light window (incl. wrap past midnight), night-hour window, `daysFromCivil`, grow day, week/weekday, pH check slots, acid dose, K-factor updates, mixing time, robust average, EC window/doses |
+| `test_time_logic.cpp` | `isNightModeHours`, `getLocalDateOrdinal`, auto-feed and auto-reservoir triggers, the pH slot schedule and date sync in `handleIdle` |
+| `test_pure_math.cpp` | Free functions in `plantos_controller/dosing_math.*` and `schedule_math.*`, called directly: grow-light window (incl. wrap past midnight), night-hour window, `daysFromCivil`, week/weekday, pH check slots, acid dose, K-factor updates, mixing time, robust average, EC window/doses |
 | `test_robust_averager.cpp` | `sensor_filter/RobustAverager.h` |
 | `test_safety_gate.cpp` | `ActuatorSafetyGate`: debounce, max duration, watchdog, interlock, ramping, cycling |
 

@@ -72,50 +72,6 @@ int32_t PlantOSController::getLocalDateOrdinal() {
     return schedule_math::daysFromCivil(y, m, d);
 }
 
-uint8_t PlantOSController::getCurrentGrowDay() {
-    // Automatic day calculation if grow start date and time source are configured
-    if (grow_start_timestamp_ > 0 && time_source_ != nullptr) {
-        // Get current time from NTP
-        auto now = time_source_->now();
-
-        // Check if time is valid (NTP synchronized)
-        if (now.is_valid()) {
-            // Get current Unix timestamp
-            int64_t current_timestamp = now.timestamp;
-
-            // Calculate days elapsed since grow start
-            int32_t days_elapsed = schedule_math::growDaysElapsed(current_timestamp, grow_start_timestamp_);
-
-            // Handle negative elapsed time (clock not set or start date in future)
-            if (days_elapsed < 0) {
-                ESP_LOGW(TAG, "Grow start date is in the future or clock not synchronized - using day 1");
-                return 1;
-            }
-
-            // Calculate current day (1-120, wraps around)
-            uint8_t current_day = schedule_math::growDayFromElapsed(days_elapsed);
-
-            ESP_LOGD(TAG, "Auto-calculated grow day: %d (elapsed: %d days since start)",
-                     current_day, days_elapsed);
-
-            return current_day;
-        } else {
-            ESP_LOGW(TAG, "NTP time not synchronized yet - falling back to calendar day counter");
-        }
-    }
-
-    // Fallback: Use calendar manager's manual day counter (NVS-persisted)
-    if (calendar_manager_) {
-        uint8_t manual_day = calendar_manager_->get_current_day();
-        ESP_LOGD(TAG, "Using calendar manager day counter: %d", manual_day);
-        return manual_day;
-    }
-
-    // Ultimate fallback: Day 1
-    ESP_LOGW(TAG, "No grow start date or calendar manager - defaulting to day 1");
-    return 1;
-}
-
 // ============================================================================
 // Automatic feeding trigger
 // ============================================================================

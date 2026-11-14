@@ -1,6 +1,6 @@
 // Time-driven decisions of the controller.
 // Real code under test: components/plantos_controller/controller.cpp
-//   isNightModeHours, getLocalDateOrdinal, getCurrentDateTimestamp, getCurrentGrowDay,
+//   isNightModeHours, getLocalDateOrdinal, getCurrentDateTimestamp,
 //   shouldTriggerAutoFeeding, shouldTriggerAutoReservoirChange, getCurrentWeekNumber,
 //   getCurrentDayOfWeek, and the pH slot schedule / date sync / auto-feed parts of handleIdle
 #include "minitest.h"
@@ -135,69 +135,6 @@ TEST(date_ordinal, follows_local_date_not_utc) {
   f.set_time(2026, 11, 15, 0, 30, 0, 3600);  // CET; UTC is still 2026-11-14 23:30
   CHECK_EQ(f.hal.timestamp / 86400, 20771);
   CHECK_EQ(f.ctrl.getLocalDateOrdinal(), 20772);
-}
-
-// ---------------------------------------------------------------------------
-// getCurrentGrowDay (note: no caller in the firmware today; the calendar's NVS day
-// counter + sync_to_date is what actually drives the schedule)
-// ---------------------------------------------------------------------------
-
-static const int64_t START_2025_12_30_UTC = 1767052800;
-
-TEST(grow_day, counts_whole_days_since_start_and_wraps_after_120) {
-  ControllerFixture f;
-  f.ctrl.setGrowStartDate(START_2025_12_30_UTC);
-  f.set_time(2025, 12, 30, 0, 0);
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 1);
-  f.set_time(2025, 12, 30, 23, 59, 59);
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 1);
-  f.set_time(2025, 12, 31, 0, 0);
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 2);
-  f.set_time(2026, 3, 9, 12, 0);  // 69 days later
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 70);
-  f.set_time(2026, 4, 28, 0, 0);  // 119 days later
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 120);
-  f.set_time(2026, 4, 29, 0, 0);  // 120 days later -> wraps
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 1);
-  f.set_time(2026, 11, 14, 12, 0);  // 319 days later -> 319 % 120 + 1
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 80);
-}
-
-TEST(grow_day, start_in_the_future_gives_day_1) {
-  ControllerFixture f;
-  f.cal.set_current_day(33);
-  f.ctrl.setGrowStartDate(START_2025_12_30_UTC);
-  f.set_time(2025, 12, 20, 0, 0);
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 1);
-  f.set_time(2025, 12, 29, 23, 0);  // less than one day early: also day 1
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 1);
-}
-
-TEST(grow_day, day_changes_at_utc_midnight_of_the_start_timestamp) {
-  // SUSPECT: elapsed days are (utc_now - start) / 86400, so the day flips at 00:00 UTC
-  // (01:00 CET / 02:00 CEST), while CalendarManager::sync_to_date flips at local midnight.
-  // The two day sources disagree for 1-2 h every night. (__init__.py also derives the
-  // start timestamp with datetime.timestamp() in the BUILD machine's timezone.)
-  ControllerFixture f;
-  f.ctrl.setGrowStartDate(START_2025_12_30_UTC);
-  f.set_time(2025, 12, 31, 0, 30, 0, 3600);  // local 00:30 CET on the 31st
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 1);   // still day 1
-  f.set_time(2025, 12, 31, 1, 0, 0, 3600);
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 2);
-}
-
-TEST(grow_day, falls_back_to_calendar_counter_then_to_1) {
-  ControllerFixture f;
-  f.cal.set_current_day(33);
-  f.set_time(2026, 11, 14, 12, 0);
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 33);  // no start date configured
-
-  f.ctrl.setGrowStartDate(START_2025_12_30_UTC);
-  f.clock.set_invalid();
-  CHECK_EQ(f.ctrl.getCurrentGrowDay(), 33);  // clock not synced
-
-  ControllerFixture bare(false);
-  CHECK_EQ(bare.ctrl.getCurrentGrowDay(), 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -417,11 +354,11 @@ TEST(auto_reservoir, each_condition_blocks) {
 TEST(auto_reservoir, default_is_disabled_on_sunday_and_day_setter_clamps) {
   ControllerFixture f;
   CHECK(!f.ctrl.isAutoReservoirChangeEnabled());
-  CHECK_EQ(f.ctrl.getAutoReservoirChangeDay(), 0);
+  CHECK_EQ(f.ctrl.auto_reservoir_change_day_, 0);
   f.ctrl.setAutoReservoirChangeDay(3);
-  CHECK_EQ(f.ctrl.getAutoReservoirChangeDay(), 3);
+  CHECK_EQ(f.ctrl.auto_reservoir_change_day_, 3);
   f.ctrl.setAutoReservoirChangeDay(9);
-  CHECK_EQ(f.ctrl.getAutoReservoirChangeDay(), 6);
+  CHECK_EQ(f.ctrl.auto_reservoir_change_day_, 6);
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,6 @@ Phase 8: Full Controller FSM with PSM integration and CentralStatusLogger owners
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
-from datetime import datetime
 
 # Define namespaces
 plantos_controller_ns = cg.esphome_ns.namespace('plantos_controller')
@@ -99,18 +98,8 @@ async def to_code(config):
         time_source = await cg.get_variable(config[CONF_TIME_SOURCE])
         cg.add(var.setTimeSource(time_source))
 
-    # Configure grow start date (optional, enables automatic day calculation)
-    if CONF_GROW_START_DATE in config:
-        # Parse date string (YYYY-MM-DD format) to Unix timestamp
-        date_str = config[CONF_GROW_START_DATE]
-        try:
-            # Parse YYYY-MM-DD format
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            # Get timestamp (seconds since epoch at midnight UTC)
-            timestamp = int(dt.timestamp())
-            cg.add(var.setGrowStartDate(timestamp))
-        except ValueError as e:
-            raise cv.Invalid(f"Invalid date format '{date_str}'. Use YYYY-MM-DD format (e.g., '2025-12-30')")
+    # grow_start_date: accepted for config compatibility only. The grow day comes from the
+    # calendar's NVS day counter, advanced at local midnight (CalendarManager::sync_to_date).
 
     # Configure status logger settings
     cg.add(var.configureStatusLogger(

@@ -78,22 +78,6 @@ float robustAverage(const std::vector<float> &readings) {
     return sum / count;
 }
 
-bool lastThreeWithin(const std::vector<float> &readings, float threshold) {
-    if (readings.size() < 3) {
-        return false;
-    }
-
-    size_t last_idx = readings.size() - 1;
-    float reading_1 = readings[last_idx];
-    float reading_2 = readings[last_idx - 1];
-    float reading_3 = readings[last_idx - 2];
-
-    float max_val = std::max({reading_1, reading_2, reading_3});
-    float min_val = std::min({reading_1, reading_2, reading_3});
-
-    return (max_val - min_val) <= threshold;
-}
-
 float maxPairwiseDiff(float a, float b, float c) {
     float diff_1_2 = std::abs(a - b);
     float diff_2_3 = std::abs(b - c);

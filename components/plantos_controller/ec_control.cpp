@@ -42,14 +42,8 @@ void PlantOSController::handleFeeding() {
         ? hal_->getTotalTankVolume()
         : hal_->getTankVolumeDelta();
 
-    ESP_LOGI(TAG, "[FEEDING] Day %d | %s volume: %.1fL | EC target: %.0f uS/cm",
-             current_day,
-             is_reservoir_change_ ? "TOTAL" : "DELTA",
-             tank_volume_liters,
-             schedule.ec_target);
-
     if (tank_volume_liters <= 0.0f) {
-        ESP_LOGW(TAG, "[FEEDING] Tank volume unavailable — using 10 L fallback");
+        ESP_LOGW(TAG, "[FEEDING] Tank volume unavailable - using 10 L");
         tank_volume_liters = 10.0f;
     }
 
@@ -70,10 +64,9 @@ void PlantOSController::handleFeeding() {
         ec_attempt_count_ = 0;
         feeding_manual_mode_ = true;
 
-        ESP_LOGI(TAG, "[FEEDING] EC mode: installment A=%.2f mL  B=%.2f mL  C=%.2f mL (1/5 of full dose)",
-                 ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
-        ESP_LOGI(TAG, "[FEEDING] EC before dosing: %.1f uS/cm  Target: %.0f uS/cm",
-                 ec_pre_feeding_, schedule.ec_target);
+        ESP_LOGI(TAG, "[FEEDING] Day %d, %s %.1f L, EC %.1f -> target %.0f uS/cm: installments of 1/5 dose A %.2f B %.2f C %.2f mL",
+                 current_day, is_reservoir_change_ ? "total" : "delta", tank_volume_liters, ec_pre_feeding_,
+                 schedule.ec_target, ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
 
         if (psm_) psm_->logEvent("EC_FEEDING", 0);
         transitionTo(ControllerState::EC_FEEDING);
@@ -84,7 +77,8 @@ void PlantOSController::handleFeeding() {
         ec_dose_C_ml_ = full.c_ml;
         feeding_manual_mode_ = false;
 
-        ESP_LOGI(TAG, "[FEEDING] Fixed-dose mode (no EC target): A=%.2f mL  B=%.2f mL  C=%.2f mL",
+        ESP_LOGI(TAG, "[FEEDING] Day %d, %s %.1f L, no EC target: fixed dose A %.2f B %.2f C %.2f mL",
+                 current_day, is_reservoir_change_ ? "total" : "delta", tank_volume_liters,
                  ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
 
         if (psm_) psm_->logEvent("EC_FEEDING", 0);
@@ -136,8 +130,8 @@ void PlantOSController::handleEcProcessing() {
         int64_t elapsed_s = current_ts - last_ec_feeding_timestamp_;
         if (elapsed_s < EC_MIN_INTERVAL_S) {
             int64_t wait_s = EC_MIN_INTERVAL_S - elapsed_s;
-            ESP_LOGI(TAG, "[EC_PROCESSING] 12h guard: %lld/%lld s elapsed - %lld s remaining",
-                     elapsed_s, EC_MIN_INTERVAL_S, wait_s);
+            ESP_LOGI(TAG, "[EC_PROCESSING] skipped: last feeding %lld s ago, 12 h guard (%lld s left)",
+                     (long long)elapsed_s, (long long)wait_s);
             auto_ec_check_pending_ = false;
             transitionAfterEcSkipped();
             return;
@@ -151,14 +145,13 @@ void PlantOSController::handleEcProcessing() {
     float ec_max = window.max;
     const dosing_math::EcLevel ec_level = dosing_math::classifyEc(ec_current, ec_target, schedule.ec_tolerance);
 
-    ESP_LOGI(TAG, "[EC_PROCESSING] EC=%.1f uS/cm, target=%.0f (cal %.0f x %.2f) ±%.0f (min=%.0f, max=%.0f)",
+    ESP_LOGI(TAG, "[EC_PROCESSING] EC %.1f uS/cm, target %.0f (calendar %.0f x %.2f) +-%.0f, window %.0f-%.0f",
              ec_current, ec_target, schedule.ec_target, ec_target_multiplier_,
              schedule.ec_tolerance, ec_min, ec_max);
 
     // Over-concentration: wait for natural evaporation to lower EC
     if (ec_level == dosing_math::EcLevel::ABOVE_RANGE) {
-        ESP_LOGW(TAG, "[EC_PROCESSING] EC over-concentration (%.1f > %.1f uS/cm) - no feeding, add plain water",
-                 ec_current, ec_max);
+        ESP_LOGW(TAG, "[EC_PROCESSING] EC above window - no feeding, add plain water");
         status_logger_.updateAlertStatus("EC_HIGH", "EC over-concentration - add plain water or wait");
         auto_ec_check_pending_ = false;
         transitionAfterEcSkipped();
@@ -175,7 +168,7 @@ void PlantOSController::handleEcProcessing() {
     }
 
     // EC below minimum - feeding required
-    ESP_LOGI(TAG, "[EC_PROCESSING] EC low (%.3f < %.3f) - starting feeding cycle", ec_current, ec_min);
+    ESP_LOGI(TAG, "[EC_PROCESSING] EC below window - feeding");
 
     // Store initial EC and reset cycle state for K-factor calculation
     ec_pre_feeding_ = ec_current;
@@ -207,7 +200,7 @@ void PlantOSController::handleEcCalculating() {
     float delta_ec = ec_target - ec_current;
 
     if (delta_ec <= 10.0f) {  // 0.01 mS/cm = 10 µS/cm
-        ESP_LOGI(TAG, "[EC_CALCULATING] EC already at or above target - no dosing needed");
+        ESP_LOGI(TAG, "[EC_CALCULATING] EC %.1f within 10 of target %.0f - no dose", ec_current, ec_target);
         if (psm_) psm_->clearEvent();
         transitionTo(ControllerState::IDLE);
         return;
@@ -242,10 +235,8 @@ void PlantOSController::handleEcCalculating() {
     // Accumulate mL/L for K-factor update after mixing
     ec_total_ml_per_L_ += doses.dosed_ml_per_L;
 
-    ESP_LOGI(TAG, "[EC_CALCULATING] EC delta=%.1f uS/cm, K=%.6f, total=%.3f mL/L",
-             delta_ec, ec_K_feed_, total_ml_per_L);
-    ESP_LOGI(TAG, "[EC_CALCULATING] Doses: A=%.2f mL, B=%.2f mL, C=%.2f mL (tank %.1fL)",
-             ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_, tank_volume_L);
+    ESP_LOGI(TAG, "[EC_CALCULATING] dEC %.1f uS/cm, K %.6f -> %.3f mL/L; A %.2f B %.2f C %.2f mL (%.1f L)",
+             delta_ec, ec_K_feed_, total_ml_per_L, ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_, tank_volume_L);
 
     transitionTo(ControllerState::EC_FEEDING);
 }
@@ -279,12 +270,11 @@ void PlantOSController::handleEcFeeding() {
         }
         if (is_mother_mix_) {
             is_mother_mix_ = false;
-            ESP_LOGI(TAG, "[EC_FEEDING] Mother mix complete → IDLE");
+            ESP_LOGI(TAG, "[EC_FEEDING] Mother mix done");
             if (psm_) psm_->clearEvent();
             transitionTo(ControllerState::IDLE);
         } else {
-            ESP_LOGI(TAG, "[EC_FEEDING] Nutrient dosing complete (total so far: %.4f mL/L) - starting mixing",
-                     ec_total_ml_per_L_);
+            ESP_LOGI(TAG, "[EC_FEEDING] Dosing done (cycle total %.4f mL/L)", ec_total_ml_per_L_);
             transitionTo(ControllerState::EC_MIXING);
         }
         return;
@@ -297,8 +287,7 @@ void PlantOSController::handleEcFeeding() {
         if (dose_ml > 0.0f && hal_) {
             float duration_sec = hal_->pumpflow(pump_name, dose_ml);
             current_ec_duration_ms = static_cast<uint32_t>(duration_sec * 1000.0f);
-            ESP_LOGI(TAG, "[EC_FEEDING] %s: %.2f mL = %.2f sec (%d ms)",
-                     pump_name, dose_ml, duration_sec, current_ec_duration_ms);
+            ESP_LOGI(TAG, "[EC_FEEDING] %s: %.2f mL = %.2f s", pump_name, dose_ml, duration_sec);
         } else {
             current_ec_duration_ms = 0;
         }
@@ -313,7 +302,7 @@ void PlantOSController::handleEcFeeding() {
             }
             state_start_time_ = hal_->getSystemTime();
         } else {
-            ESP_LOGI(TAG, "[EC_FEEDING] %s dose=0 - skipping", pump_name);
+            ESP_LOGD(TAG, "[EC_FEEDING] %s dose 0 - skipped", pump_name);
             state_counter_++;
             state_entry_executed_ = false;  // allow entry block to run for next pump
             state_start_time_ = hal_->getSystemTime();
@@ -330,7 +319,7 @@ void PlantOSController::handleEcFeeding() {
     if (safety_gate_) {
         safety_gate_->executeCommand(pump_name, false, 0);
     }
-    ESP_LOGI(TAG, "[EC_FEEDING] %s complete", pump_name);
+    ESP_LOGD(TAG, "[EC_FEEDING] %s done", pump_name);
 
     // Advance to next pump
     state_counter_++;
@@ -347,11 +336,9 @@ void PlantOSController::handleEcMixing() {
 
     if (!state_entry_executed_) {
         state_entry_executed_ = true;
-        ESP_LOGI(TAG, "[EC_MIXING] Waiting 5 minutes for nutrients to mix");
     }
 
     if (elapsed >= EC_MIXING_DURATION_MS) {
-        ESP_LOGI(TAG, "[EC_MIXING] Mixing complete - measuring EC");
         transitionTo(ControllerState::EC_MEASURING);
     }
 }
@@ -366,8 +353,8 @@ void PlantOSController::handleEcMeasuring() {
         state_entry_executed_ = true;
         ec_attempt_count_++;
         uint8_t max_attempts = feeding_manual_mode_ ? FEEDING_MANUAL_MAX_CYCLES : MAX_EC_ATTEMPTS;
-        ESP_LOGI(TAG, "[EC_MEASURING] Installment %d/%d - waiting %.0fs for EC to stabilize",
-                 ec_attempt_count_, max_attempts, EC_SETTLE_MS / 1000.0f);
+        ESP_LOGD(TAG, "[EC_MEASURING] Installment %u/%u - %us settle", (unsigned)ec_attempt_count_,
+                 (unsigned)max_attempts, (unsigned)(EC_SETTLE_MS / 1000));
         return;
     }
 
@@ -384,8 +371,8 @@ void PlantOSController::handleEcMeasuring() {
     }
 
     float ec_after = hal_->readEC();
-    ESP_LOGI(TAG, "[EC_MEASURING] EC after installment: %.1f uS/cm (pre-cycle: %.1f, delta: +%.1f)",
-             ec_after, ec_pre_feeding_, ec_after - ec_pre_feeding_);
+    ESP_LOGI(TAG, "[EC_MEASURING] EC %.1f uS/cm after installment %u (cycle start %.1f, +%.1f)",
+             ec_after, (unsigned)ec_attempt_count_, ec_pre_feeding_, ec_after - ec_pre_feeding_);
 
     // Update adaptive K-factor based on observed EC response
     updateEcKFactor(ec_pre_feeding_, ec_after, ec_total_ml_per_L_);
@@ -409,33 +396,31 @@ void PlantOSController::handleEcMeasuring() {
     bool max_attempts_reached = (ec_attempt_count_ >= max_attempts);
 
     if (in_range) {
-        ESP_LOGI(TAG, "[EC_MEASURING] EC target reached (%.1f >= %.1f uS/cm) after %d installment(s)",
-                 ec_after, ec_min, ec_attempt_count_);
+        ESP_LOGI(TAG, "[EC_MEASURING] EC target reached (>= %.1f)", ec_min);
         feeding_manual_mode_ = false;
         status_logger_.resolveAlert("EC_HIGH");
         status_logger_.resolveAlert("EC_LOW");
     } else if (max_attempts_reached) {
-        ESP_LOGW(TAG, "[EC_MEASURING] Max installments (%d) reached - EC still %.1f uS/cm (target %.0f)",
-                 max_attempts, ec_after, ec_target);
+        ESP_LOGW(TAG, "[EC_MEASURING] Max installments (%u) reached, EC still below %.1f (target %.0f)",
+                 (unsigned)max_attempts, ec_min, ec_target);
         feeding_manual_mode_ = false;
         status_logger_.updateAlertStatus("EC_LOW",
             "EC below target after max feeding installments - check nutrient supply");
     } else if (feeding_manual_mode_) {
         // Manual feeding: use same pre-calculated installment doses (not K-factor recalculation)
-        ESP_LOGI(TAG, "[EC_MEASURING] EC still low (%.1f < %.1f uS/cm) - giving installment %d",
-                 ec_after, ec_min, ec_attempt_count_ + 1);
+        ESP_LOGI(TAG, "[EC_MEASURING] EC below %.1f - next installment", ec_min);
         transitionTo(ControllerState::EC_FEEDING);
         return;
     } else {
         // Automated EC correction: retry with K-factor recalculated dose
-        ESP_LOGI(TAG, "[EC_MEASURING] EC still low (%.1f < %.1f uS/cm) - retry %d/%d",
-                 ec_after, ec_min, ec_attempt_count_, MAX_EC_ATTEMPTS);
+        ESP_LOGI(TAG, "[EC_MEASURING] EC below %.1f - recalculating dose (attempt %u/%u)", ec_min,
+                 (unsigned)ec_attempt_count_, (unsigned)MAX_EC_ATTEMPTS);
         transitionTo(ControllerState::EC_CALCULATING);
         return;
     }
 
     // Always check pH after EC feeding (nutrients shift pH)
-    ESP_LOGI(TAG, "[EC_MEASURING] EC cycle complete - triggering pH check (5-min stabilization)");
+    ESP_LOGI(TAG, "[EC_MEASURING] EC cycle done - pH check next (300 s settle)");
 
     resetPhCycle();
 
@@ -454,7 +439,7 @@ void PlantOSController::transitionAfterEcSkipped() {
     // Post-fill sequencing (docs/CONTROL_LOGIC.md): if auto pH correction is pending,
     // transition to PH_PROCESSING; otherwise return to IDLE.
     if (auto_ph_correction_pending_) {
-        ESP_LOGI(TAG, "[EC_PROCESSING] Auto pH correction pending - transitioning to pH check");
+        ESP_LOGD(TAG, "[EC_PROCESSING] pH check pending");
         auto_ph_correction_pending_ = false;
 
         resetPhCycle();
@@ -493,8 +478,7 @@ void PlantOSController::updateEcKFactor(float ec_before, float ec_after, float m
     float K_observed = k.observed;
     float K_new = k.updated;
 
-    ESP_LOGI(TAG, "EC K-factor update: K_obs=%.6f → K_ema=%.6f (was %.6f) | "
-             "EC %.1f→%.1f uS/cm (delta=%.1f), %.4f mL/L",
+    ESP_LOGI(TAG, "EC K update: observed %.6f, new %.6f (was %.6f); EC %.1f->%.1f (d %.1f), %.4f mL/L",
              K_observed, K_new, ec_K_feed_, ec_before, ec_after, ec_delta, ml_per_L_total);
 
     ec_K_feed_ = K_new;
@@ -518,12 +502,7 @@ void PlantOSController::handleEcCalibrating() {
         case ECCalibStep::RINSE_PROMPT:
             if (!ec_calib_prompt_shown_) {
                 ec_calib_prompt_shown_ = true;
-                ESP_LOGW(TAG, "================================================");
-                ESP_LOGW(TAG, "EC CALIBRATION - STEP 1 of 4");
-                ESP_LOGW(TAG, "Remove EC probe from tank");
-                ESP_LOGW(TAG, "Rinse probe with distilled water");
-                ESP_LOGW(TAG, "Waiting 30 seconds...");
-                ESP_LOGW(TAG, "================================================");
+                ESP_LOGW(TAG, "EC calibration 1/4: take the probe out of the tank and rinse it (30 s)");
             }
             if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
                 ec_calib_step_ = ECCalibStep::DIP_PROMPT;
@@ -535,20 +514,14 @@ void PlantOSController::handleEcCalibrating() {
         case ECCalibStep::DIP_PROMPT:
             if (!ec_calib_prompt_shown_) {
                 ec_calib_prompt_shown_ = true;
-                ESP_LOGW(TAG, "================================================");
-                ESP_LOGW(TAG, "EC CALIBRATION - STEP 2 of 4");
-                ESP_LOGW(TAG, "Dip probe into %.1f uS/cm calibration solution", ec_calib_target_);
-                ESP_LOGW(TAG, "Waiting 30 seconds for probe to equilibrate...");
-                ESP_LOGW(TAG, "================================================");
+                ESP_LOGW(TAG, "EC calibration 2/4: dip the probe into %.1f uS/cm solution (30 s)", ec_calib_target_);
                 ec_calib_readings_.clear();
             }
             if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
                 ec_calib_step_ = ECCalibStep::STABILIZING;
                 ec_calib_step_start_time_ = now;
                 ec_calib_last_reading_time_ = 0;
-                ESP_LOGI(TAG, "EC CALIBRATION - STEP 3 of 4");
-                ESP_LOGI(TAG, "Collecting readings for stability check...");
-                ESP_LOGI(TAG, "Need %zu readings at 1s intervals", EC_CALIB_MIN_READINGS);
+                ESP_LOGI(TAG, "EC calibration 3/4: collecting %u readings at 1 s", (unsigned)EC_CALIB_MIN_READINGS);
             }
             break;
 
@@ -563,10 +536,7 @@ void PlantOSController::handleEcCalibrating() {
                 } else {
                     ec_calib_readings_.push_back(reading);
                     size_t n = ec_calib_readings_.size();
-                    if (n % 10 == 0) {
-                        ESP_LOGI(TAG, "EC calib: %zu/%zu readings collected (latest: %.1f uS/cm)",
-                                 n, EC_CALIB_MIN_READINGS, reading);
-                    }
+                    ESP_LOGD(TAG, "EC calib: %u readings (latest %.1f uS/cm)", (unsigned)n, reading);
                 }
             }
 
@@ -603,9 +573,8 @@ void PlantOSController::handleEcCalibrating() {
             }
 
             float factor = ec_calib_target_ / mean;
-            ESP_LOGI(TAG, "EC calibration: measured=%.1f uS/cm, target=%.1f uS/cm",
-                     mean, ec_calib_target_);
-            ESP_LOGI(TAG, "EC calibration factor: %.4f", factor);
+            ESP_LOGI(TAG, "EC calibration: measured %.1f, target %.1f uS/cm -> factor %.4f",
+                     mean, ec_calib_target_, factor);
 
             if (factor < EC_CALIB_FACTOR_MIN || factor > EC_CALIB_FACTOR_MAX) {
                 ESP_LOGE(TAG, "[EC_CALIB] Factor %.4f out of valid range [%.1f-%.1f]",
@@ -626,7 +595,7 @@ void PlantOSController::handleEcCalibrating() {
                 return;
             }
 
-            ESP_LOGI(TAG, "EC calibration factor %.4f saved successfully", factor);
+            ESP_LOGI(TAG, "EC calibration factor %.4f saved", factor);
             ec_calib_step_ = ECCalibStep::STORE_PROMPT;
             ec_calib_step_start_time_ = now;
             ec_calib_prompt_shown_ = false;
@@ -636,14 +605,8 @@ void PlantOSController::handleEcCalibrating() {
         case ECCalibStep::STORE_PROMPT:
             if (!ec_calib_prompt_shown_) {
                 ec_calib_prompt_shown_ = true;
-                ESP_LOGW(TAG, "================================================");
-                ESP_LOGW(TAG, "EC CALIBRATION - STEP 4 of 4");
-                ESP_LOGW(TAG, "Remove probe from calibration solution");
-                ESP_LOGW(TAG, "Rinse with distilled water");
-                ESP_LOGW(TAG, "Return probe to tank or store dry");
-                ESP_LOGW(TAG, "Calibration factor: %.4f", hal_->getECCalibrationFactor());
-                ESP_LOGW(TAG, "System returns to IDLE in 30 seconds...");
-                ESP_LOGW(TAG, "================================================");
+                ESP_LOGW(TAG, "EC calibration 4/4: rinse the probe, put it back (factor %.4f, IDLE in 30 s)",
+                         hal_->getECCalibrationFactor());
             }
             if (step_elapsed >= EC_CALIB_PROMPT_DURATION) {
                 ec_calib_step_ = ECCalibStep::COMPLETE;
@@ -656,9 +619,8 @@ void PlantOSController::handleEcCalibrating() {
             if (psm_ && hal_->hasTime()) {
                 last_ec_calibration_ts_ = hal_->getCurrentTimestamp();
                 psm_->saveInt32(NVS_KEY_EC_CALIB_TS, (int32_t)last_ec_calibration_ts_);
-                ESP_LOGI(TAG, "EC calibration timestamp saved: %lld", (long long)last_ec_calibration_ts_);
             }
-            ESP_LOGI(TAG, "EC calibration complete - returning to IDLE");
+            ESP_LOGI(TAG, "EC calibration complete");
             transitionTo(ControllerState::IDLE);
             break;
 
@@ -680,14 +642,10 @@ bool PlantOSController::checkEcCalibrationStability() {
     float std_dev = stats.std_dev;
     float cv = stats.cv;
 
-    ESP_LOGI(TAG, "EC stability check: mean=%.1f, std=%.1f, CV=%.3f (threshold: %.2f)",
-             mean, std_dev, cv, EC_CALIB_VARIANCE_THRESHOLD);
-
-    if (cv < EC_CALIB_VARIANCE_THRESHOLD) {
-        ESP_LOGI(TAG, "EC readings STABLE - proceeding to calculate factor");
-        return true;
-    }
-    return false;
+    bool stable = cv < EC_CALIB_VARIANCE_THRESHOLD;
+    ESP_LOGI(TAG, "EC calib stability: mean %.1f, std %.1f, CV %.3f (max %.2f) -> %s",
+             mean, std_dev, cv, EC_CALIB_VARIANCE_THRESHOLD, stable ? "stable" : "NOT stable");
+    return stable;
 }
 
 void PlantOSController::resetEcCalibration() {

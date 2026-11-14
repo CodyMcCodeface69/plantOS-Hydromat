@@ -22,13 +22,13 @@ bool PlantOSController::isNightModeHours() const {
     // Priority: CalendarManager light schedule (if available) → YAML config fallback.
 
     if (!time_source_) {
-        ESP_LOGW(TAG, "Time source not configured - cannot determine night mode hours");
+        ESP_LOGD(TAG, "Night mode: no time source");
         return false;
     }
 
     auto now = time_source_->now();
     if (!now.is_valid()) {
-        ESP_LOGW(TAG, "NTP time not synchronized yet - cannot determine night mode hours");
+        ESP_LOGD(TAG, "Night mode: time not synced yet");
         return false;
     }
 
@@ -122,7 +122,7 @@ bool PlantOSController::shouldTriggerAutoFeeding() {
     // ========================================================================
     int32_t today = getLocalDateOrdinal();
     if (today <= 0) {
-        ESP_LOGW(TAG, "[AUTO-FEEDING] NTP time unavailable - cannot check date");
+        ESP_LOGD(TAG, "[AUTO-FEEDING] no valid time - cannot check date");
         return false;
     }
 
@@ -189,7 +189,7 @@ bool PlantOSController::shouldTriggerAutoReservoirChange() {
     // ========================================================================
     int32_t current_week = getCurrentWeekNumber();
     if (current_week == 0) {
-        ESP_LOGW(TAG, "[AUTO-RES] NTP time unavailable - cannot check week");
+        ESP_LOGD(TAG, "[AUTO-RES] no valid time - cannot check week");
         return false;
     }
 
@@ -197,7 +197,6 @@ bool PlantOSController::shouldTriggerAutoReservoirChange() {
         return false;  // Already done this week
     }
 
-    ESP_LOGI(TAG, "[AUTO-RES] All conditions met - triggering reservoir change");
     return true;
 }
 

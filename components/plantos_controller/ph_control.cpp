@@ -52,22 +52,13 @@ void PlantOSController::handlePhProcessing() {
     float ph_min = hal_->get_ph_min();
     float ph_max = hal_->get_ph_max();
 
-    ESP_LOGI(TAG, "========================================================");
-    ESP_LOGI(TAG, "  PERIODIC pH CHECK");
-    ESP_LOGI(TAG, "========================================================");
-    ESP_LOGI(TAG, "Current pH: %.2f", ph_value);
-    ESP_LOGI(TAG, "Target range: %.2f - %.2f", ph_min, ph_max);
+    ESP_LOGI(TAG, "pH check: %.2f, range %.2f-%.2f", ph_value, ph_min, ph_max);
 
     // Check if pH is within range
     if (ph_value >= ph_min && ph_value <= ph_max) {
-        ESP_LOGI(TAG, "pH is within range - no correction needed");
-        ESP_LOGI(TAG, "Returning to IDLE");
-        ESP_LOGI(TAG, "========================================================");
         transitionTo(ControllerState::IDLE);
     } else if (ph_value > ph_max) {
-        ESP_LOGW(TAG, "pH is TOO HIGH (%.2f > %.2f)", ph_value, ph_max);
-        ESP_LOGI(TAG, "Starting pH correction sequence");
-        ESP_LOGI(TAG, "========================================================");
+        ESP_LOGI(TAG, "pH above range - starting correction");
 
         resetPhCycle();
 
@@ -78,10 +69,7 @@ void PlantOSController::handlePhProcessing() {
 
         transitionTo(ControllerState::PH_MEASURING);
     } else {
-        ESP_LOGW(TAG, "pH is TOO LOW (%.2f < %.2f)", ph_value, ph_min);
-        ESP_LOGW(TAG, "WARNING: pH correction only supports LOWERING pH (adding acid)");
-        ESP_LOGW(TAG, "Manual intervention required to raise pH");
-        ESP_LOGI(TAG, "========================================================");
+        ESP_LOGW(TAG, "pH below range - no base pump, raise pH by hand");
         transitionTo(ControllerState::IDLE);
     }
 }
@@ -101,13 +89,12 @@ void PlantOSController::handlePhMeasuring() {
         uint32_t stabilize_ms = PH_MEASURING_DURATION;
         if (ph_post_fill_stabilize_) {
             stabilize_ms = POST_FILL_STABILIZE_MS;
-            ESP_LOGI(TAG, "pH measuring: All pumps OFF for 10-min stabilization (post water fill)");
+            ESP_LOGI(TAG, "pH measuring: pumps OFF, 600 s settle (after water fill)");
         } else if (ph_post_feed_stabilize_) {
             stabilize_ms = POST_FEED_STABILIZE_MS;
-            ESP_LOGI(TAG, "pH measuring: All pumps OFF for 5-min stabilization (post EC feeding)");
+            ESP_LOGI(TAG, "pH measuring: pumps OFF, 300 s settle (after EC feeding)");
         } else {
-            ESP_LOGI(TAG, "pH measuring: All pumps OFF for %.0fs stabilization",
-                     stabilize_ms / 1000.0f);
+            ESP_LOGI(TAG, "pH measuring: pumps OFF, %us settle", (unsigned)(stabilize_ms / 1000));
         }
 
         // Consume the stabilization intent flags: latch the chosen duration for
@@ -133,25 +120,24 @@ void PlantOSController::handlePhMeasuring() {
         if (hasPhValue()) {
             // Sensor has value - check if recovering from failures
             if (sensor_retry_state_.consecutive_failures > 0) {
-                ESP_LOGI(TAG, "pH sensor recovered after %u failures", sensor_retry_state_.consecutive_failures);
+                ESP_LOGI(TAG, "pH sensor recovered after %u failures", (unsigned)sensor_retry_state_.consecutive_failures);
                 sensor_retry_state_.reset();
                 status_logger_.resolveAlert("PH_SENSOR_CRITICAL");
             }
 
             float ph = readPH();
             ph_readings_.push_back(ph);
-            ESP_LOGI(TAG, "pH reading #%d: %.2f", ph_readings_.size(), ph);
+            ESP_LOGD(TAG, "pH reading #%u: %.2f", (unsigned)ph_readings_.size(), ph);
 
             // Check for critical pH (out of safe range 5.0-7.5)
             if (ph < 5.0f || ph > 7.5f) {
-                ESP_LOGE(TAG, "CRITICAL pH DETECTED: %.2f (safe range: 5.0-7.5)", ph);
+                ESP_LOGE(TAG, "CRITICAL pH %.2f (safe 5.0-7.5)", ph);
 
                 // Log critical pH event to PSM for persistence
                 if (psm_) {
                     // Only log once per measurement cycle to avoid spam
                     if (ph_readings_.size() == 1) {
                         psm_->logEvent("PH_CRITICAL", 2);  // 2 = ERROR status
-                        ESP_LOGW(TAG, "Critical pH event logged to PSM for recovery tracking");
                     }
                 }
 
@@ -168,7 +154,7 @@ void PlantOSController::handlePhMeasuring() {
                         if (eventID == "PH_CRITICAL") {
                             psm_->clearEvent();
                             status_logger_.clearAlert("PH_CRITICAL");
-                            ESP_LOGI(TAG, "pH returned to safe range - cleared PH_CRITICAL event");
+                            ESP_LOGI(TAG, "pH back in safe range - PH_CRITICAL cleared");
                         }
                     }
                 }
@@ -180,8 +166,8 @@ void PlantOSController::handlePhMeasuring() {
 
                 if (!sensor_retry_state_.shouldRetry()) {
                     // Max retries exceeded - abort with comprehensive error
-                    ESP_LOGE(TAG, "pH sensor not responding after %u attempts - aborting measurement",
-                             sensor_retry_state_.consecutive_failures);
+                    ESP_LOGE(TAG, "pH sensor no value after %u attempts - aborting measurement",
+                             (unsigned)sensor_retry_state_.consecutive_failures);
 
                     status_logger_.updateAlertWithContext(
                         "PH_SENSOR_CRITICAL",
@@ -222,10 +208,10 @@ void PlantOSController::handlePhMeasuring() {
                 }
 
                 // Backoff complete - ready for retry
-                ESP_LOGW(TAG, "pH sensor retry attempt %u/%u (backoff: %u ms)",
-                         sensor_retry_state_.consecutive_failures,
-                         sensor_retry_state_.MAX_SENSOR_RETRIES,
-                         sensor_retry_state_.backoff_delay_ms);
+                ESP_LOGW(TAG, "pH sensor no value, retry %u/%u (backoff %u ms)",
+                         (unsigned)sensor_retry_state_.consecutive_failures,
+                         (unsigned)sensor_retry_state_.MAX_SENSOR_RETRIES,
+                         (unsigned)sensor_retry_state_.backoff_delay_ms);
             }
         }
     }
@@ -237,7 +223,7 @@ void PlantOSController::handlePhMeasuring() {
 
     // Measurement period complete - calculate robust average
     if (ph_readings_.empty()) {
-        ESP_LOGE(TAG, "No pH readings collected - aborting correction");
+        ESP_LOGE(TAG, "No pH readings in the settle time - aborting correction");
 
         // Set comprehensive alert before ERROR transition
         status_logger_.updateAlertWithContext(
@@ -264,8 +250,7 @@ void PlantOSController::handlePhMeasuring() {
     }
 
     ph_current_ = calculateRobustPhAverage();
-    ESP_LOGI(TAG, "pH stabilization complete. Robust average: %.2f (from %d readings)",
-             ph_current_, ph_readings_.size());
+    ESP_LOGI(TAG, "pH measured: %.2f (trimmed mean of %u readings)", ph_current_, (unsigned)ph_readings_.size());
 
     transitionTo(ControllerState::PH_CALCULATING);
 }
@@ -284,16 +269,14 @@ void PlantOSController::handlePhCalculating() {
         auto schedule = calendar_manager_->get_schedule(current_day);
         target_min = schedule.target_ph_min;
         target_max = schedule.target_ph_max;
-        ESP_LOGI(TAG, "pH: %.2f, Target (day %d): %.2f-%.2f (dose to midpoint: %.2f)",
-                 ph_current_, current_day, target_min, target_max, (target_min + target_max) / 2.0f);
+        ESP_LOGI(TAG, "pH %.2f, target day %d: %.2f-%.2f", ph_current_, current_day, target_min, target_max);
     } else {
-        ESP_LOGI(TAG, "pH: %.2f, Target (default): %.2f-%.2f (dose to midpoint: %.2f)",
-                 ph_current_, target_min, target_max, (target_min + target_max) / 2.0f);
+        ESP_LOGI(TAG, "pH %.2f, target (default): %.2f-%.2f", ph_current_, target_min, target_max);
     }
 
     // Check if pH is within target range
     if (ph_current_ >= target_min && ph_current_ <= target_max) {
-        ESP_LOGI(TAG, "pH within target range - no correction needed");
+        ESP_LOGI(TAG, "pH in target range");
 
         // Update K-factor if acid was actually dosed in this cycle
         if (ph_attempt_count_ > 0 && ph_cycle_total_ml_ > 0.1f) {
@@ -320,7 +303,7 @@ void PlantOSController::handlePhCalculating() {
 
     // Check if pH is too low (cannot correct without a base pump)
     if (ph_current_ < target_min) {
-        ESP_LOGW(TAG, "pH too low (%.2f < %.2f) - no base pump available, raising alert", ph_current_, target_min);
+        ESP_LOGW(TAG, "pH %.2f below %.2f - no base pump, alert raised", ph_current_, target_min);
         char reason_buf[80];
         snprintf(reason_buf, sizeof(reason_buf), "pH %.2f below minimum %.2f", ph_current_, target_min);
         status_logger_.updateAlertWithContext(
@@ -340,7 +323,7 @@ void PlantOSController::handlePhCalculating() {
 
     // Check minimum dose threshold (avoid tiny corrections)
     if (dose_ml < 0.5f) {
-        ESP_LOGI(TAG, "Calculated dose too small (%.1f mL < 0.5 mL) - skipping correction", dose_ml);
+        ESP_LOGI(TAG, "Acid dose %.2f mL < 0.5 mL - no correction", dose_ml);
         transitionTo(ControllerState::IDLE);
         return;
     }
@@ -368,11 +351,11 @@ void PlantOSController::handlePhCalculating() {
         ph_cycle_total_ml_ = 0.0f;
         ph_cycle_water_filled_ = false;
         ph_cycle_aborted_ = false;
-        ESP_LOGI(TAG, "pH correction cycle started: start_pH=%.2f", ph_cycle_start_ph_);
     }
 
-    ESP_LOGI(TAG, "pH correction needed: %.2f → %.2f (dose: %.1f mL = %.2f sec, attempt %d/%d)",
-             ph_current_, target_max, dose_ml, dose_seconds, ph_attempt_count_, MAX_PH_ATTEMPTS);
+    ESP_LOGI(TAG, "pH correction attempt %u/%u: %.2f above %.2f, dose %.2f mL = %.2f s (cycle start pH %.2f)",
+             (unsigned)ph_attempt_count_, (unsigned)MAX_PH_ATTEMPTS, ph_current_, target_max, dose_ml, dose_seconds,
+             ph_cycle_start_ph_);
 
     transitionTo(ControllerState::PH_INJECTING);
 }
@@ -390,7 +373,6 @@ void PlantOSController::handlePhInjecting() {
         // Calculate injection duration in seconds (round up)
         uint32_t injection_sec = (ph_dose_duration_ms_ + 999) / 1000;
 
-        ESP_LOGI(TAG, "Starting acid injection: %.1f mL (%.2f sec)", ph_dose_ml_, injection_sec / 1.0f);
 
         // OPTIONAL: air pump cycling during pH injection — disabled based on test results.
         // Re-enable if poor acid mixing or pH measurement drift is observed.
@@ -427,7 +409,7 @@ void PlantOSController::handlePhInjecting() {
             return;
         }
 
-        ESP_LOGI(TAG, "Acid pump active - dosing %.1f mL", ph_dose_ml_);
+        ESP_LOGI(TAG, "Acid pump ON: %.2f mL, %u s", ph_dose_ml_, (unsigned)injection_sec);
 
         // CRITICAL FIX: Reset timer to start from NOW (after HTTP delays)
         // The AirPump HTTP request is async, but we reset timer for consistency.
@@ -446,8 +428,7 @@ void PlantOSController::handlePhInjecting() {
 
         // Accumulate total mL dosed in this correction cycle
         ph_cycle_total_ml_ += ph_dose_ml_;
-        ESP_LOGI(TAG, "Acid dosing complete: %.1f mL added (cycle total: %.2f mL) - starting mixing phase",
-                 ph_dose_ml_, ph_cycle_total_ml_);
+        ESP_LOGI(TAG, "Acid dosed: %.2f mL (cycle total %.2f mL)", ph_dose_ml_, ph_cycle_total_ml_);
 
         transitionTo(ControllerState::PH_MIXING);
     }
@@ -466,14 +447,12 @@ void PlantOSController::handlePhMixing() {
         // Calculate mixing duration based on tank volume (linear: 1.7L→30s, 70L→600s)
         ph_mixing_duration_ms_ = calculatePhMixingDuration();
 
-        ESP_LOGI(TAG, "Mixing phase: waiting %.1f seconds (air pump controlled by Shelly pattern)",
-                 ph_mixing_duration_ms_ / 1000.0f);
+        ESP_LOGI(TAG, "pH mixing %u s", (unsigned)(ph_mixing_duration_ms_ / 1000));
 
         // No air pump commands here - Shelly pattern handles the full injection+mixing duration
     }
 
     if (elapsed >= ph_mixing_duration_ms_) {
-        ESP_LOGI(TAG, "pH mixing complete (%.1f seconds)", ph_mixing_duration_ms_ / 1000.0f);
 
         // OPTIONAL: restore air pump cycling after pH mixing — disabled (air pump not used during pH correction).
         // Re-enable if mixing quality needs improvement:
@@ -975,8 +954,7 @@ bool PlantOSController::checkCalibrationStability() {
     // Requires at least 3 batches to check
 
     if (calib_current_batch_ < 3) {
-        ESP_LOGW(TAG, "Not enough batches to check stability (need 3, have %d)",
-                 calib_current_batch_);
+        ESP_LOGW(TAG, "Calibration stability: need 3 batches, have %u", (unsigned)calib_current_batch_);
         return false;
     }
 
@@ -988,37 +966,25 @@ bool PlantOSController::checkCalibrationStability() {
     // Calculate max difference between any two batches
     float max_diff = dosing_math::maxPairwiseDiff(batch1, batch2, batch3);
 
-    ESP_LOGI(TAG, "Stability check:");
-    ESP_LOGI(TAG, "  Batch %d: pH %.2f", calib_current_batch_ - 2, batch1);
-    ESP_LOGI(TAG, "  Batch %d: pH %.2f", calib_current_batch_ - 1, batch2);
-    ESP_LOGI(TAG, "  Batch %d: pH %.2f", calib_current_batch_, batch3);
-    ESP_LOGI(TAG, "  Max difference: %.3f pH (threshold: %.1f)",
-             max_diff, CALIB_STABILITY_THRESHOLD);
-
     bool is_stable = max_diff <= CALIB_STABILITY_THRESHOLD;
-
-    if (is_stable) {
-        ESP_LOGI(TAG, "  Result: STABLE (difference within threshold)");
-    } else {
-        ESP_LOGW(TAG, "  Result: NOT STABLE (difference exceeds threshold)");
-    }
-
+    ESP_LOGI(TAG, "Calibration stability: last batches %.2f / %.2f / %.2f, spread %.3f (max %.1f) -> %s",
+             batch1, batch2, batch3, max_diff, CALIB_STABILITY_THRESHOLD, is_stable ? "stable" : "NOT stable");
     return is_stable;
 }
 
 void PlantOSController::sendTemperatureCompensation() {
     if (!hal_->hasTemperature()) {
-        ESP_LOGW(TAG, "Temperature sensor not available - skipping compensation");
+        ESP_LOGD(TAG, "No temperature - pH compensation skipped");
         return;
     }
 
     float temp = hal_->readTemperature();
-    ESP_LOGI(TAG, "Sending temperature compensation: %.1f°C", temp);
+    ESP_LOGD(TAG, "pH temperature compensation %.1f C", temp);
 
     if (hal_->sendPhTemperatureCompensation(temp)) {
         ESP_LOGD(TAG, "Temperature compensation successful");
     } else {
-        ESP_LOGW(TAG, "Temperature compensation failed");
+        ESP_LOGW(TAG, "pH temperature compensation (%.1f C) failed", temp);
     }
 }
 
@@ -1042,15 +1008,15 @@ uint32_t PlantOSController::calculatePhMixingDuration() const {
 
     // Safety bounds: min 30s, max 600s (10 min)
     if (duration_ms < 30000.0f) {
-        ESP_LOGW(TAG, "Calculated mixing duration too short (%.1f s), using minimum 30s", duration_ms / 1000.0f);
+        ESP_LOGD(TAG, "pH mixing %.1f s -> 30 s minimum", duration_ms / 1000.0f);
         duration_ms = 30000.0f;
     } else if (duration_ms > 600000.0f) {
-        ESP_LOGW(TAG, "Calculated mixing duration too long (%.1f s), using maximum 600s", duration_ms / 1000.0f);
+        ESP_LOGD(TAG, "pH mixing %.1f s -> 600 s maximum", duration_ms / 1000.0f);
         duration_ms = 600000.0f;
     }
 
     uint32_t duration_ms_int = static_cast<uint32_t>(duration_ms);
-    ESP_LOGI(TAG, "pH mixing duration: %.1f seconds (tank: %.1f L)", duration_ms / 1000.0f, volume_L);
+    ESP_LOGD(TAG, "pH mixing %.1f s for %.1f L", duration_ms / 1000.0f, volume_L);
 
     return duration_ms_int;
 }
@@ -1069,7 +1035,7 @@ float PlantOSController::calculateAcidDoseML(float current_ph) {
     // dose = pH_delta × volume_L × K, clamped to [PH_MIN_DOSE_ML, PH_MAX_DOSE_ML]
     float dose_ml = dosing_math::acidDoseMl(ph_delta, tank_volume_L, ph_K_, PH_MIN_DOSE_ML, PH_MAX_DOSE_ML);
 
-    ESP_LOGI(TAG, "Acid dose: %.3f pH_delta × %.1fL × K=%.4f = %.2f mL (clamped to [%.1f, %.1f])",
+    ESP_LOGI(TAG, "Acid dose: dpH %.3f x %.1f L x K %.4f = %.2f mL (limits %.1f-%.1f)",
              ph_delta, tank_volume_L, ph_K_, dose_ml, PH_MIN_DOSE_ML, PH_MAX_DOSE_ML);
 
     return dose_ml;
@@ -1103,8 +1069,7 @@ void PlantOSController::updatePhKFactor(float ph_before, float ph_after, float m
     float K_observed = k.observed;
     float K_new = k.updated;
 
-    ESP_LOGI(TAG, "pH K-factor update: K_obs=%.4f → K_ema=%.4f (was %.4f) | "
-             "pH %.2f→%.2f (delta=%.3f), %.2f mL, %.1f L",
+    ESP_LOGI(TAG, "pH K update: observed %.4f, new %.4f (was %.4f); pH %.2f->%.2f (d %.3f), %.2f mL, %.1f L",
              K_observed, K_new, ph_K_, ph_before, ph_after, ph_delta, ml_total, tank_volume_L);
 
     ph_K_ = K_new;

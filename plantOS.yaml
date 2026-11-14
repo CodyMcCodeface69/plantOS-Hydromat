@@ -78,6 +78,9 @@ esp32:
       # Solution: Reduce TCP_MSL from 60s to 5s (TIME_WAIT = 2×MSL = 10s instead of 120s)
       CONFIG_LWIP_TCP_MSL: "5000"        # 5s MSL = 10s TIME_WAIT (was 60s = 120s TIME_WAIT)
       CONFIG_LWIP_MAX_SOCKETS: "16"      # 16 sockets (was 10) for headroom
+      # The ESPHome http_request component used to switch this off as a side effect. Nothing
+      # references the ~60 KB CA bundle (MQTT brings its own CA, the Shelly calls are plain HTTP).
+      CONFIG_MBEDTLS_CERTIFICATE_BUNDLE: n
 
 logger:
   # Compile-time level: INFO in production, DEBUG with the debug package. It is set in the
@@ -94,7 +97,6 @@ logger:
     plantos_hal: WARN      # Suppress HAL info logs
     component: ERROR       # Suppress component timing warnings
     time: WARN             # Suppress time synchronization logs
-    http_request: WARN
     wifi: WARN
     shelly_poll: WARN      # Suppress Shelly polling logs
     ledc.output: WARN      # Suppress LEDC output logs
@@ -154,22 +156,6 @@ wifi:
     - lambda: |-
         ESP_LOGI("wifi", "WiFi connected - air pump activation disabled (manual control)");
         // id(unified_controller)->activateAirPump();
-
-    # # Perform online connectivity check
-    # - logger.log: "Performing online connectivity check (ping www.google.com)..."
-    # # Start timeout handler first (will be stopped if HTTP succeeds)
-    # - script.execute: connectivity_check_timeout
-    # - http_request.get:
-    #     url: http://www.google.com/generate_204
-    #     on_response:
-    #       then:
-    #         - lambda: |-
-    #             // Note: Any successful response (even error codes) means network is working
-    #             // Only timeouts indicate mesh network issues
-    #             ESP_LOGI("wifi", "✓ Online connectivity check PASSED - HTTP response received");
-    #             id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, true);
-    #         # Stop the timeout script since we got a response
-    #         - script.stop: connectivity_check_timeout
 
   # ==============================================================
   # FALLBACK ACCESS POINT (AP) FOR DEBUGGING
@@ -260,19 +246,6 @@ mqtt:
   discovery: false
   reboot_timeout: 0s
   certificate_authority: !secret mqtt_ca_cert
-
-################################################################################
-# HTTP Request Component - For Online Connectivity Check
-#
-# Used to verify internet connectivity by attempting to fetch a known URL.
-# Google's connectivity check endpoint returns HTTP 204 (No Content) when
-# online, which is a lightweight test that doesn't consume bandwidth.
-################################################################################
-http_request:
-  id: http_client
-  useragent: esphome/plantOS
-  timeout: 5s  # Reduced from 5s - fail fast, rely on multi-attempt retries
-  verify_ssl: false  # Skip SSL verification for simple connectivity test
 
 ################################################################################
 # Time Synchronization: NTP
@@ -2680,49 +2653,3 @@ interval:
             root["water_high"]  = id(water_level_high_sensor).state;
             root["water_low"]   = id(water_level_low_sensor).state;
             root["water_empty"] = id(water_level_empty_sensor).state;
-
-################################################################################
-# Scripts - Reusable Automation Sequences
-#
-# Scripts are reusable sequences of actions that can be called from anywhere.
-################################################################################
-script:
-  # Connectivity Check Timeout Handler
-  # Called when HTTP request times out (no response received)
-  # Waits for the HTTP request timeout, then checks if we got a response
-  - id: connectivity_check_timeout
-    mode: single  # Only one instance can run at a time
-    then:
-      # Wait for HTTP request to timeout (5s configured in http_request component)
-      - delay: 6s
-
-      # If we reach here, the HTTP request timed out without calling on_response
-      - logger.log:
-          format: "✗ Online connectivity check TIMEOUT - No response from www.google.com"
-          level: WARN
-          tag: wifi
-      - logger.log:
-          format: "Possible mesh network issue - Reconnecting WiFi..."
-          level: WARN
-          tag: wifi
-      - wifi.disable:
-      - delay: 2s
-      - logger.log:
-          format: "Reconnecting WiFi..."
-          level: INFO
-          tag: wifi
-      - wifi.enable:
-
-  # WiFi Reconnect Script
-  # Reconnects WiFi when online check fails
-  - id: wifi_reconnect
-    mode: single
-    then:
-      - wifi.disable:
-      - delay: 2s
-      - logger.log:
-          format: "Reconnecting WiFi..."
-          level: INFO
-          tag: wifi
-      - wifi.enable:
-

@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Hydromat</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --bg:#f3f5f1; --card:#ffffff; --ink:#1b2420; --muted:#66716b; --line:#e2e6e0; --soft:#eef1ec;
+  --accent:#2f7d5b; --accent-ink:#ffffff; --accent-soft:#e3f1ea;
+  --warn:#a86a12; --warn-soft:#fbf1dc; --danger:#bf3d36; --danger-soft:#fbe6e4;
+  --info:#5b6bb5; --info-soft:#e8ebf8; --water:#5aa9d6; --water-soft:#d9ecf7;
+  --shadow:0 1px 2px rgba(20,30,25,.06),0 4px 14px rgba(20,30,25,.05);
+  --r:16px;
+}
+:root[data-theme="dark"]{
+  --bg:#101412; --card:#191f1c; --ink:#e7ece8; --muted:#95a19b; --line:#2a332e; --soft:#212823;
+  --accent:#5fc497; --accent-ink:#0c1a13; --accent-soft:#1d3329;
+  --warn:#e0a84a; --warn-soft:#33290f; --danger:#f0736b; --danger-soft:#3a1c1a;
+  --info:#9aa8ee; --info-soft:#232846; --water:#4f9ccb; --water-soft:#1c3340;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101412; --card:#191f1c; --ink:#e7ece8; --muted:#95a19b; --line:#2a332e; --soft:#212823;
+    --accent:#5fc497; --accent-ink:#0c1a13; --accent-soft:#1d3329;
+    --warn:#e0a84a; --warn-soft:#33290f; --danger:#f0736b; --danger-soft:#3a1c1a;
+    --info:#9aa8ee; --info-soft:#232846; --water:#4f9ccb; --water-soft:#1c3340;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.num{font-variant-numeric:tabular-nums}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:20;background:var(--bg);background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+  padding:calc(10px + env(safe-area-inset-top)) 16px 10px}
+.top-in{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.brand{font-weight:650;font-size:17px;letter-spacing:-.01em;margin-right:auto;display:flex;align-items:center;gap:8px;min-width:0}
+.brand svg{flex:none;color:var(--accent)}
+.brand small{font-weight:400;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--card);
+  border-radius:999px;padding:6px 12px 6px 10px;font-size:13px;font-weight:550;white-space:nowrap}
+.pill i{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+.pill[data-conn="live"] i{background:var(--accent)}
+.pill[data-conn="mock"]{background:var(--info-soft);border-color:transparent;color:var(--info)}
+.pill[data-conn="mock"] i{background:var(--info)}
+.pill[data-conn="connecting"] i,.pill[data-conn="reconnecting"] i{background:var(--warn);animation:pulse 1.1s ease-in-out infinite}
+.pill[data-conn="reconnecting"]{background:var(--warn-soft);border-color:transparent;color:var(--warn)}
+@keyframes pulse{50%{opacity:.25}}
+.icon-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--card);
+  display:grid;place-items:center;padding:0;flex:none}
+
+main{max-width:1080px;margin:0 auto;padding:16px 16px calc(40px + env(safe-area-inset-bottom));
+  display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:900px){
+  main{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start}
+  .span2{grid-column:1 / -1}
+}
+.col{display:grid;gap:16px;min-width:0}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;min-width:0}
+.card h2{margin:0 0 12px;font-size:12px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;gap:8px}
+.card h2 .tag{margin-left:auto}
+.tag{font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:none;border-radius:6px;padding:2px 7px;
+  background:var(--soft);color:var(--muted)}
+.tag.planned{background:var(--info-soft);color:var(--info)}
+body.stale .live-data{opacity:.55;transition:opacity .3s}
+
+/* status hero */
+.hero{display:grid;gap:14px}
+.hero-top{display:flex;gap:14px;align-items:center}
+.orb{width:46px;height:46px;border-radius:50%;flex:none;background:var(--accent-soft);display:grid;place-items:center}
+.orb b{width:16px;height:16px;border-radius:50%;background:var(--accent)}
+.hero[data-tone="busy"] .orb b{animation:breathe 1.6s ease-in-out infinite}
+.hero[data-tone="quiet"] .orb{background:var(--info-soft)} .hero[data-tone="quiet"] .orb b{background:var(--info)}
+.hero[data-tone="warn"] .orb{background:var(--warn-soft)} .hero[data-tone="warn"] .orb b{background:var(--warn)}
+.hero[data-tone="danger"] .orb{background:var(--danger-soft)} .hero[data-tone="danger"] .orb b{background:var(--danger)}
+@keyframes breathe{50%{transform:scale(1.7);opacity:.55}}
+.state-name{font-size:22px;font-weight:650;letter-spacing:-.015em;line-height:1.2}
+.state-sub{color:var(--muted);font-size:13px;margin-top:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--soft);border-radius:999px;padding:4px 10px;font-size:13px}
+.chip b{font-weight:600}
+.chip.on{background:var(--accent-soft);color:var(--accent)}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--muted);opacity:.5}
+.chip.on i{background:var(--accent);opacity:1}
+.grow{display:grid;gap:6px}
+.grow-line{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.grow-line b{color:var(--ink);font-weight:600}
+.bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden}
+.bar span{display:block;height:100%;width:0;background:var(--accent);border-radius:3px;transition:width .5s}
+.alert{display:flex;align-items:center;gap:10px;border-radius:12px;padding:10px 12px;font-size:14px;background:var(--soft);color:var(--muted)}
+.alert.bad{background:var(--danger-soft);color:var(--danger);font-weight:600}
+.alert button{margin-left:auto}
+
+/* tiles */
+.tiles{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.tile{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;min-width:0;display:flex;flex-direction:column;gap:6px}
+.tile.wide{grid-column:1 / -1}
+.tile-h{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:12px;font-weight:600;color:var(--muted);
+  letter-spacing:.06em;text-transform:uppercase}
+.tile-h em{font-style:normal;font-weight:600;letter-spacing:0;text-transform:none;border-radius:6px;padding:1px 7px;font-size:11px;
+  background:var(--soft);color:var(--muted)}
+.tile[data-ok="1"] .tile-h em{background:var(--accent-soft);color:var(--accent)}
+.tile[data-ok="0"] .tile-h em{background:var(--warn-soft);color:var(--warn)}
+.big{font-size:32px;font-weight:650;letter-spacing:-.02em;line-height:1.1}
+.big small{font-size:14px;font-weight:500;color:var(--muted);letter-spacing:0;margin-left:3px}
+.tile-f{font-size:12.5px;color:var(--muted);margin-top:auto}
+.gauge{position:relative;height:8px;border-radius:4px;background:var(--soft);margin:8px 0 4px}
+.gauge .band{position:absolute;top:0;bottom:0;border-radius:4px;background:var(--accent);opacity:.35}
+.gauge .mark{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--ink);transform:translateX(-2px);
+  transition:left .6s;box-shadow:0 0 0 2px var(--card)}
+.tank{display:flex;gap:16px;align-items:center}
+.tank svg{flex:none}
+.tank-info{min-width:0;display:grid;gap:4px}
+.tank-level{font-size:22px;font-weight:650;letter-spacing:-.01em}
+.probes{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.duo{display:flex;gap:18px}
+.duo .big{font-size:26px}
+
+/* actions */
+.actions{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:560px){.actions{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.act{position:relative;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:12px 12px 11px;
+  display:flex;flex-direction:column;gap:2px;min-height:68px;transition:background .15s,border-color .15s,transform .05s}
+.act b{font-weight:600;font-size:15px}
+.act span{font-size:12.5px;color:var(--muted);line-height:1.3}
+.act:hover:not(:disabled){border-color:var(--accent)}
+.act:active:not(:disabled){transform:scale(.985)}
+.act:disabled{cursor:not-allowed;background:var(--soft);border-style:dashed}
+.act:disabled b{color:var(--muted)}
+.act.running{border-color:var(--accent);background:var(--accent-soft)}
+.act.running::after{content:"running";position:absolute;top:10px;right:10px;font-size:10.5px;font-weight:650;color:var(--accent);
+  text-transform:uppercase;letter-spacing:.06em}
+.act .why{color:var(--warn)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--soft);border-radius:12px;padding:4px;margin-top:12px}
+.seg button{border:0;background:transparent;border-radius:9px;padding:9px 6px;font-weight:600;font-size:14px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.estop{margin-top:12px;width:100%;border:0;border-radius:14px;padding:14px;background:#bf3d36;color:#fff;font-weight:650;
+  font-size:15px;letter-spacing:.01em;display:flex;align-items:center;justify-content:center;gap:8px}
+.estop:active{filter:brightness(.92)}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:7px 12px;font-weight:600;font-size:13.5px}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.ghost-danger{color:var(--danger)}
+
+/* rows (switches, numbers) */
+.rows{display:grid}
+.row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);min-height:52px}
+.rows>.row:first-child{border-top:0;padding-top:2px}
+.row-t{flex:1;min-width:0}
+.row-t b{display:block;font-weight:550}
+.row-t small{display:block;color:var(--muted);font-size:12.5px;line-height:1.35}
+.row.off .row-t b{color:var(--muted)}
+.sw{flex:none;width:46px;height:28px;border-radius:14px;border:0;background:var(--line);position:relative;padding:0;transition:background .18s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .18s}
+.sw[aria-checked="true"]{background:var(--accent)}
+.sw[aria-checked="true"]::after{transform:translateX(18px)}
+.sw:disabled{opacity:.45;cursor:not-allowed}
+.numbox{flex:none;display:flex;align-items:center;gap:6px}
+.numbox input,.numbox select,.field input{width:84px;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:7px 9px;
+  text-align:right;font-variant-numeric:tabular-nums}
+.numbox select{width:auto;text-align:left}
+.numbox input:disabled,.numbox select:disabled{opacity:.5}
+.numbox em{font-style:normal;color:var(--muted);font-size:13px;min-width:1.2em}
+.sub{margin:0 0 0 0;padding-left:14px;border-left:2px solid var(--line)}
+.sub .row{min-height:44px;padding:8px 0}
+.note{font-size:12.5px;color:var(--muted);margin:10px 0 0;line-height:1.4}
+.note.info{background:var(--info-soft);color:var(--info);border-radius:10px;padding:8px 10px}
+.presetseg{margin:0 0 12px}
+.presetseg button small{display:block;font-weight:400;font-size:11.5px;opacity:.8}
+
+details.card{padding:0}
+details.card>summary{list-style:none;cursor:pointer;padding:16px;display:flex;align-items:center;gap:8px;
+  font-size:12px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::after{content:"";margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);
+  transform:rotate(45deg);transition:transform .2s}
+details.card[open]>summary::after{transform:rotate(225deg)}
+details.card>.body{padding:0 16px 16px}
+.group-h{font-size:12px;font-weight:650;color:var(--muted);margin:16px 0 2px;letter-spacing:.04em}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+
+.log{height:260px;overflow:auto;background:var(--bg);border-radius:10px;padding:8px 10px;font-size:11.5px;line-height:1.5;
+  white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
+.log div[data-l="W"]{color:var(--warn)} .log div[data-l="E"]{color:var(--danger)} .log div[data-l="D"],.log div[data-l="V"]{color:var(--muted)}
+.log-tools{display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:12.5px;color:var(--muted)}
+.log-tools span{margin-right:auto}
+
+dialog{border:0;border-radius:18px;padding:0;background:var(--card);color:var(--ink);width:min(420px,calc(100vw - 32px));
+  box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(10,15,12,.5)}
+.dlg{padding:20px;display:grid;gap:12px}
+.dlg h3{margin:0;font-size:18px;letter-spacing:-.01em}
+.dlg p{margin:0;color:var(--muted)}
+.dlg-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.dlg-btns .btn{padding:9px 16px;font-size:14.5px}
+.field{display:grid;gap:5px;font-size:13px;color:var(--muted)}
+.field input{width:100%;text-align:left;font-size:15px;padding:10px 12px;color:var(--ink)}
+.toasts{position:fixed;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom));display:grid;justify-items:center;gap:8px;
+  pointer-events:none;z-index:50;padding:0 16px}
+.toast{background:var(--ink);color:var(--bg);border-radius:12px;padding:9px 14px;font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);
+  animation:rise .2s ease-out;max-width:100%}
+.toast.err{background:var(--danger);color:#fff}
+@keyframes rise{from{transform:translateY(8px);opacity:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V11"/><path d="M12 11C12 7 9 4 4 4c0 5 3 8 8 7z"/><path d="M12 14c0-3 2.5-6 8-6 0 4.5-3 7-8 6z"/></svg>
+      <span>Hydromat</span><small id="devTitle"></small>
+    </div>
+    <button class="pill" id="connPill" data-conn="connecting" aria-haspopup="dialog" title="Connection settings"><i></i><span id="connText">Connecting…</span></button>
+    <button class="icon-btn" id="themeBtn" title="Toggle light / dark" aria-label="Toggle theme">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <!-- left column: what is going on -->
+  <div class="col">
+    <section class="card hero live-data" id="hero" data-tone="ok" aria-live="polite">
+      <div class="hero-top">
+        <div class="orb"><b></b></div>
+        <div style="min-width:0">
+          <div class="state-name" id="stateName">—</div>
+          <div class="state-sub"><span class="mono" id="stateRaw">—</span><span id="stateMeta"></span></div>
+        </div>
+      </div>
+      <div class="grow">
+        <div class="grow-line"><span><b id="presetName">—</b> <span id="phaseName"></span></span><span class="num" id="growDay">—</span></div>
+        <div class="bar"><span id="growBar"></span></div>
+      </div>
+      <div class="alert" id="alertBox"><span id="alertText">—</span>
+        <button class="btn" id="clearAlerts" hidden>Clear</button></div>
+      <div class="chips" id="actuatorChips"></div>
+    </section>
+
+    <section class="tiles live-data" aria-label="Sensors">
+      <div class="tile" id="tilePh">
+        <div class="tile-h"><span>pH</span><em id="phTag">—</em></div>
+        <div class="big num" id="phVal">—</div>
+        <div class="gauge"><div class="band" id="phBand"></div><div class="mark" id="phMark" hidden></div></div>
+        <div class="tile-f" id="phFoot">—</div>
+      </div>
+      <div class="tile" id="tileEc">
+        <div class="tile-h"><span>EC</span><em id="ecTag">—</em></div>
+        <div class="big num"><span id="ecVal">—</span><small>mS/cm</small></div>
+        <div class="gauge"><div class="band" id="ecBand"></div><div class="mark" id="ecMark" hidden></div></div>
+        <div class="tile-f" id="ecFoot">—</div>
+      </div>
+      <div class="tile wide" id="tileTank">
+        <div class="tile-h"><span>Water level</span><em id="tankTag">—</em></div>
+        <div class="tank">
+          <svg width="124" height="112" viewBox="0 0 124 112" role="img" aria-label="Tank with three level sensors">
+            <defs><clipPath id="tankClip"><rect x="6" y="8" width="58" height="98" rx="9"/></clipPath></defs>
+            <rect x="6" y="8" width="58" height="98" rx="9" fill="var(--soft)"/>
+            <g clip-path="url(#tankClip)"><rect id="tankWater" x="6" y="106" width="58" height="0" fill="var(--water)" style="transition:y .8s,height .8s"/></g>
+            <rect x="6" y="8" width="58" height="98" rx="9" fill="none" stroke="var(--line)" stroke-width="2"/>
+            <g font-size="9" font-family="system-ui,sans-serif" fill="var(--muted)" font-weight="600">
+              <line x1="64" y1="22" x2="72" y2="22" stroke="var(--line)" stroke-width="2"/><circle id="dotHigh" cx="76" cy="22" r="4"/><text x="85" y="25">HIGH</text>
+              <line x1="64" y1="62" x2="72" y2="62" stroke="var(--line)" stroke-width="2"/><circle id="dotLow" cx="76" cy="62" r="4"/><text x="85" y="65">LOW</text>
+              <line x1="64" y1="96" x2="72" y2="96" stroke="var(--line)" stroke-width="2"/><circle id="dotEmpty" cx="76" cy="96" r="4"/><text x="85" y="99">EMPTY</text>
+            </g>
+          </svg>
+          <div class="tank-info">
+            <div class="tank-level" id="tankLevel">—</div>
+            <div class="tile-f" id="tankDesc">—</div>
+            <div class="tile-f num" id="tankVol"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="tile-h"><span>Water</span></div>
+        <div class="big num"><span id="wtVal">—</span><small>°C</small></div>
+        <div class="tile-f">Reservoir temperature</div>
+      </div>
+      <div class="tile">
+        <div class="tile-h"><span>Air</span></div>
+        <div class="duo">
+          <div class="big num"><span id="atVal">—</span><small>°C</small></div>
+          <div class="big num"><span id="ahVal">—</span><small>%</small></div>
+        </div>
+        <div class="tile-f" id="airFoot">Temperature · humidity</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- right column: what you can do -->
+  <div class="col">
+    <section class="card">
+      <h2>Actions</h2>
+      <div class="actions" id="actions"></div>
+      <div class="seg" id="modeSeg" role="group" aria-label="Controller mode"></div>
+      <button class="estop" id="estop">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z"/><path d="M12 8v5M12 16.5v.1"/></svg>
+        Emergency stop
+      </button>
+    </section>
+
+    <section class="card">
+      <h2>Automation</h2>
+      <div class="rows" id="autoRows"></div>
+    </section>
+
+    <section class="card" id="presetCard">
+      <h2>Preset <span class="tag planned" id="presetTag" hidden>firmware phase 3 · mock only</span></h2>
+      <div class="seg presetseg" id="presetSeg" role="group" aria-label="Active preset"></div>
+      <div class="rows" id="presetVolRows"></div>
+      <div class="group-h">Hardware in this preset</div>
+      <div class="rows" id="presetFnRows"></div>
+      <div class="btnrow"><button class="btn ghost-danger" id="restartGrow">Restart grow (day 1)</button></div>
+      <p class="note" id="presetNote"></p>
+    </section>
+  </div>
+
+  <details class="card span2" id="settings">
+    <summary>Settings</summary>
+    <div class="body">
+      <div class="group-h">Dosing</div>
+      <div class="rows" id="setDosing"></div>
+      <div class="group-h">Air pump &amp; integrations</div>
+      <div class="rows" id="setAir"></div>
+      <div class="group-h">Manual &amp; maintenance</div>
+      <div class="btnrow" id="setButtons"></div>
+      <p class="note">Calibration, pump tests and PWM stay in the ESPHome page: <a id="espLink" href="#" target="_blank" rel="noopener">open device page</a>.</p>
+    </div>
+  </details>
+
+  <details class="card span2" id="logCard">
+    <summary>Live log <span class="tag" id="logCount">0</span></summary>
+    <div class="body">
+      <div class="log-tools"><span id="logHint">Newest at the bottom</span>
+        <button class="btn" id="logPause" aria-pressed="false">Pause</button><button class="btn" id="logClear">Clear</button></div>
+      <div class="log mono" id="log" tabindex="0"></div>
+    </div>
+  </details>
+</main>
+
+<dialog id="confirmDlg">
+  <form method="dialog" class="dlg">
+    <h3 id="cfTitle"></h3><p id="cfText"></p>
+    <div class="dlg-btns"><button class="btn" id="cfNo" value="no" autofocus>Cancel</button><button class="btn danger" id="cfOk" value="yes">Confirm</button></div>
+  </form>
+</dialog>
+
+<dialog id="connDlg">
+  <div class="dlg">
+    <h3>Connection</h3>
+    <p id="connDetail"></p>
+    <label class="field">Device address<input id="addrInput" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://192.168.0.201"></label>
+    <p class="note" id="mixedNote" hidden>This page is loaded over HTTPS. Browsers block calls from an HTTPS page to a plain-HTTP device (mixed content). Open the page from a file, from http://, or from the device itself.</p>
+    <div class="dlg-btns"><button class="btn" id="connClose">Close</button><button class="btn" id="useMock">Use mock data</button><button class="btn primary" id="connGo">Connect</button></div>
+  </div>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="assertive"></div>
+
+<script>
+'use strict';
+/* =====================================================================================
+   ENTITY MAP  -  the only place that knows device names. Fix names here.
+   d  = ESPHome domain, name = the `name:` in plantOS.yaml.
+   The object id is derived exactly like ESPHome 2025.4.2 does it (esphome/helpers.py:
+   snake_case() then sanitize()): lower-case, spaces -> "_", every character outside
+   [a-zA-Z0-9_-] -> "_". Hyphens stay, runs of "_" are NOT collapsed
+   ("pH K-Factor (live)" -> "ph_k-factor__live_"). Set `id` to override.
+   SSE id = "<domain>-<object_id>", REST path = "/<domain>/<object_id>/<action>".
+   planned: true = does not exist in the firmware yet (plan/IMPLEMENTATION.md phase 3.5).
+   Planned names are proposals; they work in mock mode and light up by themselves as
+   soon as the device reports an entity with that id.
+   ===================================================================================== */
+const ENTITIES = {
+  // sensors
+  ph:           {d:'sensor', name:'Filtered pH'},
+  ec:           {d:'sensor', name:'EC'},                       // uS/cm on the device, shown as mS/cm
+  waterTemp:    {d:'sensor', name:'Water Temperature'},
+  airTemp:      {d:'sensor', name:'Air Temperature'},
+  airHum:       {d:'sensor', name:'Air Humidity'},
+  airPress:     {d:'sensor', name:'Air Pressure'},
+  kLive:        {d:'sensor', name:'pH K-Factor (live)'},
+  lvlHigh:      {d:'binary_sensor', name:'Water Level HIGH'},  // ON = water at the sensor
+  lvlLow:       {d:'binary_sensor', name:'Water Level LOW'},
+  lvlEmpty:     {d:'binary_sensor', name:'Water Level EMPTY'},
+  fsm:          {d:'text_sensor', name:'Controller State'},
+  alert:        {d:'text_sensor', name:'Alert State'},         // "Clear" or a short alert text
+  uptime:       {d:'text_sensor', name:'Uptime'},
+  clock:        {d:'text_sensor', name:'Current Time'},
+  growDay:      {d:'text_sensor', name:'Current Grow Day'},    // "Day 69 / 120"
+  tankVolume:   {d:'text_sensor', name:'Tank Volume'},         // "Delta: 27.4L (LOW→HIGH) | Total: 47.5L (EMPTY→HIGH)"
+  // actions
+  btnPh:        {d:'button', name:'Start pH Correction'},
+  btnFeed:      {d:'button', name:'Feed'},
+  btnEc:        {d:'button', name:'EC Correction'},
+  btnFill:      {d:'button', name:'Fill Tank'},
+  btnEmpty:     {d:'button', name:'Empty Tank'},
+  btnReservoir: {d:'button', name:'Reservoir Change'},
+  btnNutrients: {d:'button', name:'Add Nutrients'},
+  btnMother:    {d:'button', name:'Mother Plant Nutrients'},
+  btnIdle:      {d:'button', name:'Set to IDLE'},
+  btnPause:     {d:'button', name:'Set to PAUSE'},
+  btnShutdown:  {d:'button', name:'Set to SHUTDOWN'},
+  btnEstop:     {d:'button', name:'Emergency Stop'},
+  btnClearAlerts:{d:'button', name:'Clear PSM Alerts'},
+  btnDayPlus:   {d:'button', name:'Calendar Day +1'},          // -> calendar_day__1
+  btnDayMinus:  {d:'button', name:'Calendar Day -1'},          // -> calendar_day_-1
+  btnReport:    {d:'button', name:'Print Status Report'},
+  btnReboot:    {d:'button', name:'Reboot Device'},
+  // switches
+  autoPh:       {d:'switch', name:'Auto pH Correction'},
+  autoEc:       {d:'switch', name:'Auto EC/Feeding Correction'},
+  autoWater:    {d:'switch', name:'Auto Water Level'},
+  autoReservoir:{d:'switch', name:'Auto Reservoir Change'},
+  lightSchedule:{d:'switch', name:'Grow Light Schedule'},
+  nightMode:    {d:'switch', name:'Night Mode'},
+  airCycling:   {d:'switch', name:'Air Pump Cycling'},
+  shelly:       {d:'switch', name:'Shelly Integration'},
+  phContinuous: {d:'switch', name:'Continuous pH Reading'},
+  swAir:        {d:'switch', name:'Air Pump'},                 // shown read-only as status chips
+  swLight:      {d:'switch', name:'Grow Light'},
+  swDrain:      {d:'switch', name:'Wastewater Pump'},
+  swValve:      {d:'switch', name:'Magnetic Valve'},
+  // numbers (min/max/step copied from plantOS.yaml)
+  nightStart:   {d:'number', name:'Night Mode Start Hour', min:0, max:23, step:1, unit:'h'},
+  nightEnd:     {d:'number', name:'Night Mode End Hour', min:0, max:23, step:1, unit:'h'},
+  reservoirDay: {d:'number', name:'Auto Reservoir Change Day', min:0, max:6, step:1},
+  kFactor:      {d:'number', name:'pH K-Factor', min:0.01, max:5, step:0.005},
+  ecMult:       {d:'number', name:'EC Target Multiplier', min:0.1, max:2, step:0.05, unit:'x'},
+  motherVol:    {d:'number', name:'Mother Mix Volume', min:1, max:15, step:0.5, unit:'L'},
+  airOn:        {d:'number', name:'Air Pump ON Period', min:10, max:3600, step:10, unit:'s'},
+  airOff:       {d:'number', name:'Air Pump OFF Period', min:10, max:3600, step:10, unit:'s'},
+  // ---- planned (phase 3.5), names are proposals --------------------------------------
+  preset:       {d:'select', name:'Preset', planned:true, options:['Anzucht','Mutter','Haupt']},
+  volDelta:     {d:'number', name:'Tank Volume LOW→HIGH', planned:true, min:1, max:200, step:0.1, unit:'L'},
+  volTotal:     {d:'number', name:'Tank Volume EMPTY→HIGH', planned:true, min:1, max:300, step:0.1, unit:'L'},
+  fnNutrients:  {d:'switch', name:'Function Nutrients', planned:true},
+  fnWaterFill:  {d:'switch', name:'Function Water Fill', planned:true},
+  fnDrain:      {d:'switch', name:'Function Drain', planned:true},
+  fnAirPump:    {d:'switch', name:'Function Air Pump', planned:true},
+  fnGrowLight:  {d:'switch', name:'Function Grow Light', planned:true},
+  btnRestart:   {d:'button', name:'Restart Grow (Day 1)', planned:true},
+  // proposed text: "Haupt · Day 69 · Bloom (pH 6.0-6.4, EC 2.20)" - the targets in it feed the gauges
+  presetStatus: {d:'text_sensor', name:'Preset Status', planned:true},
+};
+const DEFAULT_ADDR = 'http://192.168.0.201';
+// Used for the gauges while the firmware does not publish the calendar targets.
+const FALLBACK_TARGET = {ph:[5.5, 6.5], ec:null, ecTol:0.2};
+const DOMAINS = ['binary_sensor','text_sensor','sensor','switch','button','number','select','light'];
+
+function objectId(name){ return name.toLowerCase().replace(/ /g,'_').replace(/[^a-zA-Z0-9_-]/g,'_'); }
+for (const k in ENTITIES){ const e = ENTITIES[k]; e.key = k; e.id = e.id || objectId(e.name); e.sse = e.d + '-' + e.id; }
+const BY_SSE = {}; for (const k in ENTITIES) BY_SSE[ENTITIES[k].sse] = ENTITIES[k];
+
+/* ---------- UI model ---------- */
+const FN = { // capability -> planned function switch
+  nutrients:{key:'fnNutrients', label:'Nutrient pumps', hint:'Pumps A / B / C — feeding, EC correction', why:'no nutrient pumps'},
+  water_fill:{key:'fnWaterFill', label:'Water fill', hint:'Valve and level sensors — fill, top-up', why:'no water fill'},
+  drain:{key:'fnDrain', label:'Drain pump', hint:'Wastewater pump — empty, reservoir change', why:'no drain pump'},
+  air_pump:{key:'fnAirPump', label:'Air pump', hint:'Mixing after dosing; without it: settle by time', why:'no air pump'},
+  grow_light:{key:'fnGrowLight', label:'Grow light', hint:'Light schedule from the calendar', why:'no grow light'},
+};
+const ACTIONS = [
+  {key:'btnPh', label:'Correct pH', sub:'Measure, dose acid, mix', needs:[], run:/^PH_(?!CALIB)/},
+  {key:'btnFeed', label:'Feed', sub:'Top up, dose nutrients, pH', needs:['water_fill','nutrients'], run:/^(FEED_FILLING|FEEDING)$/},
+  {key:'btnEc', label:'Correct EC', sub:'Dose to the EC target', needs:['nutrients'], run:/^EC_(?!CALIB)/},
+  {key:'btnFill', label:'Fill tank', sub:'Water up to HIGH', needs:['water_fill'], run:/^WATER_FILLING$/},
+  {key:'btnEmpty', label:'Empty tank', sub:'Pump out to drain', needs:['drain'], run:/^WATER_EMPTYING$/,
+   confirm:['Empty the tank?','The wastewater pump runs until the EMPTY sensor is dry. Make sure the drain hose is in place.']},
+  {key:'btnReservoir', label:'Reservoir change', sub:'Empty, refill, feed, pH', needs:['drain','water_fill','nutrients'],
+   confirm:['Start a reservoir change?','The tank is emptied completely, refilled with fresh water, dosed with nutrients and pH-corrected. This takes a while and cannot be undone.']},
+];
+const MODES = [
+  {key:'btnIdle', label:'Idle', state:/^IDLE$/},
+  {key:'btnPause', label:'Pause', state:/^PAUSE$/},
+  {key:'btnShutdown', label:'Shutdown', state:/^SHUTDOWN$/,
+   confirm:['Shut the controller down?','All actuators are switched off and automation stops until you set it back to Idle.']},
+];
+const STATE_TEXT = {
+  INIT:['Starting up','quiet'], IDLE:['Idle','ok'], NIGHT:['Night mode','quiet'], SHUTDOWN:['Shut down','warn'],
+  PAUSE:['Paused','warn'], ERROR:['Error','danger'],
+  PH_PROCESSING:['pH correction','busy','starting'], PH_MEASURING:['pH correction','busy','measuring'],
+  PH_CALCULATING:['pH correction','busy','calculating dose'], PH_INJECTING:['pH correction','busy','dosing acid'],
+  PH_MIXING:['pH correction','busy','mixing'], PH_CALIBRATING:['pH calibration','busy'],
+  FEEDING:['Feeding','busy','dosing nutrients'], FEED_FILLING:['Feeding','busy','filling to HIGH'],
+  WATER_FILLING:['Filling tank','busy'], WATER_EMPTYING:['Emptying tank','busy'],
+  EC_PROCESSING:['EC correction','busy','starting'], EC_CALCULATING:['EC correction','busy','calculating dose'],
+  EC_FEEDING:['EC correction','busy','dosing nutrients'], EC_MIXING:['EC correction','busy','mixing'],
+  EC_MEASURING:['EC correction','busy','measuring'], EC_CALIBRATING:['EC calibration','busy'],
+};
+const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+/* ---------- small helpers ---------- */
+const $ = id => document.getElementById(id);
+const store = {};            // sse id -> {value, state}
+const seen = {};             // entity key -> true once the device (or mock) reported it
+const ls = {
+  get(k, d){ try { const v = localStorage.getItem('hydromat.' + k); return v === null ? d : v; } catch (e) { return d; } },
+  set(k, v){ try { localStorage.setItem('hydromat.' + k, v); } catch (e) {} },
+};
+const ent = key => store[ENTITIES[key].sse];
+const num = key => { const e = ent(key); if (!e) return NaN; const v = typeof e.value === 'number' ? e.value : parseFloat(e.value); return isNaN(v) ? parseFloat(e.state) : v; };
+const isOn = key => { const e = ent(key); return !!e && (e.value === true || e.state === 'ON'); };
+const text = key => { const e = ent(key); return e ? String(e.state != null ? e.state : e.value) : ''; };
+const fmt = (v, d) => isFinite(v) ? v.toFixed(d) : '—';
+const decimals = step => { const s = String(step); const i = s.indexOf('.'); return i < 0 ? 0 : s.length - i - 1; };
+function toast(msg, err){ const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg;
+  $('toasts').appendChild(t); setTimeout(() => t.remove(), err ? 5000 : 2600); }
+function confirmDlg(title, body, okLabel){
+  const d = $('confirmDlg');
+  if (!d.showModal) return Promise.resolve(window.confirm(title + '\n\n' + body));
+  $('cfTitle').textContent = title; $('cfText').textContent = body; $('cfOk').textContent = okLabel || 'Confirm';
+  return new Promise(res => {
+    let done = false;
+    const fin = v => { if (done) return; done = true; if (d.open) d.close(); res(v); };
+    $('cfOk').onclick = e => { e.preventDefault(); fin(true); };
+    $('cfNo').onclick = e => { e.preventDefault(); fin(false); };
+    d.onclose = () => fin(false);                 // Esc
+    d.showModal();
+  });
+}
+
+/* ---------- connection ---------- */
+const cfg = {
+  addr: ls.get('addr', DEFAULT_ADDR),
+  mock: /[?&]mock\b/.test(location.search) || ls.get('mode', '') === 'mock',
+};
+(function(){ const m = /[?&]device=([^&]+)/.exec(location.search); if (m) { cfg.addr = decodeURIComponent(m[1]); cfg.mock = false; } })();
+let conn = 'connecting', es = null, lastEvent = 0, everLive = false, fallbackTimer = 0, retryTimer = 0, mockReason = '';
+const base = () => cfg.addr.replace(/\/+$/, '');
+
+function setConn(c){
+  conn = c;
+  const host = base().replace(/^https?:\/\//, '');
+  $('connPill').dataset.conn = c;
+  $('connText').textContent = {live:'Connected', connecting:'Connecting…', reconnecting:'Reconnecting…', mock:'Mock data'}[c];
+  $('connDetail').textContent = {
+    live:'Live data from ' + host + '.',
+    connecting:'Trying ' + host + ' …',
+    reconnecting:'Lost the event stream from ' + host + '. Retrying automatically; values shown may be stale.',
+    mock:(mockReason ? mockReason + ' ' : '') + 'Showing simulated data. Nothing is sent to a device.'}[c];
+  document.body.classList.toggle('stale', c === 'connecting' || c === 'reconnecting');
+  $('espLink').href = base() + '/';
+  scheduleRender();
+}
+function teardown(){
+  clearTimeout(fallbackTimer); clearTimeout(retryTimer);
+  if (es) { es.close(); es = null; }
+  mock.stop();
+}
+function resetData(){ for (const k in store) delete store[k]; for (const k in seen) delete seen[k]; $('devTitle').textContent = ''; }
+function connect(){
+  teardown();
+  if (cfg.mock) { resetData(); mockReason = ''; setConn('mock'); mock.start(); return; }
+  setConn(everLive ? 'reconnecting' : 'connecting');
+  let opened = false;
+  try { es = new EventSource(base() + '/events'); }
+  catch (e) { fallbackToMock('The address is not valid.'); return; }
+  if (!everLive) fallbackTimer = setTimeout(() => { if (!opened) fallbackToMock('Device not reachable at ' + base() + '.'); }, 5000);
+  es.onopen = () => { opened = true; if (!everLive) resetData(); everLive = true; lastEvent = Date.now(); clearTimeout(fallbackTimer); setConn('live'); };
+  es.onerror = () => {
+    if (!everLive) {                             // first attempt: fall back to mock, at once if the browser gave up
+      if (es && es.readyState === 2) fallbackToMock('Device not reachable at ' + base() + '.');
+      return;
+    }
+    setConn('reconnecting');
+    if (es && es.readyState === 2) { clearTimeout(retryTimer); retryTimer = setTimeout(connect, 4000); }
+  };
+  es.addEventListener('ping', ev => { lastEvent = Date.now(); if (conn !== 'live' && opened) setConn('live');
+    if (ev.data) { try { const c = JSON.parse(ev.data); if (c.title) $('devTitle').textContent = c.title; } catch (e) {} } });
+  es.addEventListener('state', ev => { lastEvent = Date.now(); try { ingest(JSON.parse(ev.data)); } catch (e) {} });
+  es.addEventListener('log', ev => { lastEvent = Date.now(); addLog(ev.data); });
+}
+function fallbackToMock(reason){
+  teardown(); resetData(); mockReason = reason; setConn('mock'); mock.start();
+  toast(reason + ' Showing mock data.');
+}
+// The device pings every 10 s. Silence for 25 s means the stream is dead even if the socket looks open.
+setInterval(() => { if (conn === 'live' && Date.now() - lastEvent > 25000) connect(); }, 5000);
+
+/* 2025.4 state events: {"id":"sensor-water_ph","value":6.1,"state":"6.10 pH"} without "domain".
+   Newer firmwares add "domain"; both are accepted. */
+function ingest(d){
+  if (!d || typeof d.id !== 'string') return;
+  let id = d.id;
+  if (!DOMAINS.some(x => id.startsWith(x + '-')) && d.domain) id = d.domain + '-' + id;
+  store[id] = {value: d.value, state: d.state};
+  const e = BY_SSE[id]; if (e) seen[e.key] = true;
+  scheduleRender();
+}
+const available = key => !ENTITIES[key].planned || !!seen[key];
+
+function send(key, action, query){
+  const e = ENTITIES[key];
+  if (conn === 'mock') { mock.handle(key, action, query); return Promise.resolve(true); }
+  if (!available(key)) { toast('"' + e.name + '" is not in the firmware yet.', true); return Promise.resolve(false); }
+  // No headers and no body: this stays a CORS "simple request" (the device answers no preflight
+  // except the Private Network Access one) and the browser still sends Content-Length: 0.
+  const url = base() + '/' + e.d + '/' + encodeURIComponent(e.id) + '/' + action + (query ? '?' + query : '');
+  return fetch(url, {method:'POST'}).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return true; })
+    .catch(err => { toast(e.name + ': ' + (err.message === 'Failed to fetch' ? 'device not reachable' : err.message), true); return false; });
+}
+const press = key => send(key, 'press');
+const setSwitch = (key, on) => send(key, on ? 'turn_on' : 'turn_off');
+const setNumber = (key, v) => send(key, 'set', 'value=' + encodeURIComponent(v));
+const setSelect = (key, o) => send(key, 'set', 'option=' + encodeURIComponent(o));
+
+/* ---------- derived values ---------- */
+function fnOn(cap){ const k = FN[cap].key; return seen[k] ? isOn(k) : true; }   // unknown = firmware without presets = everything on
+function missing(needs){ return needs.filter(c => !fnOn(c)); }
+function targets(){
+  const t = {ph: FALLBACK_TARGET.ph, ec: FALLBACK_TARGET.ec, ecTol: FALLBACK_TARGET.ecTol, known:false, phase:'', day:NaN, total:NaN};
+  const g = /Day\s+(\d+)\s*\/\s*(\d+)/.exec(text('growDay')); if (g) { t.day = +g[1]; t.total = +g[2]; }
+  const s = text('presetStatus');
+  if (s) {
+    const p = /pH\s*([\d.]+)\s*[-–]\s*([\d.]+)/.exec(s); if (p) { t.ph = [+p[1], +p[2]]; t.known = true; }
+    const e = /EC\s*([\d.]+)/.exec(s); if (e) t.ec = +e[1];
+    const d = /Day\s+(\d+)(?:\s*\/\s*(\d+))?/.exec(s); if (d) { t.day = +d[1]; t.total = d[2] ? +d[2] : NaN; }
+    const parts = s.split('·'); if (parts.length >= 3) t.phase = parts[2].replace(/\(.*$/, '').trim();
+  }
+  return t;
+}
+function tankState(){
+  if (!ent('lvlHigh') || !ent('lvlLow') || !ent('lvlEmpty')) return null;
+  const h = isOn('lvlHigh'), l = isOn('lvlLow'), e = isOn('lvlEmpty');
+  if (h && !l) return {name:'Sensor error', desc:'HIGH is wet but LOW is dry — check the wiring', fill:0, ok:0, h, l, e};
+  if (h) return {name:'Full', desc:'At the HIGH sensor', fill:.93, ok:1, h, l, e};
+  if (l) return {name:'Normal', desc:'Between LOW and HIGH', fill:.66, ok:1, h, l, e};
+  if (e) return {name:'Low', desc:'Below LOW — top-up zone', fill:.34, ok:0, h, l, e};
+  return {name:'Empty', desc:'Below the EMPTY sensor', fill:.06, ok:0, h, l, e};
+}
+
+/* ---------- build static controls ---------- */
+function switchRow(key, label, hint){
+  return '<div class="row" data-row="' + key + '"><div class="row-t"><b>' + label + '</b>' + (hint ? '<small>' + hint + '</small>' : '') +
+    '</div><button class="sw" role="switch" aria-checked="false" data-sw="' + key + '" aria-label="' + label + '"></button></div>';
+}
+function numberRow(key, label, hint){
+  const e = ENTITIES[key];
+  return '<div class="row" data-row="' + key + '"><div class="row-t"><b>' + label + '</b>' + (hint ? '<small data-hint="' + key + '">' + hint + '</small>' : '') +
+    '</div><div class="numbox"><input type="number" inputmode="decimal" data-num="' + key + '" min="' + e.min + '" max="' + e.max + '" step="' + e.step +
+    '" aria-label="' + label + '"><em>' + (e.unit || '') + '</em></div></div>';
+}
+function build(){
+  $('actions').innerHTML = ACTIONS.map(a => '<button class="act" data-act="' + a.key + '"><b>' + a.label + '</b><span></span></button>').join('');
+  $('modeSeg').innerHTML = MODES.map(m => '<button data-mode="' + m.key + '" aria-pressed="false">' + m.label + '</button>').join('');
+  $('autoRows').innerHTML =
+    switchRow('autoPh', 'Auto pH correction', 'Correct when pH leaves the target band') +
+    switchRow('autoEc', 'Auto EC / feeding', 'Dose nutrients when EC is below target') +
+    switchRow('autoWater', 'Auto water level', 'Top up when the level drops below LOW') +
+    switchRow('autoReservoir', 'Auto reservoir change', 'Weekly full change') +
+    '<div class="sub" data-sub="autoReservoir"><div class="row" data-row="reservoirDay"><div class="row-t"><b>Day of week</b></div><div class="numbox"><select data-numsel="reservoirDay" aria-label="Reservoir change day">' +
+      WEEKDAYS.map((d, i) => '<option value="' + i + '">' + d + '</option>').join('') + '</select></div></div></div>' +
+    switchRow('lightSchedule', 'Grow light schedule', 'Light follows the calendar') +
+    switchRow('nightMode', 'Night mode', 'No dosing, feeding or filling at night') +
+    '<div class="sub" data-sub="nightMode">' + numberRow('nightStart', 'Starts at') + numberRow('nightEnd', 'Ends at') + '</div>';
+  $('presetSeg').innerHTML = ENTITIES.preset.options.map(o => '<button data-preset="' + o + '" aria-pressed="false">' + o + '</button>').join('');
+  $('presetVolRows').innerHTML =
+    numberRow('volDelta', 'Volume LOW → HIGH', 'Used for the daily feed dose') +
+    numberRow('volTotal', 'Volume EMPTY → HIGH', 'Used for the reservoir change');
+  $('presetFnRows').innerHTML = Object.keys(FN).map(c => switchRow(FN[c].key, FN[c].label, FN[c].hint)).join('');
+  $('setDosing').innerHTML =
+    numberRow('kFactor', 'pH K-factor', 'Acid dose strength. Adapts by itself.') +
+    numberRow('ecMult', 'EC target multiplier', 'Scales the calendar EC target') +
+    numberRow('motherVol', 'Mother mix volume', 'Batch size for "Mother plant nutrients"');
+  $('setAir').innerHTML =
+    switchRow('airCycling', 'Air pump cycling', 'Run the air pump in on / off periods') +
+    '<div class="sub" data-sub="airCycling">' + numberRow('airOn', 'On for') + numberRow('airOff', 'Off for') + '</div>' +
+    switchRow('shelly', 'Shelly integration', 'Air pump, drain pump and light via the Shelly Plus 4PM') +
+    switchRow('phContinuous', 'Continuous pH reading', 'Probe reports continuously instead of on demand');
+  $('setButtons').innerHTML =
+    '<button class="btn" data-btn="btnNutrients" data-needs="nutrients">Dose nutrients only</button>' +
+    '<button class="btn" data-btn="btnMother" data-needs="nutrients">Mother plant nutrients</button>' +
+    '<button class="btn" data-btn="btnDayMinus">Grow day −1</button>' +
+    '<button class="btn" data-btn="btnDayPlus">Grow day +1</button>' +
+    '<button class="btn" data-btn="btnReport">Status report to log</button>' +
+    '<button class="btn ghost-danger" data-btn="btnReboot" data-confirm="1">Reboot device</button>';
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', async ev => {
+  const t = ev.target.closest('button'); if (!t || t.disabled) return;
+  if (t.dataset.act) {
+    const a = ACTIONS.find(x => x.key === t.dataset.act);
+    if (a.confirm && !(await confirmDlg(a.confirm[0], a.confirm[1], a.label))) return;
+    if (await press(a.key)) toast(a.label + ' requested');
+  } else if (t.dataset.mode) {
+    const m = MODES.find(x => x.key === t.dataset.mode);
+    if (m.confirm && !(await confirmDlg(m.confirm[0], m.confirm[1], m.label))) return;
+    if (await press(m.key)) toast('Set to ' + m.label);
+  } else if (t.dataset.sw) {
+    const k = t.dataset.sw, on = t.getAttribute('aria-checked') !== 'true';
+    t.setAttribute('aria-checked', String(on));              // optimistic; the next state event confirms or reverts
+    if (!(await setSwitch(k, on))) scheduleRender();
+  } else if (t.dataset.preset) {
+    const o = t.dataset.preset; if (text('preset') === o) return;
+    if (!(await confirmDlg('Switch to preset "' + o + '"?', 'All actuators are switched off, then tank volume, calendar and the active hardware follow the new preset. Each preset keeps its own grow day.', 'Switch'))) return;
+    setSelect('preset', o);
+  } else if (t.dataset.btn) {
+    const k = t.dataset.btn;
+    if (t.dataset.confirm && !(await confirmDlg('Reboot the device?', 'A running operation is interrupted. The controller recovers its state after the restart.', 'Reboot'))) return;
+    if (await press(k)) toast(t.textContent + ' requested');
+  }
+});
+document.addEventListener('change', ev => {
+  const t = ev.target;
+  if (t.dataset.num) {
+    const e = ENTITIES[t.dataset.num]; let v = parseFloat(t.value);
+    if (isNaN(v)) { scheduleRender(); return; }
+    v = Math.min(e.max, Math.max(e.min, v)); t.value = v.toFixed(decimals(e.step));
+    setNumber(e.key, v).then(ok => { if (ok) toast(e.name + ' set to ' + t.value + (e.unit ? ' ' + e.unit : '')); });
+  } else if (t.dataset.numsel) { setNumber(t.dataset.numsel, t.value); }
+});
+$('estop').onclick = async () => { if (await press('btnEstop')) toast('Emergency stop sent'); };  // deliberately no confirm
+$('clearAlerts').onclick = () => press('btnClearAlerts');
+$('restartGrow').onclick = async () => {
+  if (await confirmDlg('Restart the grow at day 1?', 'The start date of the active preset is set to today. The calendar begins again with its first phase.', 'Restart grow')) press('btnRestart');
+};
+$('themeBtn').onclick = () => {
+  const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const next = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; ls.set('theme', next);
+};
+$('connPill').onclick = () => { $('addrInput').value = cfg.addr; $('mixedNote').hidden = !(location.protocol === 'https:' && /^http:/i.test(cfg.addr));
+  const d = $('connDlg'); if (d.showModal) d.showModal(); else d.setAttribute('open', ''); };
+$('connClose').onclick = () => $('connDlg').close();
+$('useMock').onclick = () => { cfg.mock = true; ls.set('mode', 'mock'); $('connDlg').close(); connect(); };
+$('connGo').onclick = () => {
+  let a = $('addrInput').value.trim() || DEFAULT_ADDR; if (!/^https?:\/\//i.test(a)) a = 'http://' + a;
+  cfg.addr = a; cfg.mock = false; everLive = false; ls.set('addr', a); ls.set('mode', 'live'); $('connDlg').close(); connect();
+};
+
+/* ---------- log ---------- */
+let logPaused = false, logN = 0;
+function addLog(raw){
+  if (logPaused) return;
+  const line = String(raw).replace(/\x1b\[[0-9;]*m/g, '');
+  const m = /^\[([EWIDCV]+)\]/.exec(line);
+  const box = $('log'), stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 12;
+  const d = document.createElement('div'); d.dataset.l = m ? m[1][0] : 'I';
+  d.textContent = new Date().toTimeString().slice(0, 8) + '  ' + line; box.appendChild(d);
+  while (box.childElementCount > 300) box.firstChild.remove();
+  if (stick) box.scrollTop = box.scrollHeight;
+  $('logCount').textContent = ++logN;
+}
+$('logPause').onclick = e => { logPaused = !logPaused; e.target.setAttribute('aria-pressed', logPaused); e.target.textContent = logPaused ? 'Resume' : 'Pause'; };
+$('logClear').onclick = () => { $('log').textContent = ''; logN = 0; $('logCount').textContent = '0'; };
+
+/* ---------- render ---------- */
+let renderQueued = false;
+function scheduleRender(){ if (!renderQueued) { renderQueued = true; setTimeout(render, 40); } }
+function gauge(bandEl, markEl, lo, hi, bandLo, bandHi, v){
+  const pct = x => Math.min(100, Math.max(0, (x - lo) / (hi - lo) * 100));
+  if (bandLo == null) bandEl.style.width = '0';
+  else { bandEl.style.left = pct(bandLo) + '%'; bandEl.style.width = Math.max(1.5, pct(bandHi) - pct(bandLo)) + '%'; }
+  markEl.hidden = !isFinite(v); if (isFinite(v)) markEl.style.left = pct(v) + '%';
+}
+function render(){
+  renderQueued = false;
+  const mockMode = conn === 'mock', T = targets();
+
+  // status
+  const raw = text('fsm') || '—', st = STATE_TEXT[raw] || [raw === '—' ? 'Waiting for data' : raw, 'quiet'];
+  $('hero').dataset.tone = st[1];
+  $('stateName').textContent = st[0] + (st[2] ? ' · ' + st[2] : '');
+  $('stateRaw').textContent = raw;
+  const up = text('uptime'), ck = text('clock');
+  $('stateMeta').textContent = (up ? '  ·  up ' + up : '') + (ck && ck !== 'Not initialized' ? '  ·  ' + ck.slice(11, 16) : '');
+  const preset = text('preset');
+  $('presetName').textContent = preset || 'Main grow';
+  $('phaseName').textContent = T.phase ? '· ' + T.phase : '';
+  $('growDay').textContent = isFinite(T.day) ? 'Day ' + T.day + (isFinite(T.total) ? ' of ' + T.total : '') : '—';
+  $('growBar').style.width = (isFinite(T.day) && isFinite(T.total) ? Math.min(100, T.day / T.total * 100) : (isFinite(T.day) ? 100 : 0)) + '%';
+  const al = text('alert'), bad = !!al && al !== 'Clear';
+  $('alertBox').className = 'alert' + (bad ? ' bad' : '');
+  $('alertText').textContent = !al ? '—' : bad ? al : 'No alerts';
+  $('clearAlerts').hidden = !bad;
+  $('actuatorChips').innerHTML = [['swAir','Air pump','air_pump'],['swLight','Grow light','grow_light'],['swValve','Water valve','water_fill'],['swDrain','Drain pump','drain']]
+    .filter(c => ent(c[0]) && fnOn(c[2])).map(c => '<span class="chip' + (isOn(c[0]) ? ' on' : '') + '"><i></i>' + c[1] + '</span>').join('');
+
+  // sensors
+  const ph = num('ph');
+  $('phVal').textContent = fmt(ph, 2);
+  gauge($('phBand'), $('phMark'), 4.5, 7.5, T.ph[0], T.ph[1], ph);
+  const phOk = isFinite(ph) ? (ph >= T.ph[0] && ph <= T.ph[1]) : null;
+  $('tilePh').dataset.ok = phOk === null ? '' : phOk ? '1' : '0';
+  $('phTag').textContent = phOk === null ? 'no reading' : phOk ? 'in range' : ph > T.ph[1] ? 'too high' : 'too low';
+  $('phFoot').textContent = (T.known ? 'Target ' : 'Typical ') + T.ph[0].toFixed(1) + ' – ' + T.ph[1].toFixed(1);
+  const ec = num('ec') / 1000;
+  $('ecVal').textContent = fmt(ec, 2);
+  gauge($('ecBand'), $('ecMark'), 0, 3, T.ec == null ? null : T.ec - T.ecTol, T.ec == null ? null : T.ec + T.ecTol, ec);
+  const ecOk = isFinite(ec) && T.ec != null ? Math.abs(ec - T.ec) <= T.ecTol : null;
+  $('tileEc').dataset.ok = ecOk === null ? '' : ecOk ? '1' : '0';
+  $('ecTag').textContent = !isFinite(ec) ? 'no reading' : ecOk === null ? 'live' : ecOk ? 'on target' : ec < T.ec ? 'below target' : 'above target';
+  $('ecFoot').textContent = T.ec == null ? 'Target not published by the firmware yet' : 'Target ' + T.ec.toFixed(2) + ' ± ' + T.ecTol.toFixed(2);
+  $('wtVal').textContent = fmt(num('waterTemp'), 1);
+  $('atVal').textContent = fmt(num('airTemp'), 1);
+  $('ahVal').textContent = fmt(num('airHum'), 0);
+  const pr = num('airPress'); $('airFoot').textContent = 'Temperature · humidity' + (isFinite(pr) ? ' · ' + pr.toFixed(0) + ' hPa' : '');
+  const tk = tankState();
+  $('tileTank').dataset.ok = tk ? String(tk.ok) : '';
+  $('tankTag').textContent = tk ? (tk.ok ? 'ok' : 'attention') : 'no reading';
+  $('tankLevel').textContent = tk ? tk.name : '—';
+  $('tankDesc').textContent = tk ? tk.desc : 'Waiting for the level sensors';
+  const hgt = tk ? 98 * tk.fill : 0; $('tankWater').setAttribute('y', 106 - hgt); $('tankWater').setAttribute('height', hgt);
+  [['dotHigh','h'],['dotLow','l'],['dotEmpty','e']].forEach(p => $(p[0]).setAttribute('fill', tk && tk[p[1]] ? 'var(--water)' : 'var(--line)'));
+  let vd = num('volDelta'), vt = num('volTotal');
+  if (!isFinite(vd)) { const m = /Delta:\s*([\d.]+)L.*Total:\s*([\d.]+)L/.exec(text('tankVolume')); if (m) { vd = +m[1]; vt = +m[2]; } }
+  $('tankVol').textContent = isFinite(vd) ? vd.toFixed(1) + ' L LOW→HIGH · ' + vt.toFixed(1) + ' L total' : '';
+
+  // actions
+  document.querySelectorAll('[data-act]').forEach(b => {
+    const a = ACTIONS.find(x => x.key === b.dataset.act), miss = missing(a.needs), sp = b.querySelector('span');
+    b.disabled = miss.length > 0;
+    b.classList.toggle('running', !!a.run && a.run.test(raw));
+    sp.className = miss.length ? 'why' : '';
+    sp.textContent = miss.length ? 'Off in ' + (preset || 'this preset') + ': ' + miss.map(c => FN[c].why).join(', ') : a.sub;
+    b.title = miss.length ? sp.textContent : '';
+  });
+  document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(MODES.find(m => m.key === b.dataset.mode).state.test(raw))));
+  document.querySelectorAll('[data-btn]').forEach(b => { const n = b.dataset.needs; b.disabled = !!n && !fnOn(n);
+    b.title = b.disabled ? 'Off in this preset: ' + FN[n].why : ''; });
+
+  // switches and numbers
+  document.querySelectorAll('[data-sw]').forEach(b => { const k = b.dataset.sw, av = mockMode || available(k);
+    b.disabled = !av; if (ent(k)) b.setAttribute('aria-checked', String(isOn(k)));
+    b.closest('.row').classList.toggle('off', !!ent(k) && !isOn(k) && !!ENTITIES[k].planned); });
+  document.querySelectorAll('[data-num]').forEach(i => { const k = i.dataset.num, e = ENTITIES[k], v = num(k);
+    i.disabled = !(mockMode || available(k));
+    if (document.activeElement !== i) i.value = isFinite(v) ? v.toFixed(decimals(e.step)) : ''; });
+  document.querySelectorAll('[data-numsel]').forEach(s => { const v = num(s.dataset.numsel); if (document.activeElement !== s && isFinite(v)) s.value = String(Math.round(v)); });
+  document.querySelectorAll('[data-sub]').forEach(d => { d.hidden = !!ent(d.dataset.sub) && !isOn(d.dataset.sub); });
+  const kl = num('kLive'), kh = document.querySelector('[data-hint="kFactor"]');
+  if (kh) kh.textContent = 'Acid dose strength. Adapts by itself.' + (isFinite(kl) ? ' Live: ' + kl.toFixed(4) : '');
+
+  // preset
+  const presetAv = mockMode || available('preset');
+  $('presetTag').hidden = !mockMode && presetAv;
+  document.querySelectorAll('[data-preset]').forEach(b => { b.disabled = !presetAv; b.setAttribute('aria-pressed', String(preset === b.dataset.preset)); });
+  $('restartGrow').disabled = !(mockMode || available('btnRestart'));
+  $('presetNote').className = 'note' + (presetAv ? '' : ' info');
+  $('presetNote').textContent = presetAv
+    ? 'Switching is possible while idle, paused, at night, shut down or in error. Actions that need hardware a preset lacks are disabled above. pH correction is always available.'
+    : 'This firmware has no presets yet (planned in phase 3 of the overhaul). Open the page with ?mock to try the preset concept.';
+}
+
+/* =====================================================================================
+   MOCK DEVICE  -  simulates the entities above, publishes through ingest() like the
+   SSE stream does and reacts to the same commands. Values are plausible, not measured.
+   ===================================================================================== */
+const mock = (function(){
+  const ALL = {nutrients:1, water_fill:1, drain:1, air_pump:1, grow_light:1};
+  const PRESETS = {  // phase names and the Anzucht / Mutter numbers are placeholders (plan/TO_MEASURE.md)
+    Anzucht:{delta:4.0, total:8.0, fn:{}, day:6, len:21, phases:[{from:1, name:'Propagation', ph:[5.8,6.2], ec:0.4}]},
+    Mutter:{delta:10.0, total:18.0, fn:{nutrients:1, water_fill:1, drain:1}, day:212, len:0, phases:[{from:1, name:'Maintenance', ph:[5.8,6.2], ec:1.2}]},
+    Haupt:{delta:27.4, total:47.5, fn:Object.assign({}, ALL), day:69, len:120, phases:[
+      {from:1, name:'Seedling', ph:[5.8,6.2], ec:0.5}, {from:8, name:'Vegetative', ph:[5.8,6.2], ec:1.2},
+      {from:29, name:'Bloom', ph:[6.0,6.4], ec:2.2}, {from:100, name:'Late bloom', ph:[5.8,6.2], ec:1.2}, {from:113, name:'Flush', ph:[5.5,6.5], ec:0.15}]},
+  };
+  let timer = 0, t0 = 0, n = 0, m = null, seq = [], stepT = 0;
+  const P = () => PRESETS[m.preset];
+  const phase = () => { const p = P(); let r = p.phases[0]; p.phases.forEach(x => { if (x.from <= p.day) r = x; }); return r; };
+  const pub = (key, value, state) => ingest({id: ENTITIES[key].sse, value: value, state: state === undefined ? String(value) : state});
+  const log = (lvl, tag, msg) => addLog('[' + lvl + '][' + tag + ']: ' + msg);
+  const pubSw = (key, on) => { m.sw[key] = !!on; pub(key, !!on, on ? 'ON' : 'OFF'); };
+  const QUIET = /^(IDLE|NIGHT|SHUTDOWN|PAUSE|ERROR)$/;
+
+  function init(){
+    m = {preset:'Haupt', fsm:'INIT', ph:6.52, ec:2.04, wt:21.4, at:24.8, hum:58, pr:1012, level:0, alert:'Clear',
+      sw:{autoPh:false, autoEc:false, autoWater:true, autoReservoir:false, lightSchedule:true, nightMode:true, airCycling:true, shelly:true, phContinuous:false,
+          swAir:false, swLight:true, swDrain:false, swValve:false},
+      nums:{nightStart:22, nightEnd:6, reservoirDay:0, kFactor:0.185, ecMult:1.0, motherVol:5, airOn:120, airOff:600}};
+    m.level = P().total - P().delta * 0.45;
+  }
+  function pubPreset(){
+    const p = P(), ph = phase();
+    pub('preset', m.preset, m.preset);
+    pub('volDelta', p.delta); pub('volTotal', p.total);
+    Object.keys(FN).forEach(c => pub(FN[c].key, !!p.fn[c], p.fn[c] ? 'ON' : 'OFF'));
+    pub('growDay', 0, 'Day ' + p.day + ' / ' + (p.len || p.day));
+    pub('presetStatus', 0, m.preset + ' · Day ' + p.day + (p.len ? ' / ' + p.len : '') + ' · ' + ph.name + ' (pH ' + ph.ph[0].toFixed(1) + '-' + ph.ph[1].toFixed(1) + ', EC ' + ph.ec.toFixed(2) + ')');
+    pub('tankVolume', 0, 'Delta: ' + p.delta.toFixed(1) + 'L (LOW→HIGH) | Total: ' + p.total.toFixed(1) + 'L (EMPTY→HIGH)');
+    pub('btnRestart', 0, '');
+  }
+  function pubLevel(){
+    const p = P();
+    pub('lvlHigh', m.level >= p.total - 0.01, m.level >= p.total - 0.01 ? 'ON' : 'OFF');
+    pub('lvlLow', m.level >= p.total - p.delta, m.level >= p.total - p.delta ? 'ON' : 'OFF');
+    pub('lvlEmpty', m.level > p.total * 0.06, m.level > p.total * 0.06 ? 'ON' : 'OFF');
+  }
+  function pubSensors(){
+    pub('ph', +m.ph.toFixed(3), m.ph.toFixed(3) + ' pH'); pub('ec', Math.round(m.ec * 1000), Math.round(m.ec * 1000) + ' uS/cm');
+    pub('waterTemp', +m.wt.toFixed(1)); pub('airTemp', +m.at.toFixed(1)); pub('airHum', +m.hum.toFixed(1)); pub('airPress', +m.pr.toFixed(1));
+    pub('kLive', m.nums.kFactor);
+  }
+  function setState(s){ if (m.fsm === s) return; log('I', 'plantos_controller', 'State: ' + m.fsm + ' -> ' + s); m.fsm = s; pub('fsm', 0, s); }
+  function actuators(a){ a = a || {};
+    pubSw('swValve', a.valve && P().fn.water_fill); pubSw('swDrain', a.drain && P().fn.drain);
+    if (a.air !== undefined) pubSw('swAir', a.air && P().fn.air_pump); }
+  function run(steps, what){ seq = steps; stepT = 0; log('I', 'plantos_controller', what + ' started'); enter(); }
+  function enter(){ if (!seq.length) { actuators({air:false}); setState('IDLE'); return; } stepT = 0; actuators(seq[0].act); setState(seq[0].s); }
+  function abort(to, why){ seq = []; actuators({air:false}); log('W', 'plantos_controller', why); setState(to); }
+
+  const sPh = () => [
+    {s:'PH_PROCESSING', t:1}, {s:'PH_MEASURING', t:3, end(){ if (m.ph <= phase().ph[1]) { log('I', 'plantos_controller', 'pH ' + m.ph.toFixed(2) + ' is in range, no dose'); seq = [seq[0]]; } }},
+    {s:'PH_CALCULATING', t:1, end(){ const d = (m.ph - (phase().ph[0] + phase().ph[1]) / 2) * P().delta * m.nums.kFactor;
+      log('I', 'plantos_controller', 'Acid dose ' + d.toFixed(2) + ' mL (K=' + m.nums.kFactor.toFixed(3) + ')'); }},
+    {s:'PH_INJECTING', t:2}, {s:'PH_MIXING', t:6, act:{air:true}, tick(){ m.ph += ((phase().ph[0] + phase().ph[1]) / 2 - m.ph) * 0.4; }}];
+  const sFill = s => [{s:s, act:{valve:true}, until:() => m.level >= P().total, tick(){ m.level = Math.min(P().total, m.level + P().total / 14); m.ec *= 0.985; }}];
+  const sEmpty = () => [{s:'WATER_EMPTYING', act:{drain:true}, until:() => m.level <= 0.01, tick(){ m.level = Math.max(0, m.level - P().total / 10); }}];
+  const sDose = () => [{s:'FEEDING', t:5, tick(){ m.ec += (phase().ec * m.nums.ecMult + 0.03 - m.ec) * 0.45; m.ph += 0.03; }}];
+  const sEc = () => [{s:'EC_PROCESSING', t:1}, {s:'EC_CALCULATING', t:1}, {s:'EC_FEEDING', t:3, tick(){ m.ec += (phase().ec * m.nums.ecMult - m.ec) * 0.5; }},
+    {s:'EC_MIXING', t:4, act:{air:true}}, {s:'EC_MEASURING', t:2}];
+
+  const OPS = {
+    btnPh:{needs:[], name:'pH correction', steps:sPh},
+    btnFeed:{needs:['water_fill','nutrients'], name:'Feed', steps:() => sFill('FEED_FILLING').concat(sDose(), sPh())},
+    btnEc:{needs:['nutrients'], name:'EC correction', steps:() => sEc().concat(sPh())},
+    btnFill:{needs:['water_fill'], name:'Fill tank', steps:() => sFill('WATER_FILLING')},
+    btnEmpty:{needs:['drain'], name:'Empty tank', steps:sEmpty},
+    btnReservoir:{needs:['drain','water_fill','nutrients'], name:'Reservoir change', steps:() => sEmpty().concat(sFill('FEED_FILLING'), sDose(), sPh())},
+    btnNutrients:{needs:['nutrients'], name:'Add nutrients', steps:sDose},
+    btnMother:{needs:['nutrients'], name:'Mother plant nutrients', steps:sDose},
+  };
+  function start(key){
+    const op = OPS[key], miss = op.needs.filter(c => !P().fn[c]);
+    if (miss.length) { log('W', 'plantos_controller', op.name + ' refused: preset ' + m.preset + ' has ' + miss.map(c => FN[c].why).join(', ')); toast(op.name + ' refused: ' + FN[miss[0]].why, true); return; }
+    if (m.fsm !== 'IDLE' && m.fsm !== 'NIGHT') { log('W', 'plantos_controller', op.name + ' refused: controller is in ' + m.fsm); toast(op.name + ' refused: controller is ' + m.fsm, true); return; }
+    run(op.steps(), op.name);
+  }
+  function handle(key, action, query){
+    const e = ENTITIES[key], val = query ? decodeURIComponent(query.split('=')[1]) : null;
+    if (e.d === 'switch') {
+      const on = action === 'turn_on', cap = Object.keys(FN).find(c => FN[c].key === key);
+      if (cap) { if (on) P().fn[cap] = 1; else delete P().fn[cap]; log('I', 'grow_profile', m.preset + ': ' + FN[cap].label + (on ? ' enabled' : ' disabled'));
+        if (cap === 'grow_light') pubSw('swLight', on && m.sw.lightSchedule); if (cap === 'air_pump' && !on) pubSw('swAir', false); }
+      pubSw(key, on);
+      log('I', 'switch', e.name + (on ? ' ON' : ' OFF'));
+    } else if (e.d === 'number') {
+      const v = parseFloat(val);
+      if (key === 'volDelta') P().delta = v; else if (key === 'volTotal') P().total = v; else m.nums[key] = v;
+      pub(key, v); if (key === 'volDelta' || key === 'volTotal') { m.level = Math.min(m.level, P().total); pubPreset(); pubLevel(); }
+      log('I', 'number', e.name + ' set to ' + v);
+    } else if (e.d === 'select') {
+      if (!QUIET.test(m.fsm)) { log('W', 'grow_profile', 'Preset switch refused: ' + m.fsm + ' is running'); toast('Preset switch refused while ' + m.fsm + ' is running', true); pubPreset(); return; }
+      m.preset = val; m.level = P().total - P().delta * 0.45; actuators({air:false}); pubSw('swLight', !!P().fn.grow_light && m.sw.lightSchedule);
+      log('I', 'grow_profile', 'Preset -> ' + val + ' (all actuators off, calendar re-evaluated)'); pubPreset(); pubLevel(); toast('Preset ' + val + ' active');
+    } else if (OPS[key]) { start(key);
+    } else if (key === 'btnIdle') { seq = []; actuators({air:false}); setState('IDLE');
+    } else if (key === 'btnPause') { seq = []; actuators({air:false}); setState('PAUSE');
+    } else if (key === 'btnShutdown') { seq = []; actuators({air:false}); pubSw('swLight', false); setState('SHUTDOWN');
+    } else if (key === 'btnEstop') { abort('SHUTDOWN', 'EMERGENCY STOP: all pumps off'); pubSw('swLight', false); m.alert = 'Emergency Stop'; pub('alert', 0, m.alert);
+    } else if (key === 'btnClearAlerts') { m.alert = 'Clear'; pub('alert', 0, 'Clear'); log('I', 'alert_service', 'Alerts cleared');
+    } else if (key === 'btnDayPlus' || key === 'btnDayMinus') { P().day = Math.max(1, P().day + (key === 'btnDayPlus' ? 1 : -1)); pubPreset();
+    } else if (key === 'btnRestart') { P().day = 1; log('I', 'grow_profile', m.preset + ': grow restarted, day 1'); pubPreset();
+    } else if (key === 'btnReport') { log('I', 'status', 'state=' + m.fsm + ' preset=' + m.preset + ' pH=' + m.ph.toFixed(2) + ' EC=' + m.ec.toFixed(2) + ' level=' + m.level.toFixed(1) + 'L');
+    } else if (key === 'btnReboot') { seq = []; t0 = Date.now(); actuators({air:false}); log('W', 'app', 'Rebooting...'); m.fsm = ''; setState('INIT');
+    }
+  }
+  function tick(){
+    n++;
+    const up = Math.floor((Date.now() - t0) / 1000), z = x => String(x).padStart(2, '0'), d = new Date();
+    pub('uptime', 0, z(Math.floor(up / 3600)) + ':' + z(Math.floor(up / 60) % 60) + ':' + z(up % 60));
+    pub('clock', 0, d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + d.toTimeString().slice(0, 8));
+    if (m.fsm === 'INIT' && up >= 2) setState('IDLE');
+    // slow drift of an idle reservoir: pH creeps up, EC and level go down
+    m.ph += 0.0025 + (Math.random() - 0.5) * 0.004; m.ec = Math.max(0.05, m.ec - 0.0008 + (Math.random() - 0.5) * 0.002);
+    m.wt += (Math.random() - 0.5) * 0.04; m.at += (Math.random() - 0.5) * 0.06; m.hum = Math.min(75, Math.max(40, m.hum + (Math.random() - 0.5) * 0.3));
+    if (!seq.length) m.level = Math.max(0, m.level - P().delta * 0.0015);
+    if (seq.length) {
+      const s = seq[0]; stepT++; if (s.tick) s.tick();
+      if (s.until ? s.until() : stepT >= s.t) { if (s.end) s.end(); seq.shift(); if (!seq.length) log('I', 'plantos_controller', 'Operation finished'); enter(); }
+    } else if (m.fsm === 'IDLE') {
+      const ph = phase();
+      if (m.sw.autoPh && m.ph > ph.ph[1] + 0.02) run(sPh(), 'Auto pH correction');
+      else if (m.sw.autoWater && P().fn.water_fill && m.level < P().total - P().delta) run(sFill('WATER_FILLING'), 'Auto top-up');
+      else if (m.sw.autoEc && P().fn.nutrients && m.ec < ph.ec * m.nums.ecMult - 0.2) run(sEc().concat(sPh()), 'Auto EC correction');
+    }
+    if (m.sw.airCycling && !seq.length && P().fn.air_pump && m.fsm === 'IDLE' && n % 20 === 0) pubSw('swAir', !m.sw.swAir);
+    if (n % 2 === 0 || seq.length) { pubSensors(); pubLevel(); }
+    if (n % 15 === 0) log('D', 'sensor_filter', 'pH window avg ' + m.ph.toFixed(3));
+  }
+  return {
+    start(){ init(); t0 = Date.now(); n = 0; seq = [];
+      addLog('[I][mock]: Simulated device. Nothing leaves this page.');
+      pub('fsm', 0, 'INIT'); pub('alert', 0, m.alert);
+      Object.keys(m.sw).forEach(k => pub(k, m.sw[k], m.sw[k] ? 'ON' : 'OFF')); Object.keys(m.nums).forEach(k => pub(k, m.nums[k]));
+      pubPreset(); pubSensors(); pubLevel(); $('devTitle').textContent = 'plantos (mock)';
+      timer = setInterval(tick, 1000); },
+    stop(){ clearInterval(timer); timer = 0; },
+    handle: handle,
+  };
+})();
+
+/* ---------- boot ---------- */
+(function(){ const t = ls.get('theme', ''); if (t) document.documentElement.dataset.theme = t; })();
+build(); render(); connect();
+</script>
+</body>
+</html>

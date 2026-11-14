@@ -222,16 +222,7 @@ button:
     on_press:
       # Turn ON air pump via Shelly for 5 seconds
       # Tests HTTP communication and Shelly socket control
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "=== Air Pump Test (Shelly Socket 0) ===");
-            ESP_LOGI("button", "Turning ON air pump for 5 seconds...");
-        - switch.turn_on: air_pump_shelly_switch
-        - delay: 5s
-        - switch.turn_off: air_pump_shelly_switch
-        - lambda: |-
-            ESP_LOGI("button", "Air Pump OFF - 5s test complete");
-            ESP_LOGI("button", "========================================");
+      - lambda: id(unified_controller)->startActuatorTest("AirPump", 5000, 0);
 
   # Wastewater pump via Shelly Plus 4PM Socket 2
   - platform: template
@@ -242,16 +233,7 @@ button:
     on_press:
       # Turn ON wastewater pump via Shelly for 5 seconds
       # Tests HTTP communication and Shelly socket control
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "=== Wastewater Pump Test (Shelly Socket 2) ===");
-            ESP_LOGI("button", "Turning ON wastewater pump for 5 seconds...");
-        - switch.turn_on: wastewater_pump_shelly_switch
-        - delay: 5s
-        - switch.turn_off: wastewater_pump_shelly_switch
-        - lambda: |-
-            ESP_LOGI("button", "Wastewater Pump OFF - 5s test complete");
-            ESP_LOGI("button", "==============================================");
+      - lambda: id(unified_controller)->startActuatorTest("WastewaterPump", 5000, 0);
 
   # Grow light via Shelly Plus 4PM Socket 3
   - platform: template
@@ -262,16 +244,7 @@ button:
     on_press:
       # Turn ON grow light via Shelly for 3 seconds
       # Tests HTTP communication and Shelly socket control
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "=== Grow Light Test (Shelly Socket 3) ===");
-            ESP_LOGI("button", "Turning ON grow light for 3 seconds...");
-        - switch.turn_on: grow_light_shelly_switch
-        - delay: 3s
-        - switch.turn_off: grow_light_shelly_switch
-        - lambda: |-
-            ESP_LOGI("button", "Grow Light OFF - 3s test complete");
-            ESP_LOGI("button", "=========================================");
+      - lambda: id(unified_controller)->startActuatorTest("GrowLight", 3000, 0);
 
 switch:
   # === Verbose Logging Toggles ===

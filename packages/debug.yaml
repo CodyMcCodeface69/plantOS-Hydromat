@@ -9,6 +9,11 @@
 # Debug builds compile at DEBUG (production: INFO, see the `packages:` block in
 # plantOS.yaml). The per-tag entries keep the chatty tags at INFO until one of the
 # "Verbose: ..." switches below raises them at runtime (logger.set_level).
+# The "WiFi Scan" button lambda needs esp_wifi.h (lists from packages are appended)
+esphome:
+  includes:
+    - includes/wifi_scan.h
+
 logger:
   level: DEBUG
   logs:
@@ -117,7 +122,68 @@ text_sensor:
       }
     update_interval: 10s
 
+# Level-change log lines for the water level sensors (DEBUG, so production has none)
+binary_sensor:
+  - id: !extend water_level_high_sensor
+    on_press:
+      then:
+        - logger.log: "Water level HIGH detected - tank near full"
+    on_release:
+      then:
+        - logger.log: "Water level HIGH cleared - tank below high level"
+  - id: !extend water_level_low_sensor
+    on_press:
+      then:
+        - logger.log: "Water level LOW detected - tank above auto-feed trigger"
+    on_release:
+      then:
+        - logger.log: "Water level LOW cleared - entering auto-feed trigger zone"
+  - id: !extend water_level_empty_sensor
+    on_press:
+      then:
+        - logger.log: "Water level EMPTY detected - water at minimum safe level"
+    on_release:
+      then:
+        - logger.log: "Water level EMPTY cleared - DANGER: Tank below safe level!"
+
 button:
+  # [DEBUG] Blocks the main loop for the scan time (esp_wifi_scan_start with block=true)
+  - platform: template
+    name: "WiFi Scan"
+    web_server:
+      sorting_group_id: sg_system
+      sorting_weight: 30
+    on_press:
+      then:
+        - lambda: |-
+            ESP_LOGI("wifi_scan", "=== WiFi Scan started ===");
+            wifi_scan_config_t scan_config = {};
+            scan_config.show_hidden = true;
+            scan_config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+            scan_config.scan_time.active.min = 50;
+            scan_config.scan_time.active.max = 150;
+            esp_err_t err = esp_wifi_scan_start(&scan_config, true);
+            if (err != ESP_OK) {
+              ESP_LOGE("wifi_scan", "Scan failed: %s", esp_err_to_name(err));
+              return;
+            }
+            uint16_t ap_count = 0;
+            esp_wifi_scan_get_ap_num(&ap_count);
+            ESP_LOGI("wifi_scan", "Found: %d access points", ap_count);
+            if (ap_count == 0) return;
+            wifi_ap_record_t *ap_list = (wifi_ap_record_t*)malloc(ap_count * sizeof(wifi_ap_record_t));
+            if (!ap_list) { ESP_LOGE("wifi_scan", "malloc failed"); return; }
+            esp_wifi_scan_get_ap_records(&ap_count, ap_list);
+            for (int i = 0; i < ap_count; i++) {
+              ESP_LOGI("wifi_scan", "[%2d] SSID: %-32s  BSSID: %02X:%02X:%02X:%02X:%02X:%02X  RSSI: %4d dBm  Ch: %2d",
+                       i + 1, (char*)ap_list[i].ssid,
+                       ap_list[i].bssid[0], ap_list[i].bssid[1], ap_list[i].bssid[2],
+                       ap_list[i].bssid[3], ap_list[i].bssid[4], ap_list[i].bssid[5],
+                       (int)ap_list[i].rssi, ap_list[i].primary);
+            }
+            free(ap_list);
+            ESP_LOGI("wifi_scan", "=== WiFi Scan complete ===");
+
   # [DEBUG] One-off GPIO level dump (was a 30s interval)
   - platform: template
     name: "Log GPIO Levels"

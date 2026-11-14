@@ -25,8 +25,6 @@ packages:
 
 esphome:
   name: plantos
-  includes:
-    - includes/wifi_scan.h  # esp_wifi.h for the "WiFi Scan" button lambda
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -163,23 +161,10 @@ wifi:
   # Helps recover from transient WiFi issues without manual intervention
   reboot_timeout: 2min
 
-  # Update status logger with IP address when WiFi connects
-  # Also activate air pump once on connection
+  # Put the IP address into the status report. (The air pump is NOT switched on here:
+  # boot-time HTTP exhausted the sockets, so the Shelly air pump is left as it is.)
   on_connect:
-    - lambda: |-
-        auto ip = wifi::global_wifi_component->get_ip_addresses()[0].str();
-        id(unified_controller)->getStatusLogger()->updateIP(ip);
-        id(unified_controller)->getStatusLogger()->updateWebServerStatus(true, false);
-        ESP_LOGI("wifi", "IP address: %s", ip.c_str());
-
-    # Wait 2 seconds for network stack to fully initialize
-    - delay: 2s
-
-    # Activate air pump once on WiFi connect (single command, no periodic health checks)
-    # DISABLED: Boot-time HTTP causes socket exhaustion - manually ensure Shelly air pump is ON
-    - lambda: |-
-        ESP_LOGI("wifi", "WiFi connected - air pump activation disabled (manual control)");
-        // id(unified_controller)->activateAirPump();
+    - lambda: id(unified_controller)->onWifiConnected(wifi::global_wifi_component->get_ip_addresses()[0].str());
 
   # ==============================================================
   # FALLBACK ACCESS POINT (AP) FOR DEBUGGING
@@ -612,12 +597,6 @@ binary_sensor:
       # Debounce: sensor must be stable for 500ms to prevent water ripple false triggers
       - delayed_on: 500ms
       - delayed_off: 500ms
-    on_press:
-      then:
-        - logger.log: "Water level HIGH detected - tank near full"
-    on_release:
-      then:
-        - logger.log: "Water level HIGH cleared - tank below high level"
 
   # XKC-Y23-V Water Level LOW Sensor (GPIO23 - WTR_LO)
   # Triggers when water reaches auto-feed trigger level (moved up from original position)
@@ -637,12 +616,6 @@ binary_sensor:
       # Debounce: sensor must be stable for 500ms to prevent water ripple false triggers
       - delayed_on: 500ms
       - delayed_off: 500ms
-    on_press:
-      then:
-        - logger.log: "Water level LOW detected - tank above auto-feed trigger"
-    on_release:
-      then:
-        - logger.log: "Water level LOW cleared - entering auto-feed trigger zone"
 
   # XKC-Y23-V Water Level EMPTY Sensor (GPIO22 - WTR_Empty)
   # Triggers when water is at absolute minimum safe level
@@ -662,12 +635,6 @@ binary_sensor:
       # Debounce: sensor must be stable for 500ms to prevent water ripple false triggers
       - delayed_on: 500ms
       - delayed_off: 500ms
-    on_press:
-      then:
-        - logger.log: "Water level EMPTY detected - water at minimum safe level"
-    on_release:
-      then:
-        - logger.log: "Water level EMPTY cleared - DANGER: Tank below safe level!"
 
 
 ################################################################################
@@ -709,14 +676,7 @@ text_sensor:
     web_server:
       sorting_group_id: sg_status
       sorting_weight: 40
-    lambda: |-
-      uint32_t sec = millis() / 1000;
-      uint32_t h = sec / 3600;
-      uint32_t m = (sec % 3600) / 60;
-      uint32_t s = sec % 60;
-      char buf[12];
-      snprintf(buf, sizeof(buf), "%02u:%02u:%02u", h, m, s);
-      return {buf};
+    lambda: return id(unified_controller)->uptimeText();
     update_interval: 1s
 
   # TDS in ppm derived from EC (EC * 0.5) - only exists as this text sensor
@@ -726,14 +686,7 @@ text_sensor:
     web_server:
       sorting_group_id: sg_sensors
       sorting_weight: 50
-    lambda: |-
-      if (id(hal)->hasECValue()) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%.0f ppm", id(hal)->readEC() * 0.5f);
-        return {buf};
-      } else {
-        return {"N/A"};
-      }
+    lambda: return id(unified_controller)->tdsText();
     update_interval: 10s
 
   - platform: template
@@ -742,15 +695,8 @@ text_sensor:
     web_server:
       sorting_group_id: sg_status
       sorting_weight: 50
-    # Lambda returns configured tank volumes from HAL
-    # Delta: Volume from LOW to HIGH (for normal daily feeding)
-    # Total: Volume from EMPTY to HIGH (for reservoir change)
-    lambda: |-
-      char buf[80];
-      float delta = id(hal)->getTankVolumeDelta();
-      float total = id(hal)->getTotalTankVolume();
-      snprintf(buf, sizeof(buf), "Delta: %.1fL (LOW→HIGH) | Total: %.1fL (EMPTY→HIGH)", delta, total);
-      return {buf};
+    # Configured tank volumes from the HAL: delta LOW->HIGH (feeding), total EMPTY->HIGH (reservoir change)
+    lambda: return id(unified_controller)->tankVolumeText();
     # Update every 60 seconds (static configuration value)
     update_interval: 60s
 
@@ -760,18 +706,8 @@ text_sensor:
     web_server:
       sorting_group_id: sg_status
       sorting_weight: 30
-    # Lambda returns current time from SNTP
-    lambda: |-
-      auto time = id(sntp_time)->now();
-      if (time.is_valid()) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
-                 time.year, time.month, time.day_of_month,
-                 time.hour, time.minute, time.second);
-        return {buf};
-      } else {
-        return {"Not initialized"};
-      }
+    # Local time from SNTP, "Not initialized" until the first sync
+    lambda: return id(unified_controller)->currentTimeText();
     # Update every 1 second to show real-time clock
     update_interval: 1s
 
@@ -781,12 +717,8 @@ text_sensor:
     web_server:
       sorting_group_id: sg_calendar
       sorting_weight: 10
-    # Lambda returns current grow day from calendar manager
-    lambda: |-
-      uint8_t day = id(plant_calendar)->get_current_day();
-      char buf[32];
-      snprintf(buf, sizeof(buf), "Day %d / 120", day);
-      return {buf};
+    # Current grow day from the calendar manager
+    lambda: return id(unified_controller)->growDayText();
     # Update every 60 seconds
     update_interval: 60s
 
@@ -810,12 +742,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 40
     on_press:
-      # Lambda action calls the unified controller's resetToInit() method
-      # This triggers an immediate transition to INIT state (clears errors, resets FSM)
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Reset Controller button pressed");
-            id(unified_controller)->resetToInit();
+      - lambda: id(unified_controller)->resetToInit();
 
   # === Operation Sequences ===
   # State: FEEDING
@@ -825,16 +752,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 50
     on_press:
-      # Start nutrient dosing only (assumes tank is already filled)
-      # State: FEEDING
-      # Use when tank is already at correct level and just needs nutrients
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "ADD NUTRIENTS REQUESTED");
-            ESP_LOGI("button", "State: FEEDING");
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startFeeding();
+      - lambda: id(unified_controller)->startFeeding();
 
   # States: WATER_FILLING -> PH_PROCESSING
   - platform: template
@@ -843,15 +761,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 60
     on_press:
-      # Fill tank then check/correct pH
-      # States: WATER_FILLING → PH_PROCESSING
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "FILL TANK REQUESTED");
-            ESP_LOGI("button", "States: WATER_FILLING → PH_PROCESSING");
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startFillTank();
+      - lambda: id(unified_controller)->startFillTank();
 
   # State: WATER_EMPTYING
   - platform: template
@@ -860,15 +770,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 70
     on_press:
-      # Drain tank until EMPTY sensor triggers
-      # State: WATER_EMPTYING
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "EMPTY TANK REQUESTED");
-            ESP_LOGI("button", "State: WATER_EMPTYING");
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startEmptyTank();
+      - lambda: id(unified_controller)->startEmptyTank();
 
   # States: FEED_FILLING -> FEEDING -> PH_PROCESSING
   - platform: template
@@ -877,17 +779,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 80
     on_press:
-      # Complete feeding operation: fill tank, add nutrients, correct pH
-      # States: FEED_FILLING → FEEDING → PH_PROCESSING
-      # Uses Tank Volume Delta for nutrient dosing
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "FEED OPERATION REQUESTED");
-            ESP_LOGI("button", "States: FEED_FILLING → FEEDING → PH_PROCESSING");
-            ESP_LOGI("button", "Using: Tank Volume Delta (normal feed)");
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startFeed();
+      - lambda: id(unified_controller)->startFeed();
 
   # States: WATER_EMPTYING -> FEED_FILLING -> FEEDING -> PH_PROCESSING
   - platform: template
@@ -896,17 +788,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 90
     on_press:
-      # Complete reservoir change: empty, fill, add nutrients, correct pH
-      # States: WATER_EMPTYING → FEED_FILLING → FEEDING → PH_PROCESSING
-      # Uses Total Tank Volume for nutrient dosing
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "RESERVOIR CHANGE REQUESTED");
-            ESP_LOGI("button", "States: WATER_EMPTYING → FEED_FILLING → FEEDING → PH_PROCESSING");
-            ESP_LOGI("button", "Using: Total Tank Volume (reservoir change)");
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startReservoirChange();
+      - lambda: id(unified_controller)->startReservoirChange();
 
   - platform: template
     name: "Print Status Report"
@@ -923,50 +805,10 @@ button:
       sorting_group_id: sg_system
       sorting_weight: 20
     on_press:
-      # Force WiFi to disconnect and reconnect
-      # Useful for troubleshooting mesh network connectivity issues
-      then:
-        - logger.log: "Forcing WiFi reconnection..."
-        - wifi.disable:
-        - delay: 2s
-        - wifi.enable:
-        - logger.log: "WiFi reconnection initiated"
-
-  - platform: template
-    name: "WiFi Scan"
-    web_server:
-      sorting_group_id: sg_system
-      sorting_weight: 30
-    on_press:
-      then:
-        - lambda: |-
-            ESP_LOGI("wifi_scan", "=== WiFi Scan started ===");
-            wifi_scan_config_t scan_config = {};
-            scan_config.show_hidden = true;
-            scan_config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
-            scan_config.scan_time.active.min = 50;
-            scan_config.scan_time.active.max = 150;
-            esp_err_t err = esp_wifi_scan_start(&scan_config, true);
-            if (err != ESP_OK) {
-              ESP_LOGE("wifi_scan", "Scan failed: %s", esp_err_to_name(err));
-              return;
-            }
-            uint16_t ap_count = 0;
-            esp_wifi_scan_get_ap_num(&ap_count);
-            ESP_LOGI("wifi_scan", "Found: %d access points", ap_count);
-            if (ap_count == 0) return;
-            wifi_ap_record_t *ap_list = (wifi_ap_record_t*)malloc(ap_count * sizeof(wifi_ap_record_t));
-            if (!ap_list) { ESP_LOGE("wifi_scan", "malloc failed"); return; }
-            esp_wifi_scan_get_ap_records(&ap_count, ap_list);
-            for (int i = 0; i < ap_count; i++) {
-              ESP_LOGI("wifi_scan", "[%2d] SSID: %-32s  BSSID: %02X:%02X:%02X:%02X:%02X:%02X  RSSI: %4d dBm  Ch: %2d",
-                       i + 1, (char*)ap_list[i].ssid,
-                       ap_list[i].bssid[0], ap_list[i].bssid[1], ap_list[i].bssid[2],
-                       ap_list[i].bssid[3], ap_list[i].bssid[4], ap_list[i].bssid[5],
-                       (int)ap_list[i].rssi, ap_list[i].primary);
-            }
-            free(ap_list);
-            ESP_LOGI("wifi_scan", "=== WiFi Scan complete ===");
+      # Force WiFi to disconnect and reconnect (mesh network troubleshooting)
+      - wifi.disable:
+      - delay: 2s
+      - wifi.enable:
 
   # === System State Control ===
   # All actuators OFF, calendar disabled
@@ -976,15 +818,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 10
     on_press:
-      # Transition to SHUTDOWN state
-      # - Turns off all actuators
-      # - Disables calendar and time-based events
-      # - Persists across power cycles
-      # - Only "Set to IDLE" can exit this state
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Set to SHUTDOWN button pressed");
-            id(unified_controller)->setToShutdown();
+      - lambda: id(unified_controller)->setToShutdown();
 
   # Actuator states kept, calendar disabled
   - platform: template
@@ -993,15 +827,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 20
     on_press:
-      # Transition to PAUSE state
-      # - Maintains actuator states
-      # - Disables calendar and time-based events
-      # - Persists across power cycles
-      # - Only "Set to IDLE" can exit this state
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Set to PAUSE button pressed");
-            id(unified_controller)->setToPause();
+      - lambda: id(unified_controller)->setToPause();
 
   - platform: template
     name: "Set to IDLE"
@@ -1009,14 +835,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 30
     on_press:
-      # Transition to IDLE state
-      # - Only way to exit SHUTDOWN or PAUSE states
-      # - Clears state persistence from NVS
-      # - Re-enables calendar and time-based events
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Set to IDLE button pressed");
-            id(unified_controller)->setToIdle();
+      - lambda: id(unified_controller)->setToIdle();
 
   # === Operations & Override ===
   # States: EC_PROCESSING -> EC_CALCULATING -> EC_FEEDING -> EC_MIXING -> EC_MEASURING -> PH_PROCESSING
@@ -1026,13 +845,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 100
     on_press:
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "EC CORRECTION REQUESTED");
-            ESP_LOGI("button", "States: EC_PROCESSING → EC_CALCULATING → EC_FEEDING → EC_MIXING → EC_MEASURING → PH_PROCESSING");
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startEcCheck();
+      - lambda: id(unified_controller)->startEcCheck();
 
   # All pumps OFF immediately, then SHUTDOWN
   - platform: template
@@ -1041,13 +854,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 110
     on_press:
-      then:
-        - lambda: |-
-            ESP_LOGW("button", "========================================");
-            ESP_LOGW("button", "EMERGENCY STOP REQUESTED");
-            ESP_LOGW("button", "All pumps OFF immediately → SHUTDOWN");
-            ESP_LOGW("button", "========================================");
-            id(unified_controller)->emergencyStop();
+      - lambda: id(unified_controller)->emergencyStop();
 
   # Nutrient mix for the mother plant, volume set via "Mother Mix Volume"
   - platform: template
@@ -1056,17 +863,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 120
     on_press:
-      then:
-        - lambda: |-
-            float vol = id(mother_volume_liters).state;
-            ESP_LOGI("button", "========================================");
-            ESP_LOGI("button", "MOTHER PLANT NUTRIENT MIX REQUESTED");
-            ESP_LOGI("button", "  Volume : %.1f L", vol);
-            ESP_LOGI("button", "  Dose A : %.2f mL", vol * 1.44f);
-            ESP_LOGI("button", "  Dose B : %.2f mL", vol * 0.96f);
-            ESP_LOGI("button", "  Dose C : %.2f mL", vol * 0.48f);
-            ESP_LOGI("button", "========================================");
-            id(unified_controller)->startMotherNutrients(vol);
+      - lambda: id(unified_controller)->startMotherNutrients(id(mother_volume_liters).state);
 
   # === Logging & Cleanup ===
   - platform: template
@@ -1075,11 +872,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 140
     on_press:
-      # Lambda action calls the PSM's clearEvent() method
-      # This clears any critical events logged to NVS
-      then:
-        - lambda: |-
-            id(psm)->clearEvent();
+      - lambda: id(psm)->clearEvent();
 
   # === Time & NTP ===
   - platform: template
@@ -1088,15 +881,7 @@ button:
       sorting_group_id: sg_system
       sorting_weight: 40
     on_press:
-      then:
-        - lambda: |-
-            // SNTPComponent::update() is a no-op for USE_ESP_IDF; call setup() to properly
-            // stop and restart SNTP (stops running daemon, reconfigures servers, re-inits).
-            ESP_LOGW("ntp", "Force NTP sync — restarting SNTP daemon");
-            ESP_LOGW("ntp", "  Time valid before restart: %s",
-                     id(sntp_time)->now().is_valid() ? "YES" : "NO");
-            id(sntp_time)->setup();
-            ESP_LOGW("ntp", "  SNTP restarted — on_time_sync callback will fire when synced");
+      - lambda: id(unified_controller)->forceTimeSync();
 
   # === pH & Measurement ===
   - platform: template
@@ -1105,13 +890,7 @@ button:
       sorting_group_id: sg_controller_settings
       sorting_weight: 200
     on_press:
-      # Start 3-point pH calibration sequence
-      # Calibration points: 4.00 (low), 7.00 (mid), 10.01 (high)
-      # Follow serial log prompts to insert probe into each buffer solution
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Start pH Calibration button pressed");
-            id(unified_controller)->startPhCalibration();
+      - lambda: id(unified_controller)->startPhCalibration();
 
   - platform: template
     name: "Start pH Correction"
@@ -1119,11 +898,7 @@ button:
       sorting_group_id: sg_controller_actions
       sorting_weight: 130
     on_press:
-      # Start the full pH correction sequence
-      # Includes measurement, calculation, dosing, and mixing
-      then:
-        - lambda: |-
-            id(unified_controller)->startPhCorrection();
+      - lambda: id(unified_controller)->startPhCorrection();
 
   # === pH Temperature Compensation ===
   - platform: template
@@ -1132,22 +907,7 @@ button:
       sorting_group_id: sg_controller_settings
       sorting_weight: 220
     on_press:
-      # Read current water temperature and send to EZO pH sensor
-      # This ensures pH readings are compensated for current temperature
-      then:
-        - logger.log: "Reading current water temperature for pH compensation"
-        - lambda: |-
-            if (id(hal)->hasTemperature()) {
-              float temp = id(hal)->readTemperature();
-              ESP_LOGI("button", "Sending temperature compensation: %.1f°C", temp);
-              if (id(hal)->sendPhTemperatureCompensation(temp)) {
-                ESP_LOGI("button", "Temperature compensation successful");
-              } else {
-                ESP_LOGE("button", "Temperature compensation failed");
-              }
-            } else {
-              ESP_LOGE("button", "Temperature sensor not available");
-            }
+      - lambda: id(unified_controller)->sendPhTempCompensationFromSensor();
 
   - platform: template
     name: "pH Temp Compensation (Manual)"
@@ -1155,18 +915,8 @@ button:
       sorting_group_id: sg_controller_settings
       sorting_weight: 230
     on_press:
-      # Manual temperature compensation for testing or when temp sensor fails
-      # Default: 19.5°C (typical hydroponic solution temperature)
-      then:
-        - logger.log: "Sending manual temperature compensation (19.5°C)"
-        - lambda: |-
-            float manual_temp = 19.5;  // Default temperature
-            ESP_LOGI("button", "Sending manual temperature compensation: %.1f°C", manual_temp);
-            if (id(hal)->sendPhTemperatureCompensation(manual_temp)) {
-              ESP_LOGI("button", "Manual temperature compensation successful");
-            } else {
-              ESP_LOGE("button", "Manual temperature compensation failed");
-            }
+      # Fixed 19.5 °C, for testing or when the temperature sensor fails
+      - lambda: id(unified_controller)->sendPhTempCompensation(19.5f);
 
   - platform: template
     name: "Check pH Calibration Status"
@@ -1174,13 +924,7 @@ button:
       sorting_group_id: sg_controller_settings
       sorting_weight: 210
     on_press:
-      # Query EZO pH sensor calibration status
-      # Returns number of calibration points: 0, 1, 2, or 3
-      # 3 points = fully calibrated (mid, low, high)
-      then:
-        - logger.log: "Querying EZO pH calibration status (Cal,?)"
-        - lambda: |-
-            id(hal)->queryPhCalibrationStatus();
+      - lambda: id(hal)->queryPhCalibrationStatus();
 
   # === EC Calibration ===
   - platform: template
@@ -1189,10 +933,7 @@ button:
       sorting_group_id: sg_controller_settings
       sorting_weight: 240
     on_press:
-      then:
-        - lambda: |-
-            id(unified_controller)->setEcCalibrationTarget(id(ec_calibration_target).state);
-            id(unified_controller)->startEcCalibration();
+      - lambda: id(unified_controller)->startEcCalibration(id(ec_calibration_target).state);
 
   # Resets the EC calibration factor back to 1.0
   - platform: template
@@ -1211,21 +952,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 110
     on_press:
-      # Turn ON magnetic valve for 3 seconds, then auto turn OFF
-      # Maps to "WaterValve" actuator ID
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Testing Magnetic Valve for 3 seconds");
-            if (id(actuator_safety)->executeCommand("WaterValve", true, 10)) {
-              ESP_LOGI("button", "Magnetic Valve ON - will auto turn OFF after 3s");
-            } else {
-              ESP_LOGW("button", "Magnetic Valve test command rejected");
-            }
-        - delay: 3s
-        - lambda: |-
-            if (id(actuator_safety)->executeCommand("WaterValve", false)) {
-              ESP_LOGI("button", "Magnetic Valve auto-OFF after 3s");
-            }
+      - lambda: id(unified_controller)->startValveTest();
 
   - platform: template
     name: "Test pH Pump (10s)"
@@ -1233,29 +960,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 120
     on_press:
-      # Turn ON pH pump for 10 seconds at current PWM slider value
-      # Maps to "AcidPump" actuator ID
-      then:
-        - lambda: |-
-            // PWM comes from the configured value (set via the "Acid Pump PWM" slider)
-            float pwm_percent = id(hal)->getPumpConfig("AcidPump").pwm_intensity * 100.0f;
-
-            // Log calibration instructions
-            ESP_LOGI("button", "=== pH Pump Calibration Test ===");
-            ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
-            ESP_LOGI("button", "Please measure the volume in mL.");
-            ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_ph_flow_rate_ml_s' and the 'Acid Pump PWM' slider.");
-
-            // Turn on pump (PWM intensity read from config inside HAL)
-            id(hal)->setPump("AcidPump", true);
-
-        - delay: 10s
-        - lambda: |-
-            // Turn off pump
-            id(hal)->setPump("AcidPump", false);
-            ESP_LOGI("button", "pH Pump auto-OFF after 10s");
-            ESP_LOGI("button", "================================");
+      - lambda: id(unified_controller)->startPumpTest("AcidPump");
 
   - platform: template
     name: "Test Grow Pump (10s)"
@@ -1263,29 +968,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 130
     on_press:
-      # Turn ON grow pump for 10 seconds at current PWM slider value
-      # Maps to "NutrientPumpA" actuator ID
-      then:
-        - lambda: |-
-            // PWM comes from the configured value (set via the "Grow Pump PWM" slider)
-            float pwm_percent = id(hal)->getPumpConfig("NutrientPumpA").pwm_intensity * 100.0f;
-
-            // Log calibration instructions
-            ESP_LOGI("button", "=== Grow Pump Calibration Test ===");
-            ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
-            ESP_LOGI("button", "Please measure the volume in mL.");
-            ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_grow_flow_rate_ml_s' and the 'Grow Pump PWM' slider.");
-
-            // Turn on pump (PWM intensity read from config inside HAL)
-            id(hal)->setPump("NutrientPumpA", true);
-
-        - delay: 10s
-        - lambda: |-
-            // Turn off pump
-            id(hal)->setPump("NutrientPumpA", false);
-            ESP_LOGI("button", "Grow Pump auto-OFF after 10s");
-            ESP_LOGI("button", "===================================");
+      - lambda: id(unified_controller)->startPumpTest("NutrientPumpA");
 
   - platform: template
     name: "Test Micro Pump (10s)"
@@ -1293,29 +976,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 140
     on_press:
-      # Turn ON micro pump for 10 seconds at current PWM slider value
-      # Maps to "NutrientPumpB" actuator ID
-      then:
-        - lambda: |-
-            // PWM comes from the configured value (set via the "Micro Pump PWM" slider)
-            float pwm_percent = id(hal)->getPumpConfig("NutrientPumpB").pwm_intensity * 100.0f;
-
-            // Log calibration instructions
-            ESP_LOGI("button", "=== Micro Pump Calibration Test ===");
-            ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
-            ESP_LOGI("button", "Please measure the volume in mL.");
-            ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_micro_flow_rate_ml_s' and the 'Micro Pump PWM' slider.");
-
-            // Turn on pump (PWM intensity read from config inside HAL)
-            id(hal)->setPump("NutrientPumpB", true);
-
-        - delay: 10s
-        - lambda: |-
-            // Turn off pump
-            id(hal)->setPump("NutrientPumpB", false);
-            ESP_LOGI("button", "Micro Pump auto-OFF after 10s");
-            ESP_LOGI("button", "====================================");
+      - lambda: id(unified_controller)->startPumpTest("NutrientPumpB");
 
   - platform: template
     name: "Test Bloom Pump (10s)"
@@ -1323,29 +984,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 150
     on_press:
-      # Turn ON bloom pump for 10 seconds at current PWM slider value
-      # Maps to "NutrientPumpC" actuator ID
-      then:
-        - lambda: |-
-            // PWM comes from the configured value (set via the "Bloom Pump PWM" slider)
-            float pwm_percent = id(hal)->getPumpConfig("NutrientPumpC").pwm_intensity * 100.0f;
-
-            // Log calibration instructions
-            ESP_LOGI("button", "=== Bloom Pump Calibration Test ===");
-            ESP_LOGI("button", "Test run started (10s) at %.0f%% PWM", pwm_percent);
-            ESP_LOGI("button", "Please measure the volume in mL.");
-            ESP_LOGI("button", "After measurement: Divide mL by 10 to get mL/s flow rate.");
-            ESP_LOGI("button", "Update 'pump_bloom_flow_rate_ml_s' and the 'Bloom Pump PWM' slider.");
-
-            // Turn on pump (PWM intensity read from config inside HAL)
-            id(hal)->setPump("NutrientPumpC", true);
-
-        - delay: 10s
-        - lambda: |-
-            // Turn off pump
-            id(hal)->setPump("NutrientPumpC", false);
-            ESP_LOGI("button", "Bloom Pump auto-OFF after 10s");
-            ESP_LOGI("button", "====================================");
+      - lambda: id(unified_controller)->startPumpTest("NutrientPumpC");
 
   # === Precision Dosing Tests (2cl/20mL) ===
   - platform: template
@@ -1354,31 +993,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 210
     on_press:
-      # Test precise volume output: 2cl (20mL) from Grow Pump
-      # Uses HAL pumpflow() to convert mL to seconds based on calibration
-      then:
-        - lambda: |-
-            // Use HAL pumpflow to calculate duration for 20mL
-            float target_ml = 20.0f;
-            float duration_s = id(hal)->pumpflow("NutrientPumpA", target_ml);
-
-            ESP_LOGI("button", "=== Grow Pump 2cl Test ===");
-            ESP_LOGI("button", "Target: %.1f mL (2cl)", target_ml);
-            ESP_LOGI("button", "Calculated duration: %.2f seconds", duration_s);
-            ESP_LOGI("button", "Using configured PWM and flow rate from HAL");
-
-            // Turn on pump using configured PWM intensity
-            id(hal)->setPump("NutrientPumpA", true);
-
-        # Wait for calculated duration (convert to milliseconds)
-        - delay: !lambda "return (uint32_t)(id(hal)->pumpflow(\"NutrientPumpA\", 20.0f) * 1000);"
-
-        - lambda: |-
-            // Turn off pump
-            id(hal)->setPump("NutrientPumpA", false);
-            ESP_LOGI("button", "Grow Pump OFF - 2cl test complete");
-            ESP_LOGI("button", "Please verify 20mL was dispensed");
-            ESP_LOGI("button", "==========================");
+      - lambda: id(unified_controller)->startPumpDoseTest("NutrientPumpA", 20.0f);
 
   - platform: template
     name: "Test pH Pump (2cl = 20mL)"
@@ -1386,31 +1001,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 220
     on_press:
-      # Test precise volume output: 2cl (20mL) from pH Pump
-      # Uses HAL pumpflow() to convert mL to seconds based on calibration
-      then:
-        - lambda: |-
-            // Use HAL pumpflow to calculate duration for 20mL
-            float target_ml = 20.0f;
-            float duration_s = id(hal)->pumpflow("AcidPump", target_ml);
-
-            ESP_LOGI("button", "=== pH Pump 2cl Test ===");
-            ESP_LOGI("button", "Target: %.1f mL (2cl)", target_ml);
-            ESP_LOGI("button", "Calculated duration: %.2f seconds", duration_s);
-            ESP_LOGI("button", "Using configured PWM and flow rate from HAL");
-
-            // Turn on pump using configured PWM intensity
-            id(hal)->setPump("AcidPump", true);
-
-        # Wait for calculated duration (convert to milliseconds)
-        - delay: !lambda "return (uint32_t)(id(hal)->pumpflow(\"AcidPump\", 20.0f) * 1000);"
-
-        - lambda: |-
-            // Turn off pump
-            id(hal)->setPump("AcidPump", false);
-            ESP_LOGI("button", "pH Pump OFF - 2cl test complete");
-            ESP_LOGI("button", "Please verify 20mL was dispensed");
-            ESP_LOGI("button", "==========================");
+      - lambda: id(unified_controller)->startPumpDoseTest("AcidPump", 20.0f);
 
   - platform: template
     name: "Test Micro Pump (2cl = 20mL)"
@@ -1418,31 +1009,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 230
     on_press:
-      # Test precise volume output: 2cl (20mL) from Micro Pump
-      # Uses HAL pumpflow() to convert mL to seconds based on calibration
-      then:
-        - lambda: |-
-            // Use HAL pumpflow to calculate duration for 20mL
-            float target_ml = 20.0f;
-            float duration_s = id(hal)->pumpflow("NutrientPumpB", target_ml);
-
-            ESP_LOGI("button", "=== Micro Pump 2cl Test ===");
-            ESP_LOGI("button", "Target: %.1f mL (2cl)", target_ml);
-            ESP_LOGI("button", "Calculated duration: %.2f seconds", duration_s);
-            ESP_LOGI("button", "Using configured PWM and flow rate from HAL");
-
-            // Turn on pump using configured PWM intensity
-            id(hal)->setPump("NutrientPumpB", true);
-
-        # Wait for calculated duration (convert to milliseconds)
-        - delay: !lambda "return (uint32_t)(id(hal)->pumpflow(\"NutrientPumpB\", 20.0f) * 1000);"
-
-        - lambda: |-
-            // Turn off pump
-            id(hal)->setPump("NutrientPumpB", false);
-            ESP_LOGI("button", "Micro Pump OFF - 2cl test complete");
-            ESP_LOGI("button", "Please verify 20mL was dispensed");
-            ESP_LOGI("button", "==========================");
+      - lambda: id(unified_controller)->startPumpDoseTest("NutrientPumpB", 20.0f);
 
   - platform: template
     name: "Test Bloom Pump (2cl = 20mL)"
@@ -1450,31 +1017,7 @@ button:
       sorting_group_id: sg_actuators
       sorting_weight: 240
     on_press:
-      # Test precise volume output: 2cl (20mL) from Bloom Pump
-      # Uses HAL pumpflow() to convert mL to seconds based on calibration
-      then:
-        - lambda: |-
-            // Use HAL pumpflow to calculate duration for 20mL
-            float target_ml = 20.0f;
-            float duration_s = id(hal)->pumpflow("NutrientPumpC", target_ml);
-
-            ESP_LOGI("button", "=== Bloom Pump 2cl Test ===");
-            ESP_LOGI("button", "Target: %.1f mL (2cl)", target_ml);
-            ESP_LOGI("button", "Calculated duration: %.2f seconds", duration_s);
-            ESP_LOGI("button", "Using configured PWM and flow rate from HAL");
-
-            // Turn on pump using configured PWM intensity
-            id(hal)->setPump("NutrientPumpC", true);
-
-        # Wait for calculated duration (convert to milliseconds)
-        - delay: !lambda "return (uint32_t)(id(hal)->pumpflow(\"NutrientPumpC\", 20.0f) * 1000);"
-
-        - lambda: |-
-            // Turn off pump
-            id(hal)->setPump("NutrientPumpC", false);
-            ESP_LOGI("button", "Bloom Pump OFF - 2cl test complete");
-            ESP_LOGI("button", "Please verify 20mL was dispensed");
-            ESP_LOGI("button", "==========================");
+      - lambda: id(unified_controller)->startPumpDoseTest("NutrientPumpC", 20.0f);
 
   # === Calendar Day Control ===
   - platform: template
@@ -1483,18 +1026,8 @@ button:
       sorting_group_id: sg_calendar
       sorting_weight: 20
     on_press:
-      # Advance calendar to next day
-      # Useful for manually advancing grow cycle or skipping days
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Calendar Day +1 button pressed");
-            if (id(plant_calendar)->advance_day()) {
-              ESP_LOGI("button", "Advanced to day %d", id(plant_calendar)->get_current_day());
-              // Update text sensor immediately
-              id(current_grow_day_text).update();
-            } else {
-              ESP_LOGE("button", "Failed to advance calendar day");
-            }
+      - lambda: id(unified_controller)->changeGrowDay(+1);
+      - component.update: current_grow_day_text
 
   - platform: template
     name: "Calendar Day -1"
@@ -1502,18 +1035,8 @@ button:
       sorting_group_id: sg_calendar
       sorting_weight: 30
     on_press:
-      # Go back to previous calendar day
-      # Useful for extending a growth phase or correcting accidental advances
-      then:
-        - lambda: |-
-            ESP_LOGI("button", "Calendar Day -1 button pressed");
-            if (id(plant_calendar)->go_back_day()) {
-              ESP_LOGI("button", "Went back to day %d", id(plant_calendar)->get_current_day());
-              // Update text sensor immediately
-              id(current_grow_day_text).update();
-            } else {
-              ESP_LOGE("button", "Failed to go back calendar day");
-            }
+      - lambda: id(unified_controller)->changeGrowDay(-1);
+      - component.update: current_grow_day_text
 
 ################################################################################
 # PlantOS HAL (Hardware Abstraction Layer) - Layer 3
@@ -1617,13 +1140,6 @@ plantos_controller:
   alert_service: alerts          # Alert dispatching (log backend; future: Telegram, HA)
   ph_k_factor_number: ph_k_factor_slider  # EMA K-factor updates are published to this slider
 
-  # Grow Cycle Configuration
-  # grow_start_date: Date when grow cycle day 1 started (YYYY-MM-DD format)
-  # Controller calculates current day by comparing NTP time to this start date
-  # Example: "2025-12-30" means Dec 30, 2025 is day 1 of the 120-day cycle
-  # If not set, falls back to calendar manager's manual day counter (NVS-persisted)
-  grow_start_date: "2025-12-30"
-
   # Night Mode Configuration
   night_mode_enabled: true      # Night mode enabled by default (22:00–09:00)
   night_mode_start_hour: 22     # Hour when night mode starts (0-23, default: 22 = 10 PM)
@@ -1639,12 +1155,6 @@ plantos_controller:
                                 # Note: LED changes are automatically filtered out.
   enable_420_mode: true         # Enable 420 easter egg at 4:20 AM/PM (default: true)
                                 # When enabled, displays ASCII art in status logs at 4:20
-
-  # Enhanced Error Handling Configuration
-  enhanced_error_handling: true # Enable enhanced error handling with retry logic (default: false)
-                                # When enabled: duration adaptation, sensor retry with exponential
-                                # backoff, comprehensive 4-part error messages, and RESOLVED state
-                                # tracking. Disable for backward-compatible legacy behavior.
 
   # pH Dosing K-Factor
   # dose_ml = (current_pH - 5.85) × tank_L × K
@@ -1952,31 +1462,11 @@ switch:
       sorting_group_id: sg_controller_settings
       sorting_weight: 40
     turn_on_action:
-      # Enable intermittent cycling for air pump
-      # Uses periods configured via the "Air Pump ON/OFF Period" numbers
-      # Starts with ON cycle immediately
-      - lambda: |-
-          uint32_t on_period = (uint32_t)id(air_pump_on_period).state;
-          uint32_t off_period = (uint32_t)id(air_pump_off_period).state;
-
-          ESP_LOGI("switch", "=== Air Pump Cycling ENABLED ===");
-          ESP_LOGI("switch", "ON period: %u seconds", on_period);
-          ESP_LOGI("switch", "OFF period: %u seconds", off_period);
-
-          id(actuator_safety)->setCyclingPeriods("AirPump", on_period, off_period);
-          id(actuator_safety)->enableCycling("AirPump", true);
-
-          ESP_LOGI("switch", "Air pump will cycle: %us ON, %us OFF", on_period, off_period);
-          ESP_LOGI("switch", "Starting with ON cycle");
-          ESP_LOGI("switch", "================================");
+      # Cycling with the periods from the "Air Pump ON/OFF Period" numbers
+      - lambda: id(unified_controller)->setAirPumpCycling(true, id(air_pump_on_period).state, id(air_pump_off_period).state);
     turn_off_action:
-      # Disable intermittent cycling and enable Normal mode (24/7 ON)
-      - lambda: |-
-          ESP_LOGI("switch", "=== Air Pump: NORMAL MODE (24/7 ON) ===");
-          id(actuator_safety)->enableCycling("AirPump", false);
-          ESP_LOGI("switch", "Cycling disabled - air pump will run continuously");
-          ESP_LOGI("switch", "Controller will turn ON pump within 30 seconds");
-          ESP_LOGI("switch", "========================================");
+      # Normal mode: air pump 24/7 ON
+      - lambda: id(unified_controller)->setAirPumpCycling(false, id(air_pump_on_period).state, id(air_pump_off_period).state);
 
   # === Safety Gate Control ===
   - platform: template
@@ -1988,13 +1478,9 @@ switch:
       sorting_group_id: sg_controller_settings
       sorting_weight: 80
     turn_on_action:
-      - lambda: |-
-          ESP_LOGI("switch", "Actuator Safety Gate ENABLED");
-          id(actuator_safety)->setEnabled(true);
+      - lambda: id(actuator_safety)->setEnabled(true);
     turn_off_action:
-      - lambda: |-
-          ESP_LOGW("switch", "Actuator Safety Gate DISABLED - manual control mode");
-          id(actuator_safety)->setEnabled(false);
+      - lambda: id(actuator_safety)->setEnabled(false);
 
   # === Automatic EC/Feeding Control ===
   - platform: template
@@ -2006,40 +1492,13 @@ switch:
       sorting_weight: 120
     restore_mode: RESTORE_DEFAULT_ON  # Auto-feeding enabled by default
     optimistic: false  # State determined by lambda return value
+    # The controller setter stores the value in NVS and logs it
     turn_on_action:
-      - lambda: |-
-          ESP_LOGI("switch", "====================================");
-          ESP_LOGI("switch", "AUTO-FEEDING ENABLED");
-          ESP_LOGI("switch", "====================================");
-          ESP_LOGI("switch", "System will automatically trigger feeding when:");
-          ESP_LOGI("switch", "  1. Water level reaches LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)");
-          ESP_LOGI("switch", "  2. Controller in IDLE state");
-          ESP_LOGI("switch", "  3. NOT in NIGHT/SHUTDOWN/PAUSE/ERROR mode");
-          ESP_LOGI("switch", "  4. Feeding not already triggered today");
-          ESP_LOGI("switch", "====================================");
-
-          // Save state to NVS
-          id(psm).saveState("AutoFeedEnable", true);
-
-          // Update controller state
-          id(unified_controller).setAutoFeedingEnabled(true);
+      - lambda: id(unified_controller)->setAutoFeedingEnabled(true);
     turn_off_action:
-      - lambda: |-
-          ESP_LOGW("switch", "====================================");
-          ESP_LOGW("switch", "AUTO-FEEDING DISABLED");
-          ESP_LOGW("switch", "====================================");
-          ESP_LOGW("switch", "Manual feeding only - no automatic triggers");
-          ESP_LOGW("switch", "====================================");
-
-          // Save state to NVS
-          id(psm).saveState("AutoFeedEnable", false);
-
-          // Update controller state
-          id(unified_controller).setAutoFeedingEnabled(false);
-    lambda: |-
-      // Return cached value from controller (loaded from NVS at setup)
-      // DO NOT call loadState() here - it allocates memory on each call!
-      return id(unified_controller).isAutoFeedingEnabled();
+      - lambda: id(unified_controller)->setAutoFeedingEnabled(false);
+    # Cached value (loaded from NVS at setup); never call loadState() here
+    lambda: return id(unified_controller)->isAutoFeedingEnabled();
 
   # === Automatic Weekly Reservoir Change Control ===
   - platform: template
@@ -2051,39 +1510,13 @@ switch:
       sorting_weight: 90
     restore_mode: RESTORE_DEFAULT_OFF  # Disabled by default (manual control preferred)
     optimistic: false  # State determined by lambda return value
+    # The controller setter stores the value in NVS and logs it
     turn_on_action:
-      - lambda: |-
-          ESP_LOGI("switch", "====================================");
-          ESP_LOGI("switch", "AUTO RESERVOIR CHANGE ENABLED");
-          ESP_LOGI("switch", "====================================");
-          ESP_LOGI("switch", "System will automatically trigger reservoir change when:");
-          ESP_LOGI("switch", "  1. Current day is the configured day of week");
-          ESP_LOGI("switch", "  2. Controller in IDLE state");
-          ESP_LOGI("switch", "  3. NOT in NIGHT/SHUTDOWN/PAUSE/ERROR mode");
-          ESP_LOGI("switch", "  4. Reservoir change not already triggered this week");
-          ESP_LOGI("switch", "====================================");
-
-          // Save state to NVS
-          id(psm).saveState("AutoResEnable", true);
-
-          // Update controller state
-          id(unified_controller).setAutoReservoirChangeEnabled(true);
+      - lambda: id(unified_controller)->setAutoReservoirChangeEnabled(true);
     turn_off_action:
-      - lambda: |-
-          ESP_LOGW("switch", "====================================");
-          ESP_LOGW("switch", "AUTO RESERVOIR CHANGE DISABLED");
-          ESP_LOGW("switch", "====================================");
-          ESP_LOGW("switch", "Manual reservoir change only - no automatic triggers");
-          ESP_LOGW("switch", "====================================");
-
-          // Save state to NVS
-          id(psm).saveState("AutoResEnable", false);
-
-          // Update controller state
-          id(unified_controller).setAutoReservoirChangeEnabled(false);
-    lambda: |-
-      // Return cached value from controller (loaded from NVS at setup)
-      return id(unified_controller).isAutoReservoirChangeEnabled();
+      - lambda: id(unified_controller)->setAutoReservoirChangeEnabled(false);
+    # Cached value (loaded from NVS at setup); never call loadState() here
+    lambda: return id(unified_controller)->isAutoReservoirChangeEnabled();
 
   # === Auto pH Correction Toggle ===
   - platform: template
@@ -2095,18 +1528,13 @@ switch:
       sorting_weight: 110
     restore_mode: RESTORE_DEFAULT_ON
     optimistic: false
+    # The controller setter stores the value in NVS and logs it
     turn_on_action:
-      - lambda: |-
-          id(unified_controller)->setAutoPhCorrectionEnabled(true);
-          id(psm).saveState("AutoPHCorr", true);
-          ESP_LOGI("switch", "Auto pH correction ENABLED");
+      - lambda: id(unified_controller)->setAutoPhCorrectionEnabled(true);
     turn_off_action:
-      - lambda: |-
-          id(unified_controller)->setAutoPhCorrectionEnabled(false);
-          id(psm).saveState("AutoPHCorr", false);
-          ESP_LOGW("switch", "Auto pH correction DISABLED");
-    lambda: |-
-      return id(unified_controller)->isAutoPhCorrectionEnabled();
+      - lambda: id(unified_controller)->setAutoPhCorrectionEnabled(false);
+    # Cached value (loaded from NVS at setup); never call loadState() here
+    lambda: return id(unified_controller)->isAutoPhCorrectionEnabled();
 
   # === Auto Water Level Toggle ===
   - platform: template
@@ -2118,18 +1546,13 @@ switch:
       sorting_weight: 130
     restore_mode: RESTORE_DEFAULT_OFF
     optimistic: false
+    # The controller setter stores the value in NVS and logs it
     turn_on_action:
-      - lambda: |-
-          id(unified_controller)->setAutoFillEnabled(true);
-          id(psm).saveState("AutoFillEn", true);
-          ESP_LOGI("switch", "Auto water level ENABLED");
+      - lambda: id(unified_controller)->setAutoFillEnabled(true);
     turn_off_action:
-      - lambda: |-
-          id(unified_controller)->setAutoFillEnabled(false);
-          id(psm).saveState("AutoFillEn", false);
-          ESP_LOGW("switch", "Auto water level DISABLED");
-    lambda: |-
-      return id(unified_controller)->isAutoFillEnabled();
+      - lambda: id(unified_controller)->setAutoFillEnabled(false);
+    # Cached value (loaded from NVS at setup); never call loadState() here
+    lambda: return id(unified_controller)->isAutoFillEnabled();
 
   # === 10 - Actuator Control (Manual Toggle Switches via Safety Gate) ===
   # These switches toggle actuators through the safety gate for monitored control
@@ -2144,15 +1567,9 @@ switch:
       sorting_group_id: sg_actuators
       sorting_weight: 10
     turn_on_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("WaterValve", true, 0)) {
-            ESP_LOGW("switch", "Magnetic Valve: ON command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("WaterValve", true);
     turn_off_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("WaterValve", false)) {
-            ESP_LOGW("switch", "Magnetic Valve: OFF command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("WaterValve", false);
 
   - platform: template
     id: pump_ph_switch
@@ -2163,15 +1580,9 @@ switch:
       sorting_group_id: sg_actuators
       sorting_weight: 20
     turn_on_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("AcidPump", true, 0)) {
-            ESP_LOGW("switch", "pH Pump: ON command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("AcidPump", true);
     turn_off_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("AcidPump", false)) {
-            ESP_LOGW("switch", "pH Pump: OFF command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("AcidPump", false);
 
   # Nutrient Pump Switches (Grow = NutrientPumpA, Micro = NutrientPumpB, Bloom = NutrientPumpC)
   - platform: template
@@ -2183,15 +1594,9 @@ switch:
       sorting_group_id: sg_actuators
       sorting_weight: 30
     turn_on_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("NutrientPumpA", true, 0)) {
-            ESP_LOGW("switch", "Grow Pump: ON command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("NutrientPumpA", true);
     turn_off_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("NutrientPumpA", false)) {
-            ESP_LOGW("switch", "Grow Pump: OFF command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("NutrientPumpA", false);
 
   - platform: template
     id: pump_micro_switch
@@ -2202,15 +1607,9 @@ switch:
       sorting_group_id: sg_actuators
       sorting_weight: 40
     turn_on_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("NutrientPumpB", true, 0)) {
-            ESP_LOGW("switch", "Micro Pump: ON command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("NutrientPumpB", true);
     turn_off_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("NutrientPumpB", false)) {
-            ESP_LOGW("switch", "Micro Pump: OFF command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("NutrientPumpB", false);
 
   - platform: template
     id: pump_bloom_switch
@@ -2221,15 +1620,9 @@ switch:
       sorting_group_id: sg_actuators
       sorting_weight: 50
     turn_on_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("NutrientPumpC", true, 0)) {
-            ESP_LOGW("switch", "Bloom Pump: ON command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("NutrientPumpC", true);
     turn_off_action:
-      - lambda: |-
-          if (!id(actuator_safety)->executeCommand("NutrientPumpC", false)) {
-            ESP_LOGW("switch", "Bloom Pump: OFF command REJECTED by safety gate");
-          }
+      - lambda: id(unified_controller)->commandActuator("NutrientPumpC", false);
 
   # Shelly integration on/off (runtime). OFF: no polling, Shelly commands dropped,
   # WastewaterPump forced OFF first; tank drain and reservoir change are refused.
@@ -2261,24 +1654,13 @@ switch:
     web_server:
       sorting_group_id: sg_actuators
       sorting_weight: 60
-    lambda: |-
-      // Return actual state from HAL (synced via polling)
-      return id(hal).getShellySwitchState(0);
+    # Actual state from the HAL (synced by the Shelly poll)
+    lambda: return id(hal).getShellySwitchState(0);
+    # Through the safety gate, which debounces against the actual Shelly state
     turn_on_action:
-      # Use ASG for debouncing with actual Shelly state
-      - lambda: |-
-          if (id(actuator_safety).executeCommand("AirPump", true, 0)) {
-            ESP_LOGI("switch", "Air Pump (Shelly Socket 0): ASG approved ON");
-          } else {
-            ESP_LOGD("switch", "Air Pump (Shelly Socket 0): ASG rejected (already ON or debounced)");
-          }
+      - lambda: id(unified_controller)->commandActuator("AirPump", true);
     turn_off_action:
-      - lambda: |-
-          if (id(actuator_safety).executeCommand("AirPump", false, 0)) {
-            ESP_LOGI("switch", "Air Pump (Shelly Socket 0): ASG approved OFF");
-          } else {
-            ESP_LOGD("switch", "Air Pump (Shelly Socket 0): ASG rejected (already OFF or debounced)");
-          }
+      - lambda: id(unified_controller)->commandActuator("AirPump", false);
 
   # Wastewater pump via Shelly Plus 4PM Socket 2
   - platform: template
@@ -2288,24 +1670,13 @@ switch:
     web_server:
       sorting_group_id: sg_actuators
       sorting_weight: 70
-    lambda: |-
-      // Return actual state from HAL (synced via polling)
-      return id(hal).getShellySwitchState(2);
+    # Actual state from the HAL (synced by the Shelly poll)
+    lambda: return id(hal).getShellySwitchState(2);
+    # Through the safety gate, which debounces against the actual Shelly state
     turn_on_action:
-      # Use ASG for debouncing with actual Shelly state
-      - lambda: |-
-          if (id(actuator_safety).executeCommand("WastewaterPump", true, 0)) {
-            ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): ASG approved ON");
-          } else {
-            ESP_LOGD("switch", "Wastewater Pump (Shelly Socket 2): ASG rejected (already ON or debounced)");
-          }
+      - lambda: id(unified_controller)->commandActuator("WastewaterPump", true);
     turn_off_action:
-      - lambda: |-
-          if (id(actuator_safety).executeCommand("WastewaterPump", false, 0)) {
-            ESP_LOGI("switch", "Wastewater Pump (Shelly Socket 2): ASG approved OFF");
-          } else {
-            ESP_LOGD("switch", "Wastewater Pump (Shelly Socket 2): ASG rejected (already OFF or debounced)");
-          }
+      - lambda: id(unified_controller)->commandActuator("WastewaterPump", false);
 
   # Grow light via Shelly Plus 4PM Socket 3
   - platform: template
@@ -2315,24 +1686,13 @@ switch:
     web_server:
       sorting_group_id: sg_actuators
       sorting_weight: 80
-    lambda: |-
-      // Return actual state from HAL (synced via polling)
-      return id(hal).getShellySwitchState(3);
+    # Actual state from the HAL (synced by the Shelly poll)
+    lambda: return id(hal).getShellySwitchState(3);
+    # Through the safety gate, which debounces against the actual Shelly state
     turn_on_action:
-      # Use ASG for debouncing with actual Shelly state
-      - lambda: |-
-          if (id(actuator_safety).executeCommand("GrowLight", true, 0)) {
-            ESP_LOGI("switch", "Grow Light (Shelly Socket 3): ASG approved ON");
-          } else {
-            ESP_LOGD("switch", "Grow Light (Shelly Socket 3): ASG rejected (already ON or debounced)");
-          }
+      - lambda: id(unified_controller)->commandActuator("GrowLight", true);
     turn_off_action:
-      - lambda: |-
-          if (id(actuator_safety).executeCommand("GrowLight", false, 0)) {
-            ESP_LOGI("switch", "Grow Light (Shelly Socket 3): ASG approved OFF");
-          } else {
-            ESP_LOGD("switch", "Grow Light (Shelly Socket 3): ASG rejected (already OFF or debounced)");
-          }
+      - lambda: id(unified_controller)->commandActuator("GrowLight", false);
 
   # === pH Sensor Control ===
   - platform: template
@@ -2343,15 +1703,9 @@ switch:
       sorting_group_id: sg_controller_settings
       sorting_weight: 180
     turn_on_action:
-      then:
-        - lambda: |-
-            ESP_LOGI("switch", "Enabling continuous pH reading mode");
-            id(ezo_ph_uart_component)->enable_continuous_reading();
+      - lambda: id(ezo_ph_uart_component)->enable_continuous_reading();
     turn_off_action:
-      then:
-        - lambda: |-
-            ESP_LOGI("switch", "Disabling continuous pH reading mode");
-            id(ezo_ph_uart_component)->disable_continuous_reading();
+      - lambda: id(ezo_ph_uart_component)->disable_continuous_reading();
 
   # === Night Mode Configuration ===
 
@@ -2364,14 +1718,11 @@ switch:
     web_server:
       sorting_group_id: sg_controller_settings
       sorting_weight: 10
+    # No pH correction, feeding or filling during night hours
     turn_on_action:
-      - lambda: |-
-          ESP_LOGI("switch", "Night Mode ENABLED - no pH correction, feeding, or filling during night hours");
-          id(unified_controller)->setNightModeConfig(true, id(night_start_hour).state, id(night_end_hour).state);
+      - lambda: id(unified_controller)->setNightModeConfig(true, id(night_start_hour).state, id(night_end_hour).state);
     turn_off_action:
-      - lambda: |-
-          ESP_LOGI("switch", "Night Mode DISABLED");
-          id(unified_controller)->setNightModeConfig(false, id(night_start_hour).state, id(night_end_hour).state);
+      - lambda: id(unified_controller)->setNightModeConfig(false, id(night_start_hour).state, id(night_end_hour).state);
 
   # === Grow Light Schedule Control ===
   # When enabled, the controller will automatically control the grow light based on the calendar schedule.
@@ -2387,13 +1738,9 @@ switch:
       sorting_group_id: sg_controller_settings
       sorting_weight: 70
     turn_on_action:
-      - lambda: |-
-          ESP_LOGI("switch", "Grow Light Schedule ENABLED - controller will manage light based on calendar");
-          id(unified_controller)->setGrowLightScheduleEnabled(true);
+      - lambda: id(unified_controller)->setGrowLightScheduleEnabled(true);
     turn_off_action:
-      - lambda: |-
-          ESP_LOGI("switch", "Grow Light Schedule DISABLED - use Shelly scripts for direct control");
-          id(unified_controller)->setGrowLightScheduleEnabled(false);
+      - lambda: id(unified_controller)->setGrowLightScheduleEnabled(false);
 
 number:
   # === EC Target Multiplier ===
@@ -2413,9 +1760,7 @@ number:
     unit_of_measurement: "x"
     mode: slider
     set_action:
-      - lambda: |-
-          ESP_LOGI("number", "EC target multiplier set to %.2fx", x);
-          id(unified_controller)->setEcTargetMultiplier(x);
+      - lambda: id(unified_controller)->setEcTargetMultiplier(x);
 
   # === EC Calibration Target ===
   - platform: template
@@ -2451,9 +1796,7 @@ number:
     unit_of_measurement: "h"
     mode: box
     set_action:
-      - lambda: |-
-          ESP_LOGI("number", "Night Mode Start Hour set to %.0f:00", x);
-          id(unified_controller)->setNightModeConfig(id(night_mode_switch).state, x, id(night_end_hour).state);
+      - lambda: id(unified_controller)->setNightModeConfig(id(night_mode_switch).state, x, id(night_end_hour).state);
 
   - platform: template
     id: night_end_hour
@@ -2471,9 +1814,7 @@ number:
     unit_of_measurement: "h"
     mode: box
     set_action:
-      - lambda: |-
-          ESP_LOGI("number", "Night Mode End Hour set to %.0f:00", x);
-          id(unified_controller)->setNightModeConfig(id(night_mode_switch).state, id(night_start_hour).state, x);
+      - lambda: id(unified_controller)->setNightModeConfig(id(night_mode_switch).state, id(night_start_hour).state, x);
 
   # === Auto Reservoir Change Day of Week ===
   # Day of week: 0=Sunday ... 6=Saturday
@@ -2492,11 +1833,7 @@ number:
     restore_value: true
     mode: box
     set_action:
-      - lambda: |-
-          const char* day_names[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-          uint8_t day = (uint8_t)x;
-          ESP_LOGI("number", "Auto Reservoir Change Day set to: %d (%s)", day, day_names[day]);
-          id(unified_controller).setAutoReservoirChangeDay(day);
+      - lambda: id(unified_controller)->setAutoReservoirChangeDay((uint8_t) x);
 
   # === pH K-Factor ===
   # Acid dose aggressiveness: dose = pH_delta x tank_L x K
@@ -2515,10 +1852,7 @@ number:
     initial_value: 0.25
     restore_value: true
     set_action:
-      - lambda: 'id(unified_controller)->set_ph_k_factor(x);'
-      - logger.log:
-          format: "pH K-factor set to %.3f (dose = pH_delta x tank_L x K)"
-          args: ['x']
+      - lambda: id(unified_controller)->set_ph_k_factor(x);
 
   # === Mother Plant Mix Volume ===
   - platform: template
@@ -2536,8 +1870,6 @@ number:
     restore_value: true
     unit_of_measurement: "L"
     mode: box
-    set_action:
-      - lambda: 'ESP_LOGI("number", "Mother mix volume set to %.1f L", x);'
 
   # === PWM Configuration Sliders ===
   # These sliders ONLY configure the pump duty cycle stored in the HAL pump
@@ -2630,11 +1962,6 @@ number:
     restore_value: true
     unit_of_measurement: "s"
     mode: box
-    set_action:
-      - logger.log:
-          format: "Air pump cycling ON period set to %u seconds"
-          args: [ '(uint32_t)x' ]
-          level: INFO
 
   - platform: template
     id: air_pump_off_period
@@ -2651,11 +1978,6 @@ number:
     restore_value: true
     unit_of_measurement: "s"
     mode: box
-    set_action:
-      - logger.log:
-          format: "Air pump cycling OFF period set to %u seconds"
-          args: [ '(uint32_t)x' ]
-          level: INFO
 
 ################################################################################
 # Intervals

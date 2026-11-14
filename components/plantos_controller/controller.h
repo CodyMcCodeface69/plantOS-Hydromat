@@ -130,7 +130,7 @@ public:
 
     /**
      * Set Time Source (RealTimeClock)
-     * OPTIONAL - Used for automatic day calculation based on grow start date
+     * OPTIONAL - Local date and time for night mode, schedules and the grow day sync
      */
     void setTimeSource(esphome::time::RealTimeClock* time_source) {
         time_source_ = time_source;

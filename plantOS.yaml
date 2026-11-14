@@ -118,6 +118,13 @@ esp32:
       CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA: n
       CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT: n
 
+      # --- Flash diet: silent assertions (~57 KB) -------------------------------------------
+      # A failed assert() still aborts and reboots exactly as before; only the message text
+      # (file, line, expression) is left out. The panic output keeps "abort() was called at
+      # PC 0x..." and the backtrace: `task decode -- 0x...` turns those into file:line.
+      CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE: n
+      CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT: y
+
 logger:
   # Compile-time level: INFO in production, DEBUG with the debug package. It is set in the
   # `packages:` block at the top of this file (not here, so the debug package can raise it).

@@ -58,7 +58,6 @@ void PlantOSController::queuePostFillChecks() {
 }
 
 void PlantOSController::finishDrain() {
-    drain_cmd_sent_ = false;
     // auto_ph_correction_pending_ marks a reservoir change: continue with the fill phase
     transitionTo(auto_ph_correction_pending_ ? ControllerState::FEED_FILLING : ControllerState::IDLE);
 }
@@ -75,9 +74,10 @@ void PlantOSController::handleWaterFilling() {
     // (CONFIGURE ACCORDING TO: tank volume and Mag Valve flowspeed)
     static constexpr uint32_t FILL_DURATION_MS = 600000;
 
-    // ENTRY: open the valve once. NOTE: gated on the first 100 ms of the state and on
-    // fill_cmd_sent_, which is only reset by this handler's own exits (kept as before).
-    if (elapsed < 100 && !fill_cmd_sent_) {
+    // ENTRY: open the valve once per entry (state_entry_executed_ is reset by transitionTo)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
+
         // SAFETY: Abort if water level sensors are unavailable - filling blind
         // on a timeout with no level feedback risks tank overflow
         if (!hal_ || !hal_->hasWaterLevelSensors()) {
@@ -85,7 +85,6 @@ void PlantOSController::handleWaterFilling() {
             alertWaterSensorsMissing("Water filling refused");
             auto_ph_correction_pending_ = false;
             clearPsmEvent();
-            fill_cmd_sent_ = false;
             transitionTo(ControllerState::IDLE);
             return;
         }
@@ -104,13 +103,11 @@ void PlantOSController::handleWaterFilling() {
                 0
             );
             clearPsmEvent();
-            fill_cmd_sent_ = false;
             transitionTo(ControllerState::IDLE);
             return;
         }
 
         ESP_LOGI(TAG, "[WATER_FILLING] Valve open (max %u s)", (unsigned)(FILL_DURATION_MS / 1000));
-        fill_cmd_sent_ = true;
         return;
     }
 
@@ -120,7 +117,6 @@ void PlantOSController::handleWaterFilling() {
         stopWaterActuator(WATER_VALVE);
         clearPsmEvent();
         auto_ph_correction_pending_ = false;
-        fill_cmd_sent_ = false;
         transitionTo(ControllerState::IDLE);
         return;
     }
@@ -133,7 +129,6 @@ void PlantOSController::handleWaterFilling() {
         status_logger_.resolveAlert("PUMP_REJECTION_WATER_VALVE");
         status_logger_.resolveAlert("HARDWARE_WATER_SENSOR_HIGH");
         clearPsmEvent();
-        fill_cmd_sent_ = false;
         queuePostFillChecks();
         transitionTo(ControllerState::IDLE);
         return;
@@ -154,7 +149,6 @@ void PlantOSController::handleWaterFilling() {
             "Tank may be under-filled or the sensor faulty. Check by hand.",
             0
         );
-        fill_cmd_sent_ = false;
         queuePostFillChecks();
         transitionTo(ControllerState::IDLE);
         return;
@@ -178,14 +172,15 @@ void PlantOSController::handleWaterEmptying() {
         ESP_LOGE(TAG, "[WATER_EMPTYING] Shelly integration disabled - drain aborted");
         stopWaterActuator(WASTEWATER_PUMP);
         clearPsmEvent();
-        drain_cmd_sent_ = false;
         auto_ph_correction_pending_ = false;
         transitionTo(ControllerState::IDLE);
         return;
     }
 
-    // ENTRY: start the pump once (same first-100-ms gate as WATER_FILLING)
-    if (elapsed < 100 && !drain_cmd_sent_) {
+    // ENTRY: start the pump once per entry (state_entry_executed_ is reset by transitionTo)
+    if (!state_entry_executed_) {
+        state_entry_executed_ = true;
+
         // Check EMPTY sensor before starting (prevent dry-pump immediately)
         if (hal_->hasWaterLevelSensors() && !hal_->readWaterLevelEmpty()) {
             ESP_LOGW(TAG, "[WATER_EMPTYING] EMPTY already off - nothing to drain");
@@ -208,14 +203,12 @@ void PlantOSController::handleWaterEmptying() {
                 0
             );
             clearPsmEvent();
-            drain_cmd_sent_ = false;
             auto_ph_correction_pending_ = false;  // reservoir change sequence aborted
             transitionTo(ControllerState::IDLE);
             return;
         }
 
         ESP_LOGI(TAG, "[WATER_EMPTYING] Wastewater pump on (max %u s)", (unsigned)(EMPTY_DURATION_MS / 1000));
-        drain_cmd_sent_ = true;
         return;
     }
 

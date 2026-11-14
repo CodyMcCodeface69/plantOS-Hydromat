@@ -517,11 +517,6 @@ private:
     /// True when running a mother plant nutrient mix — skips EC_MIXING and returns to IDLE directly
     bool is_mother_mix_{false};
 
-    /// Entry command sent in WATER_FILLING / WATER_EMPTYING (were function-static flags; reset
-    /// only by the handlers' own exits, see water_ops.cpp)
-    bool fill_cmd_sent_{false};
-    bool drain_cmd_sent_{false};
-
     /// Were function-static in handleIdle / handleNight / loop (same initial values)
     uint32_t idle_psm_check_ms_{0};
     uint32_t night_psm_check_ms_{0};

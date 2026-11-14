@@ -273,3 +273,73 @@ TEST(feed_filling, refuses_tank_that_is_not_empty_or_without_sensors) {
     CHECK(!f.ctrl.auto_ph_correction_pending_);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Entry action: runs once per entry, independent of when the first tick comes
+// ---------------------------------------------------------------------------
+
+TEST(water_filling, first_tick_late_after_transition_still_opens_valve) {
+  ControllerFixture f;
+  host::set_millis(1000);
+  f.force_state(ControllerState::IDLE);
+  f.ctrl.startFillTank();
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::WATER_FILLING);
+  tick(f, ControllerState::WATER_FILLING, 250);  // first handler call 250 ms after the transition
+  CHECK(f.hal.getValveState("WaterValve"));
+  f.hal.level_high = true;
+  tick(f, ControllerState::WATER_FILLING);
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::IDLE);
+  CHECK(!has_active_alert(f, "HARDWARE_WATER_SENSOR_HIGH"));
+}
+
+TEST(water_filling, fill_cut_by_emergency_stop_opens_again_next_time) {
+  ControllerFixture f;
+  host::set_millis(1000);
+  f.force_state(ControllerState::IDLE);
+  f.ctrl.startFillTank();
+  tick(f, ControllerState::WATER_FILLING, 10);
+  CHECK(f.hal.getValveState("WaterValve"));
+  f.ctrl.emergencyStop();
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::SHUTDOWN);
+  CHECK(!f.hal.getValveState("WaterValve"));
+  host::advance_millis(5000);
+  f.ctrl.setToIdle();
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::IDLE);
+  host::advance_millis(5000);
+  f.ctrl.startFillTank();
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::WATER_FILLING);
+  tick(f, ControllerState::WATER_FILLING, 10);
+  CHECK(f.hal.getValveState("WaterValve"));
+}
+
+TEST(water_emptying, first_tick_late_after_transition_still_starts_pump) {
+  ControllerFixture f;
+  f.hal.level_empty = true;
+  host::set_millis(1000);
+  f.force_state(ControllerState::IDLE);
+  f.ctrl.startEmptyTank();
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::WATER_EMPTYING);
+  tick(f, ControllerState::WATER_EMPTYING, 250);
+  CHECK(f.hal.getPumpState("WastewaterPump"));
+}
+
+TEST(water_emptying, drain_cut_by_pause_starts_pump_again_next_time) {
+  ControllerFixture f;
+  f.hal.level_empty = true;
+  host::set_millis(1000);
+  f.force_state(ControllerState::IDLE);
+  f.ctrl.startEmptyTank();
+  tick(f, ControllerState::WATER_EMPTYING, 10);
+  CHECK(f.hal.getPumpState("WastewaterPump"));
+  f.ctrl.setToPause();
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::PAUSE);
+  f.ctrl.turnOffAllPumps();  // what PAUSE does to the actuators
+  CHECK(!f.hal.getPumpState("WastewaterPump"));
+  host::advance_millis(5000);
+  f.ctrl.setToIdle();
+  host::advance_millis(5000);
+  f.ctrl.startEmptyTank();
+  CHECK_EQ(f.ctrl.getCurrentState(), ControllerState::WATER_EMPTYING);
+  tick(f, ControllerState::WATER_EMPTYING, 10);
+  CHECK(f.hal.getPumpState("WastewaterPump"));
+}

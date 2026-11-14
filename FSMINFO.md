@@ -463,8 +463,8 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | PH_CALIBRATING     | - None (sensor calibration only, no actuators) |
 | EC_CALIBRATING     | - None (sensor calibration only, no actuators) |
 | FEEDING            | **Setup state only — immediately delegates to EC_FEEDING loop.**<br>- Calculates individual dose = (calendar_mL/L × tank_volume × dose_multiplier) / 5<br>- If EC target configured: sets `feeding_manual_mode_=true`, transitions to EC_FEEDING<br>- If no EC target: uses full calendar dose in single pass via EC_FEEDING<br>**EC_FEEDING → EC_MIXING → EC_MEASURING loop repeats until EC target reached or 20 installments** |
-| WATER_FILLING      | - Turn ON WaterValve (until HIGH sensor or 10-min timeout; ASG backstop 600s)<br>- **Aborts to IDLE if water level sensors unavailable (no blind fill)** |
-| WATER_EMPTYING     | - Turn ON WastewaterPump (until EMPTY sensor OFF or 300s timeout; ASG backstop 1800s) |
+| WATER_FILLING      | - Turn ON WaterValve (until HIGH sensor or 10-min timeout; ASG backstop 600s)<br>- Opened once per entry, on the first handler call after the transition (entry flag reset by `transitionTo`; until 2026-11-14 only within the first 100 ms and skipped after a fill cut short by stop/pause)<br>- **Aborts to IDLE if water level sensors unavailable (no blind fill)** |
+| WATER_EMPTYING     | - Turn ON WastewaterPump (until EMPTY sensor OFF or 300s timeout; ASG backstop 1800s)<br>- Started once per entry, on the first handler call (same entry flag as WATER_FILLING) |
 | FEED_FILLING       | - Turn ON WaterValve (calc'd duration, or until HIGH sensor)<br>- **Aborts to IDLE if water level sensors unavailable (no blind fill)** |
 
 ## Persistent State Manager (PSM) Events

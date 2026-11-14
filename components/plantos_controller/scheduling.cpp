@@ -1,6 +1,7 @@
 // Scheduling: night mode / grow-light window, local date and grow day, auto-feed and auto-reservoir-change triggers.
 // Part of PlantOSController (declared in controller.h). FSMINFO.md is authoritative for FSM behavior.
 #include "controller.h"
+#include "schedule_math.h"
 #include "esphome/components/plantos_hal/hal.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
@@ -38,29 +39,16 @@ bool PlantOSController::isNightModeHours() const {
         // Night = light is OFF = outside light_on…light_off window
         if (schedule.light_on_time != schedule.light_off_time) {
             int current_minutes = now.hour * 60 + now.minute;
-            bool light_is_on;
-            if (schedule.light_on_time < schedule.light_off_time) {
-                // Normal day schedule (e.g., 06:00–22:00)
-                light_is_on = (current_minutes >= schedule.light_on_time &&
-                               current_minutes < schedule.light_off_time);
-            } else {
-                // Light-on wraps midnight (e.g., 22:00–06:00)
-                light_is_on = (current_minutes >= schedule.light_on_time ||
-                               current_minutes < schedule.light_off_time);
-            }
+            bool light_is_on = schedule_math::lightShouldBeOn(current_minutes, schedule.light_on_time,
+                                                              schedule.light_off_time);
             return !light_is_on;  // Night = light off
         }
     }
 
     // Fallback: YAML-configured hour-based night window
+    // (start > end spans midnight, e.g. 22:00–08:00; otherwise same-day range, e.g. 01:00–06:00)
     uint8_t current_hour = now.hour;
-    if (night_mode_start_hour_ > night_mode_end_hour_) {
-        // Spans midnight (e.g., 22:00–08:00)
-        return (current_hour >= night_mode_start_hour_) || (current_hour < night_mode_end_hour_);
-    } else {
-        // Same-day range (e.g., 01:00–06:00)
-        return (current_hour >= night_mode_start_hour_) && (current_hour < night_mode_end_hour_);
-    }
+    return schedule_math::hourInNightWindow(current_hour, night_mode_start_hour_, night_mode_end_hour_);
 }
 
 int32_t PlantOSController::getLocalDateOrdinal() {
@@ -81,14 +69,7 @@ int32_t PlantOSController::getLocalDateOrdinal() {
     uint32_t m = now.month;
     uint32_t d = now.day_of_month;
 
-    y -= (m <= 2);
-    int32_t era = (y >= 0 ? y : y - 399) / 400;
-    uint32_t yoe = static_cast<uint32_t>(y - era * 400);                  // [0, 399]
-    uint32_t doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;       // [0, 365]
-    uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;                 // [0, 146096]
-    int32_t days = era * 146097 + static_cast<int32_t>(doe) - 719468;     // days since 1970-01-01
-
-    return days;
+    return schedule_math::daysFromCivil(y, m, d);
 }
 
 uint8_t PlantOSController::getCurrentGrowDay() {
@@ -103,8 +84,7 @@ uint8_t PlantOSController::getCurrentGrowDay() {
             int64_t current_timestamp = now.timestamp;
 
             // Calculate days elapsed since grow start
-            int64_t seconds_elapsed = current_timestamp - grow_start_timestamp_;
-            int32_t days_elapsed = static_cast<int32_t>(seconds_elapsed / 86400);  // 86400 seconds per day
+            int32_t days_elapsed = schedule_math::growDaysElapsed(current_timestamp, grow_start_timestamp_);
 
             // Handle negative elapsed time (clock not set or start date in future)
             if (days_elapsed < 0) {
@@ -113,7 +93,7 @@ uint8_t PlantOSController::getCurrentGrowDay() {
             }
 
             // Calculate current day (1-120, wraps around)
-            uint8_t current_day = static_cast<uint8_t>((days_elapsed % 120) + 1);
+            uint8_t current_day = schedule_math::growDayFromElapsed(days_elapsed);
 
             ESP_LOGD(TAG, "Auto-calculated grow day: %d (elapsed: %d days since start)",
                      current_day, days_elapsed);
@@ -316,12 +296,8 @@ int64_t PlantOSController::getCurrentWeekNumber() {
         return 0;
     }
 
-    // Calculate week number (weeks since Unix epoch)
-    // Unix epoch started on Thursday, so we adjust by 4 days to align week boundaries
-    int64_t days_since_epoch = now / 86400;
-    int64_t weeks_since_epoch = days_since_epoch / 7;
-
-    return weeks_since_epoch;
+    // Week number = whole weeks since the Unix epoch (UTC)
+    return schedule_math::weekNumber(now);
 }
 
 uint8_t PlantOSController::getCurrentDayOfWeek() {
@@ -336,9 +312,7 @@ uint8_t PlantOSController::getCurrentDayOfWeek() {
         return 255;
     }
 
-    // Unix epoch (Jan 1, 1970) was a Thursday (day 4)
-    // (days_since_epoch + 4) % 7 gives: 0=Sunday, 1=Monday, ..., 6=Saturday
-    int64_t days_since_epoch = now / 86400;
-    return (days_since_epoch + 4) % 7;
+    // 0=Sunday, 1=Monday, ..., 6=Saturday (UTC day)
+    return schedule_math::dayOfWeek(now);
 }
 } // namespace plantos_controller

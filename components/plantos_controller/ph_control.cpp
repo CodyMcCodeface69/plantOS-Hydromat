@@ -1,6 +1,7 @@
 // pH control: PH_* state handlers, pH calibration, acid dose and K-factor learning.
 // Part of PlantOSController (declared in controller.h). FSMINFO.md is authoritative for FSM behavior.
 #include "controller.h"
+#include "dosing_math.h"
 #include "esphome/components/plantos_hal/hal.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
@@ -1005,11 +1006,7 @@ bool PlantOSController::checkCalibrationStability() {
     float batch3 = calib_batch_averages_[calib_current_batch_ - 1];
 
     // Calculate max difference between any two batches
-    float diff_1_2 = std::abs(batch1 - batch2);
-    float diff_2_3 = std::abs(batch2 - batch3);
-    float diff_1_3 = std::abs(batch1 - batch3);
-
-    float max_diff = std::max({diff_1_2, diff_2_3, diff_1_3});
+    float max_diff = dosing_math::maxPairwiseDiff(batch1, batch2, batch3);
 
     ESP_LOGI(TAG, "Stability check:");
     ESP_LOGI(TAG, "  Batch %d: pH %.2f", calib_current_batch_ - 2, batch1);
@@ -1050,13 +1047,10 @@ void PlantOSController::sendTemperatureCompensation() {
 // ============================================================================
 
 uint32_t PlantOSController::calculatePhMixingDuration() const {
-    // Linear formula based on tank volume (pH_Regellogik.md, 70L-optimized):
+    // Linear formula based on tank volume (docs/CONTROL_LOGIC.md, 70L-optimized):
     // - 1.7L → 30 seconds  (30,000 ms)
     // - 70L  → 600 seconds (600,000 ms = 10 min)
-    //
-    // Formula: duration_ms = slope × volume_L + intercept
-    // Slope = (600000 - 30000) / (70 - 1.7) = 570000 / 68.3 ≈ 8344.07 ms/L
-    // Intercept = 30000 - (8344.07 × 1.7) ≈ 15814.9
+    // The formula itself is dosing_math::phMixingDurationRawMs().
 
     float volume_L = 10.0f;  // Default fallback
     if (hal_) {
@@ -1064,9 +1058,7 @@ uint32_t PlantOSController::calculatePhMixingDuration() const {
     }
 
     // Apply linear formula
-    constexpr float SLOPE = 8344.07f;       // ms per liter
-    constexpr float INTERCEPT = 15814.9f;   // ms offset
-    float duration_ms = SLOPE * volume_L + INTERCEPT;
+    float duration_ms = dosing_math::phMixingDurationRawMs(volume_L);
 
     // Safety bounds: min 30s, max 600s (10 min)
     if (duration_ms < 30000.0f) {
@@ -1084,7 +1076,7 @@ uint32_t PlantOSController::calculatePhMixingDuration() const {
 }
 
 float PlantOSController::calculateAcidDoseML(float current_ph, float target_ph_max) {
-    // Adaptive K-factor formula (pH_Regellogik.md Section 4):
+    // Adaptive K-factor formula (docs/CONTROL_LOGIC.md):
     // dose_ml = (current_ph - PH_CORRECTION_TARGET) * tank_volume_L * ph_K_
     //
     // PH_CORRECTION_TARGET (5.85) is the biological target, not the trigger threshold.
@@ -1096,10 +1088,8 @@ float PlantOSController::calculateAcidDoseML(float current_ph, float target_ph_m
     }
 
     float tank_volume_L = hal_ ? hal_->getTankVolume() : 10.0f;
-    float dose_ml = ph_delta * tank_volume_L * ph_K_;
-
-    // Clamp to [PH_MIN_DOSE_ML, PH_MAX_DOSE_ML]
-    dose_ml = std::max(PH_MIN_DOSE_ML, std::min(PH_MAX_DOSE_ML, dose_ml));
+    // dose = pH_delta × volume_L × K, clamped to [PH_MIN_DOSE_ML, PH_MAX_DOSE_ML]
+    float dose_ml = dosing_math::acidDoseMl(ph_delta, tank_volume_L, ph_K_, PH_MIN_DOSE_ML, PH_MAX_DOSE_ML);
 
     ESP_LOGI(TAG, "Acid dose: %.3f pH_delta × %.1fL × K=%.4f = %.2f mL (clamped to [%.1f, %.1f])",
              ph_delta, tank_volume_L, ph_K_, dose_ml, PH_MIN_DOSE_ML, PH_MAX_DOSE_ML);
@@ -1129,14 +1119,11 @@ void PlantOSController::updatePhKFactor(float ph_before, float ph_after, float m
         return;
     }
 
-    // K_observed = mL / (pH_delta × volume_L)
-    float K_observed = ml_total / (ph_delta * tank_volume_L);
-
-    // Clamp to valid range
-    K_observed = std::max(PH_K_MIN_CLAMP, std::min(PH_K_MAX_CLAMP, K_observed));
-
-    // EMA smoothing: new_K = alpha * K_observed + (1 - alpha) * K_current
-    float K_new = PH_K_EMA_ALPHA * K_observed + (1.0f - PH_K_EMA_ALPHA) * ph_K_;
+    // K_observed = mL / (pH_delta × volume_L), clamped; K_new = EMA of K_observed and ph_K_
+    const dosing_math::KUpdate k = dosing_math::phKUpdate(ml_total, ph_delta, tank_volume_L, ph_K_,
+                                                          PH_K_EMA_ALPHA, PH_K_MIN_CLAMP, PH_K_MAX_CLAMP);
+    float K_observed = k.observed;
+    float K_new = k.updated;
 
     ESP_LOGI(TAG, "pH K-factor update: K_obs=%.4f → K_ema=%.4f (was %.4f) | "
              "pH %.2f→%.2f (delta=%.3f), %.2f mL, %.1f L",
@@ -1153,62 +1140,13 @@ void PlantOSController::updatePhKFactor(float ph_before, float ph_after, float m
 }
 
 float PlantOSController::calculateRobustPhAverage() {
-    if (ph_readings_.empty()) {
-        return 0.0f;
-    }
-
-    // Single reading - return as-is
-    if (ph_readings_.size() == 1) {
-        return ph_readings_[0];
-    }
-
-    // Sort readings for robust averaging
-    std::vector<float> sorted = ph_readings_;
-    std::sort(sorted.begin(), sorted.end());
-
-    // Reject 10% from each end (outliers)
-    size_t reject_count = sorted.size() / 10;
-    if (reject_count == 0 && sorted.size() > 2) {
-        reject_count = 1; // Reject at least 1 from each end
-    }
-
-    // Calculate average of middle values
-    float sum = 0.0f;
-    size_t count = 0;
-
-    for (size_t i = reject_count; i < sorted.size() - reject_count; i++) {
-        sum += sorted[i];
-        count++;
-    }
-
-    if (count == 0) {
-        // Fallback: use all readings
-        for (float reading : sorted) {
-            sum += reading;
-        }
-        count = sorted.size();
-    }
-
-    return sum / count;
+    // Trimmed mean of ph_readings_ (10 % dropped from each end)
+    return dosing_math::robustAverage(ph_readings_);
 }
 
 bool PlantOSController::isPhStable() {
-    // Need at least 3 readings to determine stability
-    if (ph_readings_.size() < 3) {
-        return false;
-    }
-
-    // Check if last 3 readings are within 0.1 pH
+    // Need at least 3 readings; the last 3 must be within 0.1 pH
     constexpr float STABILITY_THRESHOLD = 0.1f;
-
-    size_t last_idx = ph_readings_.size() - 1;
-    float reading_1 = ph_readings_[last_idx];
-    float reading_2 = ph_readings_[last_idx - 1];
-    float reading_3 = ph_readings_[last_idx - 2];
-
-    float max_val = std::max({reading_1, reading_2, reading_3});
-    float min_val = std::min({reading_1, reading_2, reading_3});
-
-    return (max_val - min_val) <= STABILITY_THRESHOLD;
+    return dosing_math::lastThreeWithin(ph_readings_, STABILITY_THRESHOLD);
 }
 } // namespace plantos_controller

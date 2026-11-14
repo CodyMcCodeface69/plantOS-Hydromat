@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "schedule_math.h"
 #include "esphome/components/plantos_hal/hal.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
@@ -406,17 +407,9 @@ void PlantOSController::loop() {
             uint16_t current_minutes = now.hour * 60 + now.minute;
 
             // Determine if light should be ON
-            // Handle wraparound case (e.g., ON at 16:00, OFF at 08:00 means light is on overnight)
-            bool should_be_on = false;
-            if (schedule.light_on_time < schedule.light_off_time) {
-                // Normal case: ON and OFF within same day (e.g., ON at 08:00, OFF at 16:00)
-                should_be_on = (current_minutes >= schedule.light_on_time &&
-                               current_minutes < schedule.light_off_time);
-            } else {
-                // Wraparound case: light is on overnight (e.g., ON at 16:00, OFF at 08:00)
-                should_be_on = (current_minutes >= schedule.light_on_time ||
-                               current_minutes < schedule.light_off_time);
-            }
+            // Handles the wraparound case (e.g., ON at 16:00, OFF at 08:00 means light is on overnight)
+            bool should_be_on = schedule_math::lightShouldBeOn(current_minutes, schedule.light_on_time,
+                                                               schedule.light_off_time);
 
             // Track previous state to avoid redundant commands
             static bool previous_light_state = false;
@@ -675,43 +668,20 @@ void PlantOSController::handleIdle() {
         int64_t current_timestamp = hal_->getCurrentTimestamp();
         uint32_t ph_interval_seconds = ph_interval_ms / 1000;  // Convert ms to seconds
 
-        // Check if we should trigger a pH check
-        bool should_trigger = false;
+        // Check if we should trigger a pH check:
+        // ≥24 h interval → every N days, 1 minute after midnight (e.g. 48h → every 2 days)
+        // <24 h interval → slots from midnight (e.g. 2h → 0:00, 2:00, 4:00, ..., 22:00)
+        const schedule_math::PhCheckSlot ph_slot = schedule_math::phCheckDue(
+            current_timestamp, last_ph_check_timestamp_, hal_->getSecondsSinceMidnight(), ph_interval_seconds);
+        bool should_trigger = ph_slot.due;
 
-        if (ph_interval_seconds >= 86400) {
-            // MULTI-DAY INTERVAL (≥24 hours)
-            // Example: 48h interval → check every 2 days at midnight
-            // Calculate days since epoch and check if interval has passed
-            int64_t days_since_epoch = current_timestamp / 86400;
-            int64_t last_check_days = last_ph_check_timestamp_ / 86400;
-            int64_t interval_days = ph_interval_seconds / 86400;
-
-            if (days_since_epoch - last_check_days >= interval_days) {
-                // Enough days have passed - trigger if we're past midnight
-                uint32_t seconds_since_midnight = hal_->getSecondsSinceMidnight();
-                if (seconds_since_midnight >= 60) {  // Wait 1 minute after midnight for clock stability
-                    should_trigger = true;
-                    ESP_LOGI(TAG, "Multi-day pH check: %lld days since last check (interval: %lld days)",
-                             days_since_epoch - last_check_days, interval_days);
-                }
-            }
-        } else {
-            // DAILY INTERVAL (<24 hours)
-            // Example: 2h interval → slots at 0:00, 2:00, 4:00, ..., 22:00
-            uint32_t seconds_since_midnight = hal_->getSecondsSinceMidnight();
-            uint32_t current_slot = seconds_since_midnight / ph_interval_seconds;
-
-            // Calculate timestamp of current slot boundary
-            int64_t day_start = current_timestamp - seconds_since_midnight;
-            int64_t current_slot_timestamp = day_start + (current_slot * ph_interval_seconds);
-
-            // Trigger if we've crossed into a new slot since last check
-            if (current_slot_timestamp > last_ph_check_timestamp_) {
-                should_trigger = true;
-                uint32_t slot_hour = (current_slot * ph_interval_seconds) / 3600;
-                uint32_t slot_minute = ((current_slot * ph_interval_seconds) % 3600) / 60;
+        if (should_trigger) {
+            if (ph_slot.multi_day) {
+                ESP_LOGI(TAG, "Multi-day pH check: %lld days since last check (interval: %lld days)",
+                         ph_slot.days_since_last, ph_slot.interval_days);
+            } else {
                 ESP_LOGI(TAG, "Daily pH check slot: %02u:%02u (slot %u of %u)",
-                         slot_hour, slot_minute, current_slot, 86400 / ph_interval_seconds);
+                         ph_slot.slot_hour, ph_slot.slot_minute, ph_slot.slot, ph_slot.slots_per_day);
             }
         }
 

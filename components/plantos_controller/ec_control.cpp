@@ -1,6 +1,7 @@
 // EC control: FEEDING (calendar and mother mix doses), EC_* state handlers, EC calibration, EC K-factor learning.
 // Part of PlantOSController (declared in controller.h). FSMINFO.md is authoritative for FSM behavior.
 #include "controller.h"
+#include "dosing_math.h"
 #include "esphome/components/plantos_hal/hal.h"
 #include "esphome/components/actuator_safety_gate/ActuatorSafetyGate.h"
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
@@ -53,15 +54,16 @@ void PlantOSController::handleFeeding() {
     }
 
     // Full calendar dose (EC target multiplier is applied to the EC target, not the dose itself)
-    float full_a = schedule.nutrient_A_ml_per_liter * tank_volume_liters;
-    float full_b = schedule.nutrient_B_ml_per_liter * tank_volume_liters;
-    float full_c = schedule.nutrient_C_ml_per_liter * tank_volume_liters;
+    const dosing_math::NutrientDoses full = dosing_math::calendarDoses(
+        schedule.nutrient_A_ml_per_liter, schedule.nutrient_B_ml_per_liter,
+        schedule.nutrient_C_ml_per_liter, tank_volume_liters);
 
     if (schedule.ec_target > 0.0f) {
         // EC-dependent mode: divide total dose into installments of 1/5 and iterate
-        ec_dose_A_ml_ = full_a / 5.0f;
-        ec_dose_B_ml_ = full_b / 5.0f;
-        ec_dose_C_ml_ = full_c / 5.0f;
+        const dosing_math::NutrientDoses installment = dosing_math::installmentDoses(full);
+        ec_dose_A_ml_ = installment.a_ml;
+        ec_dose_B_ml_ = installment.b_ml;
+        ec_dose_C_ml_ = installment.c_ml;
 
         ec_pre_feeding_ = hal_->hasECValue() ? hal_->readEC() : 0.0f;
         ec_total_ml_per_L_ = 0.0f;
@@ -77,9 +79,9 @@ void PlantOSController::handleFeeding() {
         transitionTo(ControllerState::EC_FEEDING);
     } else {
         // Fixed-dose fallback: single pass A → B → C when EC target not configured
-        ec_dose_A_ml_ = full_a;
-        ec_dose_B_ml_ = full_b;
-        ec_dose_C_ml_ = full_c;
+        ec_dose_A_ml_ = full.a_ml;
+        ec_dose_B_ml_ = full.b_ml;
+        ec_dose_C_ml_ = full.c_ml;
         feeding_manual_mode_ = false;
 
         ESP_LOGI(TAG, "[FEEDING] Fixed-dose mode (no EC target): A=%.2f mL  B=%.2f mL  C=%.2f mL",
@@ -128,7 +130,7 @@ void PlantOSController::handleEcProcessing() {
         return;
     }
 
-    // Guard: 4-hour minimum interval between actual feedings
+    // Guard: EC_MIN_INTERVAL_S (12 h) minimum interval between actual feedings
     if (hal_->hasTime() && last_ec_feeding_timestamp_ > 0) {
         int64_t current_ts = hal_->getCurrentTimestamp();
         int64_t elapsed_s = current_ts - last_ec_feeding_timestamp_;
@@ -144,15 +146,17 @@ void PlantOSController::handleEcProcessing() {
 
     float ec_current = hal_->readEC();  // µS/cm
     float ec_target = schedule.ec_target * ec_target_multiplier_;  // calendar target scaled by slider
-    float ec_min = ec_target - schedule.ec_tolerance;
-    float ec_max = ec_target + schedule.ec_tolerance * 1.5f;
+    const dosing_math::EcWindow window = dosing_math::ecWindow(ec_target, schedule.ec_tolerance);
+    float ec_min = window.min;
+    float ec_max = window.max;
+    const dosing_math::EcLevel ec_level = dosing_math::classifyEc(ec_current, ec_target, schedule.ec_tolerance);
 
     ESP_LOGI(TAG, "[EC_PROCESSING] EC=%.1f uS/cm, target=%.0f (cal %.0f x %.2f) ±%.0f (min=%.0f, max=%.0f)",
              ec_current, ec_target, schedule.ec_target, ec_target_multiplier_,
              schedule.ec_tolerance, ec_min, ec_max);
 
     // Over-concentration: wait for natural evaporation to lower EC
-    if (ec_current > ec_max) {
+    if (ec_level == dosing_math::EcLevel::ABOVE_RANGE) {
         ESP_LOGW(TAG, "[EC_PROCESSING] EC over-concentration (%.1f > %.1f uS/cm) - no feeding, add plain water",
                  ec_current, ec_max);
         status_logger_.updateAlertStatus("EC_HIGH", "EC over-concentration - add plain water or wait");
@@ -162,7 +166,7 @@ void PlantOSController::handleEcProcessing() {
     }
 
     // EC in acceptable window - no feeding needed
-    if (ec_current >= ec_min) {
+    if (ec_level == dosing_math::EcLevel::IN_RANGE) {
         ESP_LOGD(TAG, "[EC_PROCESSING] EC in range [%.2f-%.2f] - no feeding needed", ec_min, ec_max);
         status_logger_.resolveAlert("EC_HIGH");
         auto_ec_check_pending_ = false;
@@ -209,9 +213,6 @@ void PlantOSController::handleEcCalculating() {
         return;
     }
 
-    // Total dose in mL/L using adaptive K-factor
-    float total_ml_per_L = delta_ec / ec_K_feed_;
-
     // Tank volume for absolute dose calculation
     float tank_volume_L = hal_->getTankVolumeDelta();
     if (tank_volume_L <= 0.0f) {
@@ -219,13 +220,14 @@ void PlantOSController::handleEcCalculating() {
         tank_volume_L = 10.0f;
     }
 
-    // A:B:C ratio from CalendarManager
-    float r_A = schedule.nutrient_A_ml_per_liter;
-    float r_B = schedule.nutrient_B_ml_per_liter;
-    float r_C = schedule.nutrient_C_ml_per_liter;
-    float r_total = r_A + r_B + r_C;
+    // Total dose in mL/L using adaptive K-factor (delta_ec / ec_K_feed_), split by the
+    // A:B:C ratio from CalendarManager and capped at the calendar max dose per pump
+    const dosing_math::EcDoses doses = dosing_math::calcEcDoses(
+        delta_ec, ec_K_feed_, tank_volume_L, schedule.nutrient_A_ml_per_liter,
+        schedule.nutrient_B_ml_per_liter, schedule.nutrient_C_ml_per_liter);
+    float total_ml_per_L = doses.total_ml_per_L;
 
-    if (r_total <= 0.0f) {
+    if (!doses.valid) {
         ESP_LOGW(TAG, "[EC_CALCULATING] No nutrient ratios for day %d - skipping",
                  calendar_manager_->get_current_day());
         if (psm_) psm_->clearEvent();
@@ -233,14 +235,12 @@ void PlantOSController::handleEcCalculating() {
         return;
     }
 
-    // Calculate absolute doses per pump, capped at calendar max dose
-    ec_dose_A_ml_ = std::min((r_A / r_total) * total_ml_per_L * tank_volume_L, r_A * tank_volume_L);
-    ec_dose_B_ml_ = std::min((r_B / r_total) * total_ml_per_L * tank_volume_L, r_B * tank_volume_L);
-    ec_dose_C_ml_ = std::min((r_C / r_total) * total_ml_per_L * tank_volume_L, r_C * tank_volume_L);
+    ec_dose_A_ml_ = doses.a_ml;
+    ec_dose_B_ml_ = doses.b_ml;
+    ec_dose_C_ml_ = doses.c_ml;
 
     // Accumulate mL/L for K-factor update after mixing
-    float dosed_total_ml = ec_dose_A_ml_ + ec_dose_B_ml_ + ec_dose_C_ml_;
-    ec_total_ml_per_L_ += (tank_volume_L > 0.0f) ? (dosed_total_ml / tank_volume_L) : 0.0f;
+    ec_total_ml_per_L_ += doses.dosed_ml_per_L;
 
     ESP_LOGI(TAG, "[EC_CALCULATING] EC delta=%.1f uS/cm, K=%.6f, total=%.3f mL/L",
              delta_ec, ec_K_feed_, total_ml_per_L);
@@ -505,17 +505,11 @@ void PlantOSController::updateEcKFactor(float ec_before, float ec_after, float m
         return;
     }
 
-    // K_observed = dose / EC_rise (mL/L per µS/cm)
-    float K_observed = ml_per_L_total / ec_delta;
-
-    // Clamp to valid range before EMA
-    K_observed = std::max(EC_K_MIN_CLAMP, std::min(EC_K_MAX_CLAMP, K_observed));
-
-    // EMA smoothing: new_K = alpha * K_observed + (1 - alpha) * K_current
-    float K_new = EC_K_EMA_ALPHA * K_observed + (1.0f - EC_K_EMA_ALPHA) * ec_K_feed_;
-
-    // Final clamp
-    K_new = std::max(EC_K_MIN_CLAMP, std::min(EC_K_MAX_CLAMP, K_new));
+    // K_observed = dose / EC_rise (mL/L per µS/cm), clamped; K_new = EMA, clamped again
+    const dosing_math::KUpdate k = dosing_math::ecKUpdate(ml_per_L_total, ec_delta, ec_K_feed_,
+                                                          EC_K_EMA_ALPHA, EC_K_MIN_CLAMP, EC_K_MAX_CLAMP);
+    float K_observed = k.observed;
+    float K_new = k.updated;
 
     ESP_LOGI(TAG, "EC K-factor update: K_obs=%.6f → K_ema=%.6f (was %.6f) | "
              "EC %.1f→%.1f uS/cm (delta=%.1f), %.4f mL/L",
@@ -696,20 +690,13 @@ void PlantOSController::handleEcCalibrating() {
 bool PlantOSController::checkEcCalibrationStability() {
     if (ec_calib_readings_.size() < EC_CALIB_MIN_READINGS) return false;
 
-    float sum = 0.0f;
-    for (float r : ec_calib_readings_) sum += r;
-    float mean = sum / ec_calib_readings_.size();
+    const dosing_math::ReadingStats stats = dosing_math::readingStats(ec_calib_readings_);
+    float mean = stats.mean;
 
     if (mean <= 0.0f) return false;
 
-    float sum_sq = 0.0f;
-    for (float r : ec_calib_readings_) {
-        float diff = r - mean;
-        sum_sq += diff * diff;
-    }
-    float variance = sum_sq / ec_calib_readings_.size();
-    float std_dev = std::sqrt(variance);
-    float cv = std_dev / mean;
+    float std_dev = stats.std_dev;
+    float cv = stats.cv;
 
     ESP_LOGI(TAG, "EC stability check: mean=%.1f, std=%.1f, CV=%.3f (threshold: %.2f)",
              mean, std_dev, cv, EC_CALIB_VARIANCE_THRESHOLD);

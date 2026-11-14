@@ -757,6 +757,8 @@ private:
     // water_ops.cpp helpers
     void stopWaterActuator(const char *id);
     void clearPsmEvent();
+    /// Clear the PSM event only if it is `event_id`; true when it was cleared
+    bool clearPsmEventIf(const char *event_id);
     void alertWaterSensorsMissing(const char *operation);
     void queuePostFillChecks();
     void finishDrain();
@@ -864,7 +866,7 @@ private:
      * @param forceExecute If true, bypass debouncing (for health monitoring)
      * @return true if approved by SafetyGate
      */
-    bool requestPump(const std::string& pumpId, bool state, uint32_t durationSec = 0, bool forceExecute = false);
+    bool requestPump(const char *pumpId, bool state, uint32_t durationSec = 0, bool forceExecute = false);
 
     /**
      * Request valve operation via SafetyGate
@@ -873,7 +875,7 @@ private:
      * @param durationSec Maximum duration in seconds (0=no limit)
      * @return true if approved by SafetyGate
      */
-    bool requestValve(const std::string& valveId, bool state, uint32_t durationSec = 0);
+    bool requestValve(const char *valveId, bool state, uint32_t durationSec = 0);
 
     /**
      * Emergency stop - turn off all pumps
@@ -1025,7 +1027,7 @@ private:
     static constexpr const char* NVS_KEY_EC_CALIB_TS = "EcCalibTs";
 
     // Helper methods for enhanced error handling
-    bool requestPumpAdaptive(const std::string& pumpId, bool state, uint32_t requested_duration_sec, bool forceExecute);
+    bool requestPumpAdaptive(const char *pumpId, bool state, uint32_t requested_duration_sec, bool forceExecute);
 
     /**
      * Check Shelly device health via HTTP ping

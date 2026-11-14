@@ -1132,46 +1132,46 @@ uint32_t PlantOSController::getStateElapsed() const {
 // Actuator Control Helpers
 // ============================================================================
 
-bool PlantOSController::requestPump(const std::string& pumpId, bool state, uint32_t durationSec, bool forceExecute) {
+bool PlantOSController::requestPump(const char *pumpId, bool state, uint32_t durationSec, bool forceExecute) {
     if (!safety_gate_) {
-        ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", pumpId.c_str());
+        ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", pumpId);
         return false;
     }
 
-    ESP_LOGD(TAG, "Actuator %s %s for %us%s", pumpId.c_str(), state ? "ON" : "OFF", (unsigned)durationSec,
+    ESP_LOGD(TAG, "Actuator %s %s for %us%s", pumpId, state ? "ON" : "OFF", (unsigned)durationSec,
              forceExecute ? " (forced)" : "");
 
-    return safety_gate_->executeCommand(pumpId.c_str(), state, durationSec, forceExecute);
+    return safety_gate_->executeCommand(pumpId, state, durationSec, forceExecute);
 }
 
-bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool state, uint32_t requestedDurationSec, bool forceExecute) {
+bool PlantOSController::requestPumpAdaptive(const char *pumpId, bool state, uint32_t requestedDurationSec, bool forceExecute) {
     // Try original request first
-    bool approved = safety_gate_->executeCommand(pumpId.c_str(), state, requestedDurationSec, forceExecute);
+    bool approved = safety_gate_->executeCommand(pumpId, state, requestedDurationSec, forceExecute);
     if (approved) {
-        ESP_LOGD(TAG, "Actuator %s %s for %us", pumpId.c_str(), state ? "ON" : "OFF", (unsigned)requestedDurationSec);
+        ESP_LOGD(TAG, "Actuator %s %s for %us", pumpId, state ? "ON" : "OFF", (unsigned)requestedDurationSec);
         return true;
     }
 
     // Request was rejected - analyze rejection type
-    bool current_state = safety_gate_->getState(pumpId.c_str());
+    bool current_state = safety_gate_->getState(pumpId);
 
     // Check for debouncing rejection (actuator already in requested state)
     if (current_state == state) {
         // Debouncing rejection - NO RETRY (already executing)
         ESP_LOGD(TAG, "%s debouncing rejection - already %s (no retry)",
-                 pumpId.c_str(), state ? "ON" : "OFF");
+                 pumpId, state ? "ON" : "OFF");
         return false;
     }
 
     // Duration violation - TRY TO ADAPT
     if (state && requestedDurationSec > 0) {
-        uint32_t adapted_duration = safety_gate_->getAdaptedDuration(pumpId.c_str(), requestedDurationSec);
+        uint32_t adapted_duration = safety_gate_->getAdaptedDuration(pumpId, requestedDurationSec);
 
         // Check if adaptation is possible
         if (adapted_duration > 0 && adapted_duration < requestedDurationSec) {
             // Duration can be adapted - log comprehensive error with adaptation
             status_logger_.updateAlertWithContext(
-                "DURATION_ADAPTED_" + pumpId,
+                std::string("DURATION_ADAPTED_") + pumpId,
                 "Duration adapted to " + std::to_string(adapted_duration) + "s",
                 "SafetyGate rejected: Duration " + std::to_string(requestedDurationSec) +
                     "s exceeds max " + std::to_string(adapted_duration) + "s",
@@ -1182,25 +1182,25 @@ bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool stat
             );
 
             // Retry with adapted duration
-            approved = safety_gate_->executeCommand(pumpId.c_str(), state, adapted_duration, forceExecute);
+            approved = safety_gate_->executeCommand(pumpId, state, adapted_duration, forceExecute);
 
             if (approved) {
                 // Adaptation successful - mark alert as resolved
-                ESP_LOGW(TAG, "%s duration cut by SafetyGate: %us -> %us", pumpId.c_str(),
+                ESP_LOGW(TAG, "%s duration cut by SafetyGate: %us -> %us", pumpId,
                          (unsigned)requestedDurationSec, (unsigned)adapted_duration);
-                status_logger_.resolveAlert("DURATION_ADAPTED_" + pumpId);
+                status_logger_.resolveAlert(std::string("DURATION_ADAPTED_") + pumpId);
                 return true;
             } else {
                 // Even adapted duration was rejected (should not happen)
-                ESP_LOGE(TAG, "%s rejected even after adaptation to %us", pumpId.c_str(), (unsigned)adapted_duration);
+                ESP_LOGE(TAG, "%s rejected even after adaptation to %us", pumpId, (unsigned)adapted_duration);
             }
         }
     }
 
     // Could not adapt or adaptation failed - comprehensive error
-    std::string rejection_reason = "SafetyGate rejected " + pumpId + " command";
+    std::string rejection_reason = std::string("SafetyGate rejected ") + pumpId + " command";
     if (state && requestedDurationSec > 0) {
-        uint32_t max_duration = safety_gate_->getMaxDurationSeconds(pumpId.c_str());
+        uint32_t max_duration = safety_gate_->getMaxDurationSeconds(pumpId);
         if (max_duration > 0 && requestedDurationSec > max_duration) {
             rejection_reason += " (duration " + std::to_string(requestedDurationSec) +
                               "s exceeds max " + std::to_string(max_duration) + "s)";
@@ -1212,9 +1212,9 @@ bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool stat
     }
 
     status_logger_.updateAlertWithContext(
-        "SAFETY_GATE_REJECT_" + pumpId,
+        std::string("SAFETY_GATE_REJECT_") + pumpId,
         rejection_reason,
-        "SafetyGate rejected command: " + pumpId + " " + (state ? "ON" : "OFF") +
+        std::string("SafetyGate rejected command: ") + pumpId + " " + (state ? "ON" : "OFF") +
             " for " + std::to_string(requestedDurationSec) + "s",
         "Check SafetyGate configuration, verify pump is not stuck, check duration limits in plantOS.yaml",
         "State " + getStateAsString(),
@@ -1225,15 +1225,15 @@ bool PlantOSController::requestPumpAdaptive(const std::string& pumpId, bool stat
     return false;
 }
 
-bool PlantOSController::requestValve(const std::string& valveId, bool state, uint32_t durationSec) {
+bool PlantOSController::requestValve(const char *valveId, bool state, uint32_t durationSec) {
     if (!safety_gate_) {
-        ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", valveId.c_str());
+        ESP_LOGW(TAG, "SafetyGate not available - cannot control %s", valveId);
         return false;
     }
 
-    ESP_LOGD(TAG, "Valve %s %s for %us", valveId.c_str(), state ? "OPEN" : "CLOSED", (unsigned)durationSec);
+    ESP_LOGD(TAG, "Valve %s %s for %us", valveId, state ? "OPEN" : "CLOSED", (unsigned)durationSec);
 
-    return safety_gate_->executeCommand(valveId.c_str(), state, durationSec);
+    return safety_gate_->executeCommand(valveId, state, durationSec);
 }
 
 void PlantOSController::turnOffAllPumps() {

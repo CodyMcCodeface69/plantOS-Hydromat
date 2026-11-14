@@ -6,6 +6,7 @@
 #include "esphome/components/persistent_state_manager/persistent_state_manager.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace plantos_controller {
 
@@ -23,6 +24,14 @@ void PlantOSController::clearPsmEvent() {
     if (psm_) {
         psm_->clearEvent();
     }
+}
+
+bool PlantOSController::clearPsmEventIf(const char *event_id) {
+    if (psm_ && psm_->hasEvent() && strcmp(psm_->getLastEvent().eventID, event_id) == 0) {
+        psm_->clearEvent();
+        return true;
+    }
+    return false;
 }
 
 void PlantOSController::alertWaterSensorsMissing(const char *operation) {

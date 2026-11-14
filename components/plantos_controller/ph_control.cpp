@@ -142,21 +142,14 @@ void PlantOSController::handlePhMeasuring() {
                 }
 
                 // Add alert to status logger
-                std::string alert_msg = "pH outside safe range: " + std::to_string(ph) + " (safe: 5.0-7.5)";
+                char alert_msg[48];
+                snprintf(alert_msg, sizeof(alert_msg), "pH outside safe range: %.2f (safe: 5.0-7.5)", ph);
                 status_logger_.updateAlertStatus("PH_CRITICAL", alert_msg);
             } else {
                 // pH back in safe range - clear critical event if it exists
-                if (psm_ && ph_readings_.size() == 1) {
-                    // Check if there's a PH_CRITICAL event and clear it
-                    if (psm_->hasEvent()) {
-                        esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-                        std::string eventID(event.eventID);
-                        if (eventID == "PH_CRITICAL") {
-                            psm_->clearEvent();
-                            status_logger_.clearAlert("PH_CRITICAL");
-                            ESP_LOGI(TAG, "pH back in safe range - PH_CRITICAL cleared");
-                        }
-                    }
+                if (ph_readings_.size() == 1 && clearPsmEventIf("PH_CRITICAL")) {
+                    status_logger_.clearAlert("PH_CRITICAL");
+                    ESP_LOGI(TAG, "pH back in safe range - PH_CRITICAL cleared");
                 }
             }
         } else {
@@ -183,14 +176,7 @@ void PlantOSController::handlePhMeasuring() {
 
                     sensor_retry_state_.reset();
 
-                    // Clear any PH_CRITICAL event since measurement failed
-                    if (psm_ && psm_->hasEvent()) {
-                        esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-                        std::string eventID(event.eventID);
-                        if (eventID == "PH_CRITICAL") {
-                            psm_->clearEvent();
-                        }
-                    }
+                    clearPsmEventIf("PH_CRITICAL");  // measurement failed
 
                     transitionTo(ControllerState::IDLE);
                     return;
@@ -236,14 +222,7 @@ void PlantOSController::handlePhMeasuring() {
             0
         );
 
-        // Clear any PH_CRITICAL event since measurement failed
-        if (psm_ && psm_->hasEvent()) {
-            esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-            std::string eventID(event.eventID);
-            if (eventID == "PH_CRITICAL") {
-                psm_->clearEvent();
-            }
-        }
+        clearPsmEventIf("PH_CRITICAL");  // measurement failed
 
         transitionTo(ControllerState::ERROR);
         return;

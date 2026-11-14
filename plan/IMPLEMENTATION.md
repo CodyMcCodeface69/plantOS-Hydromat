@@ -29,9 +29,9 @@ the decisions already taken. Tick steps off here and write the numbers and detai
 
 ## Phase 0: safety net (before touching logic)
 
-- [ ] 0.1 Baseline: build `1655e15`, record flash/RAM and the largest symbols
+- [x] 0.1 Baseline: build `1655e15`, record flash/RAM and the largest symbols
       (`riscv32-esp-elf-nm --size-sort` on the ELF, top 40) in `LOG.md`. This is the map for phase 2.
-- [ ] 0.2 Create `plan/TEST_ON_DEVICE.md` (table: area, change, commit, check, failure sign).
+- [x] 0.2 Create `plan/TEST_ON_DEVICE.md` (table: area, change, commit, check, failure sign).
 - [ ] 0.3 Host test harness: `tests/` with a plain `g++`/`make` (or `task test`) setup, no new toolchain
       and no downloads beyond a single-header test lib if needed. Stub the few ESPHome headers the pure logic needs.
       First targets, written against **today's** behavior so later refactors are checked:
@@ -41,15 +41,15 @@ the decisions already taken. Tick steps off here and write the numbers and detai
 
 ## Phase 1: cleanup (`01-cleanup.md`)
 
-- [ ] 1.1 Delete ballast: `esptool_venv/`, `plantos-log-*.txt`, `boot_logs.txt`, `www/webserver-v2.*`,
+- [x] 1.1 Delete ballast: `esptool_venv/`, `plantos-log-*.txt`, `boot_logs.txt`, `www/webserver-v2.*`,
       `ezo_switch_helper.h` (unreferenced). `wifi_scan.h` **is** included (`plantOS.yaml:22`): check what it does,
       then either keep it in a sensible place or remove include and file together.
-- [ ] 1.2 Delete dead components: `central_status_logger/`, `ezo_ph/`, `time_dummy/`, `psm_checker/`,
+- [x] 1.2 Delete dead components: `central_status_logger/`, `ezo_ph/`, `time_dummy/`, `psm_checker/`,
       `dummy_actuator_trigger/`, `sensor_dummy/` (+ its `external_components` entry). Remove the empty `led_behaviors/`.
       Fix the `i2c_scanner` → controller `CentralStatusLogger` include coupling if it is cheap; otherwise note it for 2.4.
-- [ ] 1.3 `.gitignore`: `.venv/`, `.platformio/`, `.esphome/`, log captures. `secrets.example.yaml`: make it validate.
-- [ ] 1.4 `Taskfile.yml`: point `decode` and `IDFMON` at the project-local `.platformio`. Add `task test`.
-- [ ] 1.5 `BLE-Shelly`: tag `archive/BLE-Shelly`, push the tag, delete the remote branch. Copy `huge_app.csv` into the
+- [x] 1.3 `.gitignore`: `.venv/`, `.platformio/`, `.esphome/`, log captures. `secrets.example.yaml`: make it validate.
+- [x] 1.4 `Taskfile.yml`: point `decode` and `IDFMON` at the project-local `.platformio`. Add `task test`.
+- [x] 1.5 `BLE-Shelly`: tag `archive/BLE-Shelly`, push the tag, delete the remote branch. Copy `huge_app.csv` into the
       notes for 2.7. Record in `LOG.md`.
 - [ ] 1.6 Docs: delete what is finished or contradicted by code (`MIGRATION_GUIDE.md`, `TODOFSMUNIFICATION.md`,
       `FSMUNIFICATIONPLAN.md`, `docs/fixes/*` condensed into one short note, stale performance analyses,
@@ -58,7 +58,7 @@ the decisions already taken. Tick steps off here and write the numbers and detai
       (else `docs/archive/`). `CHANGELOG.md`: keep, don't rewrite history. Fix the `PINOUT.md` header date.
 - [ ] 1.7 `TODO.md`: reorganize, don't delete. Drop done items and the `/home/cody` reference, keep the owner's open items
       in their wording, add a short "from the overhaul" section at the end.
-- [ ] 1.8 Stale pin labels (DS18B20 "GPIO23" → GPIO3, old pump GPIOs in switch comments).
+- [x] 1.8 Stale pin labels (DS18B20 "GPIO23" → GPIO3, old pump GPIOs in switch comments).
 - [ ] 1.9 Update `AGENTS.md` and `MAP.md` to the new tree. Check `git branch -a`.
 
 ## Phase 2: lean and fast (`02-lean-fast.md`)

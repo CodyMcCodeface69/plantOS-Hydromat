@@ -1,70 +1,34 @@
 #include "CalendarManager.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
+#include "esphome/core/helpers.h"
 
 namespace esphome {
 namespace calendar_manager {
 
-static const char* TAG = "calendar_manager";
+static const char *const TAG = "calendar_manager";
 
-CalendarManager::CalendarManager() {}
+// NVS keys (hashed with fnv1_hash). Index = calendar index.
+static const char *const NVS_KEY_SLOT[CAL_COUNT] = {"calendar_slot_0", "calendar_slot_1", "calendar_slot_2"};
+// Pre-preset firmware (one calendar): uint8_t day and int32_t date. Read once for the
+// migration into the Haupt slot, never written.
+static const char *const LEGACY_NVS_KEY_DAY = "current_day";
+static const char *const LEGACY_NVS_KEY_SYNC_DATE = "last_sync_date";
 
 void CalendarManager::setup() {
-    ESP_LOGI(TAG, "Initializing CalendarManager...");
-
-    // Initialize NVS preference
-    this->pref_ = global_preferences->make_preference<uint8_t>(
-        fnv1_hash(NVS_KEY)
-    );
-
-    // Load current day from NVS
-    this->current_day_ = this->load_current_day();
-    ESP_LOGI(TAG, "Current day loaded from NVS: %d", this->current_day_);
-
-    // Initialize NVS preference for the last real-world synced date
-    this->date_pref_ = global_preferences->make_preference<int32_t>(
-        fnv1_hash(NVS_KEY_SYNC_DATE)
-    );
-    this->last_synced_date_ = this->load_sync_date();
-    ESP_LOGI(TAG, "Last synced date ordinal loaded from NVS: %d", this->last_synced_date_);
-
-    // Parse the schedule JSON
-    if (!this->parse_schedule_json()) {
-        ESP_LOGE(TAG, "Failed to parse schedule JSON - using default values");
-    } else {
-        ESP_LOGI(TAG, "Successfully parsed %d days from schedule JSON",
-                 this->schedule_map_.size());
+    if (this->calendars_ == nullptr) {
+        ESP_LOGE(TAG, "No calendar tables - using defaults");
     }
-
-    // Log safe mode status
+    for (uint8_t i = 0; i < CAL_COUNT; i++) {
+        this->load_slot_(i);
+    }
     if (this->safe_mode_) {
         ESP_LOGW(TAG, "SAFE MODE ENABLED - Automated routines disabled");
     }
-
-    // Log verbose mode status
-    if (this->verbose_) {
-        ESP_LOGI(TAG, "Verbose mode enabled - detailed logging active");
-    }
-
-    // Log current schedule
-    DailySchedule today = this->get_today_schedule();
-    ESP_LOGI(TAG, "Day %d schedule: pH %.2f-%.2f, EC %.0f±%.0f uS/cm, A: %.2f mL/L, B: %.2f mL/L, C: %.2f mL/L, Light: %02d:%02d ON / %02d:%02d OFF",
-             today.day_number,
-             today.target_ph_min,
-             today.target_ph_max,
-             today.ec_target,
-             today.ec_tolerance,
-             today.nutrient_A_ml_per_liter,
-             today.nutrient_B_ml_per_liter,
-             today.nutrient_C_ml_per_liter,
-             today.light_on_time / 60, today.light_on_time % 60,
-             today.light_off_time / 60, today.light_off_time % 60);
-
-    ESP_LOGI(TAG, "CalendarManager initialized successfully");
+    this->log_today_("Active");
 }
 
 void CalendarManager::loop() {
-    // Periodic status logging
     uint32_t now = millis();
     if (now - this->last_status_log_time_ >= this->status_log_interval_) {
         this->last_status_log_time_ = now;
@@ -72,169 +36,125 @@ void CalendarManager::loop() {
     }
 }
 
-bool CalendarManager::parse_schedule_json() {
-    if (this->schedule_json_.empty()) {
-        ESP_LOGE(TAG, "Schedule JSON is empty");
-        return false;
-    }
+// ---------------------------------------------------------------------------
+// NVS
+// ---------------------------------------------------------------------------
 
-    if (this->verbose_) {
-        ESP_LOGD(TAG, "Parsing schedule JSON (%d bytes)...", this->schedule_json_.length());
-    }
+void CalendarManager::load_slot_(uint8_t index) {
+    Slot &slot = this->slots_[index];
+    slot.pref = global_preferences->make_preference<SlotRecord>(fnv1_hash(NVS_KEY_SLOT[index]));
 
-    // Use ArduinoJson to parse the JSON string
-    // Calculate required capacity (estimate: 120 days * ~100 bytes/entry)
-    // Each object now has 10 fields: day, ph_min, ph_max, dose_A/B/C_ml_per_L, light_on_time, light_off_time, ec_target, ec_tolerance
-    const size_t capacity = JSON_ARRAY_SIZE(120) + 120 * JSON_OBJECT_SIZE(10) + 3072;
-    DynamicJsonDocument doc(capacity);
-
-    DeserializationError error = deserializeJson(doc, this->schedule_json_);
-    if (error) {
-        ESP_LOGE(TAG, "JSON parsing failed: %s", error.c_str());
-        return false;
-    }
-
-    // Verify it's an array
-    if (!doc.is<JsonArray>()) {
-        ESP_LOGE(TAG, "JSON root is not an array");
-        return false;
-    }
-
-    JsonArray array = doc.as<JsonArray>();
-    int parsed_count = 0;
-
-    // Parse each day's schedule
-    for (JsonObject obj : array) {
-        // Extract fields with defaults
-        uint8_t day = obj["day"] | 0;
-        float ph_min = obj["ph_min"] | 5.8f;
-        float ph_max = obj["ph_max"] | 6.2f;
-        float dose_a = obj["dose_A_ml_per_L"] | 0.0f;
-        float dose_b = obj["dose_B_ml_per_L"] | 0.0f;
-        float dose_c = obj["dose_C_ml_per_L"] | 0.0f;
-        uint16_t light_on = obj["light_on_time"] | 960;   // Default: 16:00
-        uint16_t light_off = obj["light_off_time"] | 480;  // Default: 08:00
-        float ec_target = (obj["ec_target"] | 0.0f) * 1000.0f;      // mS/cm (JSON) → µS/cm (internal)
-        float ec_tolerance = (obj["ec_tolerance"] | 0.20f) * 1000.0f;  // mS/cm (JSON) → µS/cm (internal)
-
-        // Validate day number
-        if (day < 1 || day > 120) {
-            ESP_LOGW(TAG, "Invalid day number %d - skipping", day);
-            continue;
+    SlotRecord rec{};
+    if (slot.pref.load(&rec)) {
+        if (rec.day >= 1 && rec.day <= MAX_DAY) {
+            slot.day = rec.day;
+            slot.last_sync_date = rec.last_sync_date;
+            return;
         }
-
-        // Store in map
-        this->schedule_map_[day] = DailySchedule(day, ph_min, ph_max, dose_a, dose_b, dose_c, light_on, light_off, ec_target, ec_tolerance);
-        parsed_count++;
-
-        if (this->verbose_) {
-            ESP_LOGD(TAG, "Day %d: pH %.2f-%.2f, EC %.0f±%.0f uS/cm, A:%.2f mL/L B:%.2f mL/L C:%.2f mL/L, Light: %02d:%02d ON / %02d:%02d OFF",
-                     day, ph_min, ph_max, ec_target, ec_tolerance, dose_a, dose_b, dose_c,
-                     light_on / 60, light_on % 60, light_off / 60, light_off % 60);
-        }
+        ESP_LOGW(TAG, "Invalid day %u in NVS slot %u - resetting to day 1", rec.day, index);
+        slot.day = 1;
+        slot.last_sync_date = rec.last_sync_date;
+    } else if (index == CAL_HAUPT && this->migrate_legacy_(slot)) {
+        // values taken from the old single-calendar keys
+    } else {
+        slot.day = 1;
+        slot.last_sync_date = 0;
     }
-
-    ESP_LOGI(TAG, "Parsed %d days from JSON", parsed_count);
-    return parsed_count > 0;
+    this->save_slot_(index);
 }
 
-DailySchedule CalendarManager::get_schedule(uint8_t day) const {
-    auto it = this->schedule_map_.find(day);
-    if (it != this->schedule_map_.end()) {
-        return it->second;
-    }
-
-    // Return default schedule if day not found
-    ESP_LOGW(TAG, "Schedule for day %d not found - using defaults", day);
-    return DailySchedule(day, 5.8, 6.2, 0.0f, 0.0f, 0.0f);
-}
-
-bool CalendarManager::set_current_day(uint8_t day) {
-    if (day < 1 || day > 120) {
-        ESP_LOGE(TAG, "Invalid day number %d (must be 1-120)", day);
+bool CalendarManager::migrate_legacy_(Slot &slot) {
+    ESPPreferenceObject day_pref = global_preferences->make_preference<uint8_t>(fnv1_hash(LEGACY_NVS_KEY_DAY));
+    ESPPreferenceObject date_pref = global_preferences->make_preference<int32_t>(fnv1_hash(LEGACY_NVS_KEY_SYNC_DATE));
+    uint8_t day = 0;
+    int32_t date = 0;
+    bool have_day = day_pref.load(&day);
+    bool have_date = date_pref.load(&date);
+    if (!have_day && !have_date) {
         return false;
     }
-
-    this->current_day_ = day;
-
-    if (this->verbose_) {
-        ESP_LOGI(TAG, "Current day set to %d", day);
-    }
-
-    return this->save_current_day();
-}
-
-bool CalendarManager::advance_day() {
-    uint8_t next_day = this->current_day_ + 1;
-    if (next_day > 120) {
-        next_day = 1;  // Wrap around to day 1
-        ESP_LOGI(TAG, "Cycle complete - wrapping to day 1");
-    }
-
-    if (this->verbose_) {
-        ESP_LOGI(TAG, "Advancing from day %d to day %d", this->current_day_, next_day);
-    }
-
-    return this->set_current_day(next_day);
-}
-
-bool CalendarManager::sync_to_date(int32_t today_ordinal) {
-    // Ignore if time is not yet valid
-    if (today_ordinal <= 0) {
-        return false;
-    }
-
-    // First ever sync: seed the stored date without advancing the grow day
-    if (this->last_synced_date_ == 0) {
-        this->last_synced_date_ = today_ordinal;
-        this->save_sync_date();
-        ESP_LOGI(TAG, "Calendar date sync seeded at ordinal %d (day %d, no advance)",
-                 today_ordinal, this->current_day_);
-        return false;
-    }
-
-    int32_t delta = today_ordinal - this->last_synced_date_;
-
-    // Same calendar day - nothing to do
-    if (delta == 0) {
-        return false;
-    }
-
-    // Clock moved backwards - resync stored date but never rewind the grow day
-    if (delta < 0) {
-        ESP_LOGW(TAG, "Calendar date moved backwards (%d days) - resyncing without rewind",
-                 delta);
-        this->last_synced_date_ = today_ordinal;
-        this->save_sync_date();
-        return false;
-    }
-
-    // delta > 0: advance the grow day by the number of elapsed calendar days,
-    // wrapping within 1-120. Manual offset is preserved (delta added on top).
-    uint8_t old_day = this->current_day_;
-    uint8_t new_day = static_cast<uint8_t>(((this->current_day_ - 1 + delta) % 120) + 1);
-
-    this->set_current_day(new_day);
-    this->last_synced_date_ = today_ordinal;
-    this->save_sync_date();
-
-    ESP_LOGI(TAG, "Calendar advanced %d day(s) from real time: day %d -> %d",
-             delta, old_day, new_day);
+    // The old firmware only ever stored 1..120 and reset anything else to 1.
+    slot.day = (have_day && day >= 1 && day <= 120) ? day : 1;
+    slot.last_sync_date = have_date ? date : 0;
+    ESP_LOGI(TAG, "Migrated old calendar state into Haupt: day %u, sync date %d", slot.day,
+             static_cast<int>(slot.last_sync_date));
     return true;
 }
 
-bool CalendarManager::go_back_day() {
-    uint8_t prev_day = this->current_day_ - 1;
-    if (prev_day < 1) {
-        prev_day = 120;  // Wrap around to day 120
-        ESP_LOGI(TAG, "Going back from day 1 - wrapping to day 120");
+bool CalendarManager::save_slot_(uint8_t index) {
+    const Slot &slot = this->slots_[index];
+    SlotRecord rec{slot.day, SLOT_VERSION, slot.last_sync_date};
+    if (!this->slots_[index].pref.save(&rec)) {
+        ESP_LOGE(TAG, "Failed to save calendar slot %u to NVS", index);
+        return false;
     }
+    return true;
+}
 
+// ---------------------------------------------------------------------------
+// Active calendar
+// ---------------------------------------------------------------------------
+
+bool CalendarManager::set_active_calendar(uint8_t index) {
+    if (index >= CAL_COUNT) {
+        ESP_LOGE(TAG, "Invalid calendar index %u", index);
+        return false;
+    }
+    if (index != this->active_) {
+        this->active_ = index;
+        this->log_today_("Switched to");
+    }
+    return true;
+}
+
+const char *CalendarManager::get_calendar_name() const {
+    const CalendarDef *cal = this->active_def_();
+    return cal ? cal->name : "";
+}
+
+const char *CalendarManager::get_phase_name() const {
+    const CalendarDef *cal = this->active_def_();
+    if (cal == nullptr) return "";
+    const Phase *p = find_phase(cal->phases, cal->phase_count, this->get_current_day());
+    return p ? p->name : "";
+}
+
+uint16_t CalendarManager::get_defined_days() const {
+    const CalendarDef *cal = this->active_def_();
+    return cal ? cal->days : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Day counter
+// ---------------------------------------------------------------------------
+
+bool CalendarManager::set_current_day(uint16_t day) {
+    if (day < 1 || day > MAX_DAY) {
+        ESP_LOGE(TAG, "Invalid day number %u (must be 1-%u)", day, MAX_DAY);
+        return false;
+    }
+    this->slots_[this->active_].day = day;
     if (this->verbose_) {
-        ESP_LOGI(TAG, "Going back from day %d to day %d", this->current_day_, prev_day);
+        ESP_LOGI(TAG, "Current day set to %u", day);
     }
+    return this->save_slot_(this->active_);
+}
 
-    return this->set_current_day(prev_day);
+bool CalendarManager::advance_day() {
+    uint16_t day = this->get_current_day();
+    if (day >= MAX_DAY) {
+        return false;
+    }
+    return this->set_current_day(day + 1);
+}
+
+bool CalendarManager::go_back_day() {
+    uint16_t day = this->get_current_day();
+    if (day <= 1) {
+        ESP_LOGI(TAG, "Already at day 1");
+        return false;
+    }
+    return this->set_current_day(day - 1);
 }
 
 bool CalendarManager::reset_to_day_1() {
@@ -242,82 +162,72 @@ bool CalendarManager::reset_to_day_1() {
     return this->set_current_day(1);
 }
 
-bool CalendarManager::save_current_day() {
-    if (this->pref_.save(&this->current_day_)) {
-        if (this->verbose_) {
-            ESP_LOGD(TAG, "Current day %d saved to NVS", this->current_day_);
-        }
-        return true;
-    } else {
-        ESP_LOGE(TAG, "Failed to save current day to NVS");
+bool CalendarManager::restart_grow() {
+    Slot &slot = this->slots_[this->active_];
+    slot.day = 1;
+    slot.last_sync_date = this->last_seen_ordinal_;  // 0 before the first sync: next sync seeds
+    ESP_LOGI(TAG, "%s: grow restarted at day 1", this->get_calendar_name());
+    return this->save_slot_(this->active_);
+}
+
+bool CalendarManager::sync_to_date(int32_t today_ordinal) {
+    if (today_ordinal <= 0) {
         return false;
     }
-}
+    this->last_seen_ordinal_ = today_ordinal;
+    Slot &slot = this->slots_[this->active_];
 
-uint8_t CalendarManager::load_current_day() {
-    uint8_t loaded_day = 1;  // Default to day 1
-
-    if (this->pref_.load(&loaded_day)) {
-        // Validate loaded day
-        if (loaded_day < 1 || loaded_day > 120) {
-            ESP_LOGW(TAG, "Invalid day %d loaded from NVS - resetting to day 1", loaded_day);
-            loaded_day = 1;
-            this->save_current_day();
-        } else {
-            ESP_LOGD(TAG, "Loaded day %d from NVS", loaded_day);
-        }
-    } else {
-        ESP_LOGI(TAG, "No saved day in NVS - starting at day 1");
-        this->save_current_day();
-    }
-
-    return loaded_day;
-}
-
-bool CalendarManager::save_sync_date() {
-    if (this->date_pref_.save(&this->last_synced_date_)) {
-        if (this->verbose_) {
-            ESP_LOGD(TAG, "Last synced date ordinal %d saved to NVS", this->last_synced_date_);
-        }
-        return true;
-    } else {
-        ESP_LOGE(TAG, "Failed to save last synced date to NVS");
+    // First sync of this calendar: seed the stored date without advancing
+    if (slot.last_sync_date == 0) {
+        slot.last_sync_date = today_ordinal;
+        this->save_slot_(this->active_);
+        ESP_LOGI(TAG, "Calendar date sync seeded at ordinal %d (day %u, no advance)",
+                 static_cast<int>(today_ordinal), slot.day);
         return false;
     }
-}
 
-int32_t CalendarManager::load_sync_date() {
-    int32_t loaded = 0;  // Default: not yet seeded
-
-    if (this->date_pref_.load(&loaded)) {
-        ESP_LOGD(TAG, "Loaded last synced date ordinal %d from NVS", loaded);
-    } else {
-        ESP_LOGI(TAG, "No saved sync date in NVS - will seed on first sync");
-        loaded = 0;
+    int32_t delta = today_ordinal - slot.last_sync_date;
+    if (delta == 0) {
+        return false;
+    }
+    if (delta < 0) {
+        ESP_LOGW(TAG, "Calendar date moved backwards (%d days) - resyncing without rewind",
+                 static_cast<int>(delta));
+        slot.last_sync_date = today_ordinal;
+        this->save_slot_(this->active_);
+        return false;
     }
 
-    return loaded;
+    // delta > 0: count on (no wrap; the last phase holds), manual offsets are kept.
+    uint16_t old_day = slot.day;
+    int64_t next = static_cast<int64_t>(slot.day) + delta;
+    slot.day = next > MAX_DAY ? MAX_DAY : static_cast<uint16_t>(next);
+    slot.last_sync_date = today_ordinal;
+    this->save_slot_(this->active_);
+    ESP_LOGI(TAG, "Calendar advanced %d day(s) from real time: day %u -> %u",
+             static_cast<int>(delta), old_day, slot.day);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Logging
+// ---------------------------------------------------------------------------
+
+void CalendarManager::log_today_(const char *prefix) const {
+    DailySchedule t = this->get_today_schedule();
+    ESP_LOGI(TAG, "%s %s day %u (%s): pH %.2f-%.2f, EC %.0f±%.0f uS/cm, A/B/C %.2f/%.2f/%.2f mL/L, "
+             "light %02u:%02u-%02u:%02u",
+             prefix, this->get_calendar_name(), t.day_number, this->get_phase_name(), t.target_ph_min,
+             t.target_ph_max, t.ec_target, t.ec_tolerance, t.nutrient_A_ml_per_liter, t.nutrient_B_ml_per_liter,
+             t.nutrient_C_ml_per_liter, t.light_on_time / 60, t.light_on_time % 60, t.light_off_time / 60,
+             t.light_off_time % 60);
 }
 
 void CalendarManager::log_status() {
     if (!this->verbose_) {
-        return;  // Only log if verbose mode is enabled
+        return;
     }
-
-    DailySchedule today = this->get_today_schedule();
-
-    ESP_LOGI(TAG, "=== CalendarManager Status ===");
-    ESP_LOGI(TAG, "Current Day: %d/120", this->current_day_);
-    ESP_LOGI(TAG, "Safe Mode: %s", this->safe_mode_ ? "ENABLED" : "DISABLED");
-    ESP_LOGI(TAG, "Target pH Range: %.2f - %.2f", today.target_ph_min, today.target_ph_max);
-    ESP_LOGI(TAG, "Target EC: %.0f uS/cm (±%.0f)", today.ec_target, today.ec_tolerance);
-    ESP_LOGI(TAG, "Nutrient A: %.2f mL/L", today.nutrient_A_ml_per_liter);
-    ESP_LOGI(TAG, "Nutrient B: %.2f mL/L", today.nutrient_B_ml_per_liter);
-    ESP_LOGI(TAG, "Nutrient C: %.2f mL/L", today.nutrient_C_ml_per_liter);
-    ESP_LOGI(TAG, "Light Schedule: %02d:%02d ON / %02d:%02d OFF",
-             today.light_on_time / 60, today.light_on_time % 60,
-             today.light_off_time / 60, today.light_off_time % 60);
-    ESP_LOGI(TAG, "==============================");
+    this->log_today_(this->safe_mode_ ? "[safe mode]" : "Status:");
 }
 
 } // namespace calendar_manager

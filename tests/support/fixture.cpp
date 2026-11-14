@@ -1,23 +1,8 @@
 #include "fixture.h"
-#include <cstdlib>
-#include <fstream>
-#include <iostream>
-#include <sstream>
+// Generated from plantOS.yaml by tools/gen_calendar_tables.py (see Makefile); defines
+// esphome::calendar_manager::generated::CALENDARS. Included in this one file only.
+#include "calendar_tables.h"
 
-#ifndef PLANTOS_SCHEDULE_JSON_PATH
-#error "PLANTOS_SCHEDULE_JSON_PATH must be defined by the Makefile"
-#endif
-
-const std::string &production_schedule_json() {
-  static std::string json = [] {
-    std::ifstream f(PLANTOS_SCHEDULE_JSON_PATH);
-    if (!f) {
-      std::cerr << "cannot read " << PLANTOS_SCHEDULE_JSON_PATH << " (run via make)\n";
-      exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-  }();
-  return json;
+const esphome::calendar_manager::CalendarDef *production_calendars() {
+  return esphome::calendar_manager::generated::CALENDARS;
 }

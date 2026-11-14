@@ -20,16 +20,15 @@ PLANTOS_TEST_LOG=1 make run ARGS=acid_dose   # show the firmware's ESP_LOGx outp
 make clean
 ```
 
-Needs `g++` (C++17), `make`, `python3`. Nothing is downloaded. ArduinoJson (header-only) is
-copied once from `.esphome/build/*/.piolibdeps/*/ArduinoJson` into `tests/build/vendor/`; if
-that tree does not exist yet, run `task build` once or pass `ARDUINOJSON_DIR=<.../ArduinoJson/src>`.
-All build output goes to `tests/build/` (git-ignored).
+Needs `g++` (C++17), `make`, `python3` with PyYAML (Ubuntu: `python3-yaml`). Nothing is
+downloaded. All build output goes to `tests/build/` (git-ignored).
 
 ## What is covered
 
 | File | Real code under test |
 |---|---|
-| `test_calendar.cpp` | `CalendarManager`: JSON parse of the schedule from `plantOS.yaml`, lookup, defaults, mS→µS conversion, day counter + NVS, `sync_to_date` |
+| `test_calendar.cpp` | `CalendarManager` + `phase_table.h` with the tables generated from `plantOS.yaml`: phase lookup and hold-last-phase, defaults, mS→µS conversion, per-calendar day counter + NVS, migration of the old NVS keys, switching calendars, `restart_grow`, `sync_to_date` |
+| `tools/test_phase_tables.py` | `calendar_manager/phase_tables.py`: build-time validation (bad configs are rejected), C++ rendering, golden expansion (`make pytest`) |
 | `test_ph_math.cpp` | `calculateAcidDoseML`, `updatePhKFactor`, `calculatePhMixingDuration`, `calculateRobustPhAverage`, `handlePhProcessing`, `handlePhCalculating` |
 | `test_ec_math.cpp` | `updateEcKFactor`, `handleEcProcessing`, `handleEcCalculating`, `handleEcFeeding`, `handleEcMeasuring`, `handleFeeding`, `startMotherNutrients` |
 | `test_time_logic.cpp` | `isNightModeHours`, `getLocalDateOrdinal`, auto-feed and auto-reservoir triggers, the pH slot schedule and date sync in `handleIdle` |
@@ -46,10 +45,11 @@ behavior anyway. When such a bug gets fixed on purpose, change the expectation i
 
 ### Golden schedule
 
-`golden/haupt_schedule.csv` holds all 120 days as the firmware sees them after parsing
-(EC in µS/cm). `calendar.golden_haupt_schedule_all_120_days` compares the real parser output
-with it, and `tools/check_golden.py` compares it with the JSON in `plantOS.yaml` independently
-of the C++ parser. A calendar rewrite must reproduce these rows.
+`golden/haupt_schedule.csv` holds all 120 days of the Haupt calendar as the firmware sees them
+(EC in µS/cm); it was written from the old 120-line `schedule_json`. `calendar.golden_haupt_schedule_all_120_days`
+compares the real lookup over the generated tables with it, and `tools/check_golden.py` expands
+the Haupt phases in `plantOS.yaml` on its own (independent of the C++ and of `phase_tables.py`)
+and compares them too. `tools/derive_phases.py` is the script that grouped the old JSON into phases.
 
 If the schedule is changed on purpose: `make golden`, then review the diff of the CSV.
 
@@ -70,16 +70,18 @@ If the schedule is changed on purpose: `make golden`, then review the diff of th
 - **Private access**: the tests are compiled with `-fno-access-control`, so they call private
   methods (`f.ctrl.calculateAcidDoseML(...)`) and set private members (`f.ctrl.ph_K_ = 0.07f`)
   directly. No `friend` declarations or edits in `components/` are needed.
-- **Schedule**: `tools/extract_schedule.py` pulls `schedule_json` out of `plantOS.yaml` into
-  `build/schedule.json` on every run; tests read it through `production_schedule_json()`.
+- **Calendars**: `tools/gen_calendar_tables.py` cuts the `calendar_manager:` block out of
+  `plantOS.yaml` and runs the firmware's own `components/calendar_manager/phase_tables.py`
+  (validation + C++ rendering, the same code `__init__.py` uses) into `build/generated/calendar_tables.h`.
+  `support/fixture.cpp` includes it; tests get it through `production_calendars()`.
+  Synthetic calendars: `OnePhaseCalendars cals(test_phase()); CalendarFixture c(cals.defs);`.
 - **Framework**: `support/minitest.h` (`TEST`, `CHECK`, `CHECK_EQ`, `CHECK_NEAR`, `REQUIRE`).
 
 Not compiled: `plantos_hal/hal.cpp` (ESP-IDF HTTP, FreeRTOS), the sensor components and
 `sensor_filter.cpp`. Only their headers are used where needed.
 
 Limits to keep in mind: the host is 64-bit x86 and the device a 32-bit RISC-V; `float` math is
-the same IEEE single precision, but ArduinoJson's memory pool sizes differ, so "JSON too big for
-the pool" cannot be tested here. The controller has no function-local `static`
+the same IEEE single precision. The controller has no function-local `static`
 state any more (moved to members on 2026-11-14), so every fixture starts clean.
 
 ## Add a test

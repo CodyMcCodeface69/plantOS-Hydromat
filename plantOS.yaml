@@ -1321,134 +1321,272 @@ calendar_manager:
   # Status log interval: How often to report current day and schedule
   status_log_interval: 10min
 
-  # Schedule JSON: 120-day schedule (currently showing days 1-5 as example)
-  # Full production schedule would contain all 120 days
-  # Doses are specified in mL per liter of tank volume (mL/L)
-  # Actual mL dose = dose_mL_per_L × tank_volume_L
-  # Example: For 10L tank with dose_A_ml_per_L = 1.5 → 15 mL actual dose
-  schedule_json: >-
-    [
-    {"day": 1,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8,  "dose_B_ml_per_L": 0.8,  "dose_C_ml_per_L": 0.8,  "light_on_time": 960, "light_off_time": 480, "ec_target": 0.50, "ec_tolerance": 0.10},
-    {"day": 2,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8,  "dose_B_ml_per_L": 0.8,  "dose_C_ml_per_L": 0.8,  "light_on_time": 960, "light_off_time": 480, "ec_target": 0.50, "ec_tolerance": 0.10},
-    {"day": 3,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8,  "dose_B_ml_per_L": 0.8,  "dose_C_ml_per_L": 0.8,  "light_on_time": 960, "light_off_time": 480, "ec_target": 0.50, "ec_tolerance": 0.10},
-    {"day": 4,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8,  "dose_B_ml_per_L": 0.8,  "dose_C_ml_per_L": 0.8,  "light_on_time": 960, "light_off_time": 480, "ec_target": 0.50, "ec_tolerance": 0.10},
-    {"day": 5,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8,  "dose_B_ml_per_L": 0.8,  "dose_C_ml_per_L": 0.8,  "light_on_time": 960, "light_off_time": 480, "ec_target": 0.50, "ec_tolerance": 0.10},
-    {"day": 6,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8,  "dose_B_ml_per_L": 0.8,  "dose_C_ml_per_L": 0.8,  "light_on_time": 960, "light_off_time": 480, "ec_target": 0.50, "ec_tolerance": 0.10},
-    {"day": 7,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.8,  "dose_B_ml_per_L": 0.8,  "dose_C_ml_per_L": 0.8,  "light_on_time": 960, "light_off_time": 480, "ec_target": 0.50, "ec_tolerance": 0.10},
-    {"day": 8,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.01, "dose_B_ml_per_L": 0.85, "dose_C_ml_per_L": 0.69, "light_on_time": 960, "light_off_time": 480, "ec_target": 0.80, "ec_tolerance": 0.20},
-    {"day": 9,   "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.23, "dose_B_ml_per_L": 0.91, "dose_C_ml_per_L": 0.59, "light_on_time": 960, "light_off_time": 480, "ec_target": 0.80, "ec_tolerance": 0.20},
-    {"day": 10,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 0.80, "ec_tolerance": 0.20},
-    {"day": 11,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 12,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 13,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 14,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 15,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.60, "ec_tolerance": 0.20},
-    {"day": 16,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.60, "ec_tolerance": 0.20},
-    {"day": 17,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.60, "ec_tolerance": 0.20},
-    {"day": 18,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.60, "ec_tolerance": 0.20},
-    {"day": 19,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.60, "ec_tolerance": 0.20},
-    {"day": 20,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.60, "ec_tolerance": 0.20},
-    {"day": 21,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.44, "dose_B_ml_per_L": 0.96, "dose_C_ml_per_L": 0.48, "light_on_time": 960, "light_off_time": 480, "ec_target": 1.60, "ec_tolerance": 0.20},
-    {"day": 22,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.49, "dose_B_ml_per_L": 1.17, "dose_C_ml_per_L": 0.72, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 23,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.55, "dose_B_ml_per_L": 1.39, "dose_C_ml_per_L": 0.96, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 24,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 25,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 26,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 27,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 28,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 29,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 30,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 31,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 32,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 33,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 34,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 35,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 1.6,  "dose_B_ml_per_L": 1.6,  "dose_C_ml_per_L": 1.2,  "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 36,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 1.28, "dose_B_ml_per_L": 1.49, "dose_C_ml_per_L": 1.44, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 37,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.96, "dose_B_ml_per_L": 1.39, "dose_C_ml_per_L": 1.68, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 38,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 39,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 40,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 41,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 42,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.00, "ec_tolerance": 0.20},
-    {"day": 43,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 44,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 45,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 46,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 47,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 48,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 49,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 50,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 51,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 52,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 53,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 54,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 55,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 56,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 57,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 58,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 59,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 60,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 61,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 62,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 63,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 64,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 65,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 66,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 67,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 68,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 69,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 70,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 71,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 72,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 73,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 74,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 75,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 76,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 77,  "ph_min": 6.0, "ph_max": 6.4, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 2.20, "ec_tolerance": 0.20},
-    {"day": 78,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 79,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 80,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 81,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 82,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 83,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 84,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 85,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 86,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 87,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 88,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 89,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 90,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 91,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 92,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 93,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 94,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 95,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 96,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 97,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 98,  "ph_min": 6.0, "ph_max": 6.3, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.80, "ec_tolerance": 0.20},
-    {"day": 99,  "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 100, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 101, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 102, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 103, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 104, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 105, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 106, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 107, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 108, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 109, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 110, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 111, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 112, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 1.20, "ec_tolerance": 0.20},
-    {"day": 113, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 0.60, "ec_tolerance": 0.20},
-    {"day": 114, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 0.60, "ec_tolerance": 0.20},
-    {"day": 115, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 0.60, "ec_tolerance": 0.20},
-    {"day": 116, "ph_min": 5.8, "ph_max": 6.2, "dose_A_ml_per_L": 0.64, "dose_B_ml_per_L": 1.28, "dose_C_ml_per_L": 1.92, "light_on_time": 960, "light_off_time": 240, "ec_target": 0.60, "ec_tolerance": 0.20},
-    {"day": 117, "ph_min": 5.5, "ph_max": 6.5, "dose_A_ml_per_L": 0.0,  "dose_B_ml_per_L": 0.0,  "dose_C_ml_per_L": 0.0,  "light_on_time": 960, "light_off_time": 240, "ec_target": 0.15, "ec_tolerance": 0.15},
-    {"day": 118, "ph_min": 5.5, "ph_max": 6.5, "dose_A_ml_per_L": 0.0,  "dose_B_ml_per_L": 0.0,  "dose_C_ml_per_L": 0.0,  "light_on_time": 960, "light_off_time": 240, "ec_target": 0.15, "ec_tolerance": 0.15},
-    {"day": 119, "ph_min": 5.5, "ph_max": 6.5, "dose_A_ml_per_L": 0.0,  "dose_B_ml_per_L": 0.0,  "dose_C_ml_per_L": 0.0,  "light_on_time": 960, "light_off_time": 240, "ec_target": 0.15, "ec_tolerance": 0.15},
-    {"day": 120, "ph_min": 5.5, "ph_max": 6.5, "dose_A_ml_per_L": 0.0,  "dose_B_ml_per_L": 0.0,  "dose_C_ml_per_L": 0.0,  "light_on_time": 960, "light_off_time": 240, "ec_target": 0.15, "ec_tolerance": 0.15}
-    ]
+  # Grow calendars, one per preset (anzucht, mutter, haupt; all three required).
+  # A calendar is a list of phases. A phase applies from `from_day` until the next
+  # phase starts; after the last phase its values apply forever (hold the last phase).
+  # Checked at build time (components/calendar_manager/phase_tables.py): phases sorted,
+  # first phase at day 1, no duplicate from_day, ph_min < ph_max, values in sane ranges.
+  # Changing a calendar needs a reflash.
+  #   days:            planned length, only for display ("day 69/120"); omit = open-ended
+  #   name:            optional phase label (max 32 bytes)
+  #   ph_min/ph_max:   pH target window
+  #   dose_X_ml_per_L: nutrient dose per liter of tank volume (A = Grow, B = Micro, C = Bloom)
+  #   light_on_time / light_off_time: "HH:MM" (quote it) or minutes since midnight;
+  #                    on == off means "no light window" (night mode uses its hour window)
+  #   ec_target / ec_tolerance: mS/cm; ec_target 0 = EC feeding off
+  calendars:
+    # PLACEHOLDER (plan/TO_MEASURE.md): propagation, based on Haupt's first days.
+    # The default Anzucht setup has no nutrient pumps, so phase 1 doses nothing;
+    # phase 2 only matters if the nutrient pumps are enabled for Anzucht.
+    anzucht:
+      days: 21
+      phases:
+        - from_day: 1
+          name: "Keimung"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 0.0
+          dose_B_ml_per_L: 0.0
+          dose_C_ml_per_L: 0.0
+          light_on_time: "16:00"
+          light_off_time: "08:00"
+          ec_target: 0.0
+          ec_tolerance: 0.1
+        - from_day: 8
+          name: "Bewurzelung"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 0.4
+          dose_B_ml_per_L: 0.4
+          dose_C_ml_per_L: 0.4
+          light_on_time: "16:00"
+          light_off_time: "08:00"
+          ec_target: 0.5
+          ec_tolerance: 0.1
+
+    # PLACEHOLDER (plan/TO_MEASURE.md): mother plant, one endless vegetative phase,
+    # based on Haupt days 24-28 with a moderate EC and 18 h light. Mutter has no grow
+    # light; the light window still defines "night" for night mode.
+    mutter:
+      phases:
+        - from_day: 1
+          name: "Mutterpflanze"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.6
+          dose_B_ml_per_L: 1.6
+          dose_C_ml_per_L: 1.2
+          light_on_time: "16:00"
+          light_off_time: "10:00"
+          ec_target: 1.6
+          ec_tolerance: 0.2
+
+    # Production schedule (the former 120-line schedule_json, grouped by
+    # tests/tools/derive_phases.py; tests/golden/haupt_schedule.csv is the reference).
+    # Names from docs/Hydroponik_Zielwerttabelle.csv where the days fit one row's weeks.
+    # After day 120 the flush phase holds.
+    haupt:
+      days: 120
+      phases:
+        - from_day: 1    # days 1-7
+          name: "Keimling / Sämling"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 0.8
+          dose_B_ml_per_L: 0.8
+          dose_C_ml_per_L: 0.8
+          light_on_time: "16:00"
+          light_off_time: "08:00"
+          ec_target: 0.5
+          ec_tolerance: 0.1
+        - from_day: 8    # day 8
+          name: "Keimling / Sämling"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.01
+          dose_B_ml_per_L: 0.85
+          dose_C_ml_per_L: 0.69
+          light_on_time: "16:00"
+          light_off_time: "08:00"
+          ec_target: 0.8
+          ec_tolerance: 0.2
+        - from_day: 9    # day 9
+          name: "Keimling / Sämling"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.23
+          dose_B_ml_per_L: 0.91
+          dose_C_ml_per_L: 0.59
+          light_on_time: "16:00"
+          light_off_time: "08:00"
+          ec_target: 0.8
+          ec_tolerance: 0.2
+        - from_day: 10    # day 10
+          name: "Keimling / Sämling"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.44
+          dose_B_ml_per_L: 0.96
+          dose_C_ml_per_L: 0.48
+          light_on_time: "16:00"
+          light_off_time: "08:00"
+          ec_target: 0.8
+          ec_tolerance: 0.2
+        - from_day: 11    # days 11-14
+          name: "Keimling / Sämling"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.44
+          dose_B_ml_per_L: 0.96
+          dose_C_ml_per_L: 0.48
+          light_on_time: "16:00"
+          light_off_time: "08:00"
+          ec_target: 1.2
+          ec_tolerance: 0.2
+        - from_day: 15    # days 15-21
+          name: "Jungpflanze (Bewurzelung)"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.44
+          dose_B_ml_per_L: 0.96
+          dose_C_ml_per_L: 0.48
+          light_on_time: "16:00"
+          light_off_time: "08:00"
+          ec_target: 1.6
+          ec_tolerance: 0.2
+        - from_day: 22    # day 22
+          name: "Jungpflanze (Bewurzelung)"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.49
+          dose_B_ml_per_L: 1.17
+          dose_C_ml_per_L: 0.72
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 1.8
+          ec_tolerance: 0.2
+        - from_day: 23    # day 23
+          name: "Jungpflanze (Bewurzelung)"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.55
+          dose_B_ml_per_L: 1.39
+          dose_C_ml_per_L: 0.96
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 1.8
+          ec_tolerance: 0.2
+        - from_day: 24    # days 24-28
+          name: "Jungpflanze (Bewurzelung)"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 1.6
+          dose_B_ml_per_L: 1.6
+          dose_C_ml_per_L: 1.2
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 1.8
+          ec_tolerance: 0.2
+        - from_day: 29    # days 29-35
+          name: "Frühe Vegetation"
+          ph_min: 6.0
+          ph_max: 6.4
+          dose_A_ml_per_L: 1.6
+          dose_B_ml_per_L: 1.6
+          dose_C_ml_per_L: 1.2
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 2.0
+          ec_tolerance: 0.2
+        - from_day: 36    # day 36
+          name: "Frühe Vegetation"
+          ph_min: 6.0
+          ph_max: 6.4
+          dose_A_ml_per_L: 1.28
+          dose_B_ml_per_L: 1.49
+          dose_C_ml_per_L: 1.44
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 2.0
+          ec_tolerance: 0.2
+        - from_day: 37    # day 37
+          name: "Frühe Vegetation"
+          ph_min: 6.0
+          ph_max: 6.4
+          dose_A_ml_per_L: 0.96
+          dose_B_ml_per_L: 1.39
+          dose_C_ml_per_L: 1.68
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 2.0
+          ec_tolerance: 0.2
+        - from_day: 38    # days 38-42
+          name: "Frühe Vegetation"
+          ph_min: 6.0
+          ph_max: 6.4
+          dose_A_ml_per_L: 0.64
+          dose_B_ml_per_L: 1.28
+          dose_C_ml_per_L: 1.92
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 2.0
+          ec_tolerance: 0.2
+        - from_day: 43    # days 43-77
+          name: "Vegetation bis frühe Blüte"
+          ph_min: 6.0
+          ph_max: 6.4
+          dose_A_ml_per_L: 0.64
+          dose_B_ml_per_L: 1.28
+          dose_C_ml_per_L: 1.92
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 2.2
+          ec_tolerance: 0.2
+        - from_day: 78    # days 78-98
+          name: "Mittlere Blüte"
+          ph_min: 6.0
+          ph_max: 6.3
+          dose_A_ml_per_L: 0.64
+          dose_B_ml_per_L: 1.28
+          dose_C_ml_per_L: 1.92
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 1.8
+          ec_tolerance: 0.2
+        - from_day: 99    # days 99-112
+          name: "Späte Blüte"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 0.64
+          dose_B_ml_per_L: 1.28
+          dose_C_ml_per_L: 1.92
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 1.2
+          ec_tolerance: 0.2
+        - from_day: 113    # days 113-116
+          name: "Reifung / Pre-Flush"
+          ph_min: 5.8
+          ph_max: 6.2
+          dose_A_ml_per_L: 0.64
+          dose_B_ml_per_L: 1.28
+          dose_C_ml_per_L: 1.92
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 0.6
+          ec_tolerance: 0.2
+        - from_day: 117    # days 117-120
+          name: "Flush"
+          ph_min: 5.5
+          ph_max: 6.5
+          dose_A_ml_per_L: 0.0
+          dose_B_ml_per_L: 0.0
+          dose_C_ml_per_L: 0.0
+          light_on_time: "16:00"
+          light_off_time: "04:00"
+          ec_target: 0.15
+          ec_tolerance: 0.15
+
 ################################################################################
 switch:
   # === Air Pump Control ===

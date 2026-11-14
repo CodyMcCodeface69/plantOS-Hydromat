@@ -138,7 +138,10 @@ TEST(ec_processing, skipped_without_sensor_calendar_or_target) {
 
   // ec_target == 0 disables EC feeding for the day (synthetic one-day calendar).
   ControllerFixture g(false);
-  CalendarFixture c(R"([{"day": 1, "dose_A_ml_per_L": 1.0}])");
+  auto p = test_phase();
+  p.dose_a_ml_per_l = 1.0f;
+  OnePhaseCalendars cals(p);
+  CalendarFixture c(cals.defs);
   g.ctrl.setCalendarManager(&c.cal);
   CHECK_EQ(ec_processing(g, 0.0f), ControllerState::IDLE);
 }
@@ -363,7 +366,12 @@ TEST(manual_feeding, reservoir_change_uses_total_volume) {
 
 TEST(manual_feeding, fixed_full_dose_when_day_has_no_ec_target) {
   ControllerFixture f(false);
-  CalendarFixture c(R"([{"day": 1, "dose_A_ml_per_L": 1.0, "dose_B_ml_per_L": 0.5, "dose_C_ml_per_L": 0.25}])");
+  auto p = test_phase();
+  p.dose_a_ml_per_l = 1.0f;
+  p.dose_b_ml_per_l = 0.5f;
+  p.dose_c_ml_per_l = 0.25f;
+  OnePhaseCalendars cals(p);
+  CalendarFixture c(cals.defs);
   f.ctrl.setCalendarManager(&c.cal);
   f.force_state(ControllerState::FEEDING);
   f.ctrl.handleFeeding();

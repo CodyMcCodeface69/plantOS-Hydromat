@@ -7,7 +7,7 @@ Provides platform-agnostic hardware interface for the unified Controller.
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import light, sensor, binary_sensor, output, switch, time
+from esphome.components import light, sensor, binary_sensor, output, switch, time, number
 from esphome.const import (
     CONF_ID,
 )
@@ -71,6 +71,14 @@ CONF_PUMP_MICRO_PWM = 'pump_micro_pwm_intensity'
 CONF_PUMP_BLOOM_FLOW_RATE = 'pump_bloom_flow_rate_ml_s'
 CONF_PUMP_BLOOM_PWM = 'pump_bloom_pwm_intensity'
 
+# Optional number entities (0-100 %) that set the pump PWM at runtime and after a reboot
+PWM_NUMBER_KEYS = {
+    'pump_ph_pwm_number': 'AcidPump',
+    'pump_grow_pwm_number': 'NutrientPumpA',
+    'pump_micro_pwm_number': 'NutrientPumpB',
+    'pump_bloom_pwm_number': 'NutrientPumpC',
+}
+
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(ESPHomeHAL),
@@ -119,6 +127,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_PUMP_MICRO_PWM, default=1.0): cv.percentage,
     cv.Optional(CONF_PUMP_BLOOM_FLOW_RATE, default=1.0): cv.float_range(min=0.001, max=100.0),
     cv.Optional(CONF_PUMP_BLOOM_PWM, default=1.0): cv.percentage,
+    **{cv.Optional(key): cv.use_id(number.Number) for key in PWM_NUMBER_KEYS},
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -237,5 +246,11 @@ async def to_code(config):
     cg.add(var.setPumpConfig("NutrientPumpA", config[CONF_PUMP_GROW_FLOW_RATE], config[CONF_PUMP_GROW_PWM]))
     cg.add(var.setPumpConfig("NutrientPumpB", config[CONF_PUMP_MICRO_FLOW_RATE], config[CONF_PUMP_MICRO_PWM]))
     cg.add(var.setPumpConfig("NutrientPumpC", config[CONF_PUMP_BLOOM_FLOW_RATE], config[CONF_PUMP_BLOOM_PWM]))
+
+    # PWM sliders: their (restored) state overrides the *_pwm_intensity values above
+    for key, pump in PWM_NUMBER_KEYS.items():
+        if key in config:
+            num = await cg.get_variable(config[key])
+            cg.add(var.bindPumpPwmNumber(pump, num))
 
     # NOTE: pump_air_output removed - future Zigbee implementation

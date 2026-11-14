@@ -5,6 +5,7 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/output/float_output.h"
 #include "esphome/components/switch/switch.h"
+#include "esphome/components/number/number.h"
 #include "esphome/components/ezo_ph_uart/ezo_ph_uart.h"
 #include "esp_http_client.h"
 #include "esphome/core/time.h"
@@ -321,6 +322,11 @@ void ESPHomeHAL::setPumpPwm(const std::string& pumpId, float pwmIntensity) {
         pump_configs_[pumpId] = PumpConfig(pumpId, 1.0f, pwmIntensity);
     }
     ESP_LOGI(TAG, "setPumpPwm(%s) -> %.0f%%", pumpId.c_str(), pwmIntensity * 100.0f);
+}
+
+void ESPHomeHAL::bindPumpPwmNumber(const char* pumpId, esphome::number::Number* number) {
+    if (!number) return;
+    number->add_on_state_callback([this, pumpId](float percent) { setPumpPwm(pumpId, percent / 100.0f); });
 }
 
 void ESPHomeHAL::setTankVolumeDelta(float volumeLiters) {

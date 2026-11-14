@@ -257,6 +257,17 @@ public:
     void setCyclingPeriods(const char* actuatorID, uint32_t onPeriodSec, uint32_t offPeriodSec);
 
     /**
+     * Cycling periods applied in setup() (from YAML `air_pump_cycling:`), together with
+     * enableCycling(id, false). setup() runs after the template switches restored their
+     * state, so this matches the old on_boot lambda: cycling starts OFF after every boot.
+     */
+    void setBootCyclingPeriods(const char* actuatorID, uint32_t onPeriodSec, uint32_t offPeriodSec) {
+        boot_cycling_id_ = actuatorID;
+        boot_cycling_on_s_ = onPeriodSec;
+        boot_cycling_off_s_ = offPeriodSec;
+    }
+
+    /**
      * Get the current tracked state of an actuator
      *
      * @param actuatorID Unique identifier for the actuator
@@ -507,6 +518,9 @@ private:
 
     // Safety gate enabled/disabled flag (enabled by default)
     bool enabled_{true};
+    const char* boot_cycling_id_{nullptr};
+    uint32_t boot_cycling_on_s_{0};
+    uint32_t boot_cycling_off_s_{0};
 
     // ========================================================================
     // STATE TRACKING

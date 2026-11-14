@@ -27,6 +27,9 @@ namespace esphome {
 namespace calendar_manager {
 class CalendarManager;
 }
+namespace number {
+class Number;
+}
 namespace time {
 class RealTimeClock;
 }
@@ -141,7 +144,10 @@ public:
         alert_service_ = service;
     }
 
-    void set_ph_k_factor(float k) { ph_K_ = k; }
+    void set_ph_k_factor(float k) {
+        ph_K_ = k;
+        ESP_LOGI(TAG, "pH K-factor %.3f (dose = pH_delta x tank_L x K)", k);
+    }
     float get_ph_k_factor() const { return ph_K_; }
     void set_ph_k_update_callback(std::function<void(float)> cb) {
         ph_k_update_callback_ = std::move(cb);
@@ -157,6 +163,7 @@ public:
         night_mode_enabled_ = enabled;
         night_mode_start_hour_ = start_hour;
         night_mode_end_hour_ = end_hour;
+        ESP_LOGI(TAG, "Night mode %s (%u:00-%u:00)", enabled ? "ON" : "OFF", (unsigned)start_hour, (unsigned)end_hour);
     }
 
     /**
@@ -255,6 +262,54 @@ public:
      * Calls HAL to reset and persist the factor
      */
     void resetEcCalibration();
+
+    // ========================================================================
+    // Operator API: what the web UI entities in plantOS.yaml call (operator_api.cpp).
+    // Every YAML lambda is a single call into one of these or the start*/set* methods.
+    // ========================================================================
+
+    /// Publish every EMA K-factor update to this number (the "pH K-Factor" slider)
+    void set_ph_k_number(esphome::number::Number* number);
+
+    /// Manual actuator switch: one command through the safety gate (no duration limit request)
+    bool commandActuator(const char* actuator_id, bool on);
+
+    /// Timed actuator test through the safety gate: ON now, OFF after run_ms (from loop()).
+    /// gate_max_s is the duration sent with the ON command (checked against the gate's max).
+    /// actuator_id must point to a string with static storage (a literal or ID constant).
+    void startActuatorTest(const char* actuator_id, uint32_t run_ms, uint32_t gate_max_s);
+    /// 10 s pump run at the configured PWM, to measure the flow rate (mL / 10 = mL/s)
+    void startPumpTest(const char* pump_id);
+    /// Run a pump for the time pumpflow() computes for `ml`, to check the calibration
+    void startPumpDoseTest(const char* pump_id, float ml);
+    /// 3 s water valve test
+    void startValveTest();
+
+    /// "Air Pump Cycling" switch: periods from the ON/OFF period numbers (seconds)
+    void setAirPumpCycling(bool enabled, float on_period_s, float off_period_s);
+
+    /// Send the current water temperature (or a fixed value) to the EZO pH circuit
+    void sendPhTempCompensationFromSensor();
+    void sendPhTempCompensation(float temp_c);
+
+    /// Restart SNTP (SNTPComponent::update() is a no-op on ESP-IDF; setup() restarts the daemon)
+    void forceTimeSync();
+
+    /// Set the calibration solution value, then start EC calibration
+    void startEcCalibration(float target_us_cm);
+
+    /// Calendar day +1 / -1 (manual correction)
+    bool changeGrowDay(int delta);
+
+    /// WiFi connected: IP and web server state into the status report
+    void onWifiConnected(const std::string& ip);
+
+    /// Text sensor values (formatted exactly like the former YAML lambdas)
+    std::string uptimeText() const;
+    std::string tdsText() const;
+    std::string tankVolumeText() const;
+    std::string currentTimeText() const;
+    std::string growDayText() const;
 
     /**
      * Enable or disable automatic periodic pH correction
@@ -627,6 +682,16 @@ private:
     // Adaptive pH K-factor (docs/CONTROL_LOGIC.md)
     float ph_K_{0.25f};                         // Current K-factor (EMA-smoothed)
     std::function<void(float)> ph_k_update_callback_;
+
+    /// Running actuator tests (startActuatorTest); checked in loop()
+    struct ActuatorTest {
+        const char* id{nullptr};
+        uint32_t start_ms{0};
+        uint32_t run_ms{0};
+    };
+    ActuatorTest actuator_tests_[8];
+    void updateActuatorTests();
+    void cancelActuatorTests();
     static constexpr float PH_K_EMA_ALPHA = 0.20f;
     static constexpr float PH_K_MIN_CLAMP = 0.01f;
     static constexpr float PH_K_MAX_CLAMP = 0.50f;

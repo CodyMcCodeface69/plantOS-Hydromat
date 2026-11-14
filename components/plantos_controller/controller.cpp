@@ -122,6 +122,7 @@ void PlantOSController::loop() {
     }
 
     updateStatusReport();
+    updateActuatorTests();
 
     // Call state-specific handler
     switch (current_state_) {
@@ -1238,6 +1239,7 @@ bool PlantOSController::requestValve(const char *valveId, bool state, uint32_t d
 
 void PlantOSController::turnOffAllPumps() {
     ESP_LOGD(TAG, "All pumps and valves OFF");
+    cancelActuatorTests();  // the OFF commands below end any running test
 
     if (!safety_gate_) {
         return;

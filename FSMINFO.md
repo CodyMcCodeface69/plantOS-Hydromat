@@ -729,11 +729,13 @@ Force execute only bypasses debouncing, NOT duration limits or other safety chec
    - Defaults: 120s ON, 60s OFF
    - Only used when cycling mode is enabled
 
-### Boot Configuration (plantOS.yaml:22-28)
+### Boot Configuration (`actuator_safety_gate:` block in plantOS.yaml)
 ```yaml
-id(actuator_safety)->setMaxDuration("AirPump", 0);            // 0 = unlimited (24/7 operation)
-id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // Default: 2 min ON, 1 min OFF
-id(actuator_safety)->enableCycling("AirPump", false);        // Default: Normal mode (24/7)
+max_durations:
+  AirPump: 0s           # 0 = unlimited (24/7 operation)
+air_pump_cycling:       # applied in ActuatorSafetyGate::setup(): periods set, cycling OFF (Normal mode 24/7)
+  on_period: 120s
+  off_period: 60s
 ```
 
 ## State Entry Initialization

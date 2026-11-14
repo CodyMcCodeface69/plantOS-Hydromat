@@ -27,38 +27,6 @@ esphome:
   name: plantos
   includes:
     - includes/wifi_scan.h  # esp_wifi.h for the "WiFi Scan" button lambda
-  on_boot:
-    # Configure actuator safety gate max durations (in seconds) on boot
-    # Each actuator has a safety timeout to prevent accidents
-    priority: -100  # Run after all components are initialized
-    then:
-      - lambda: |-
-          ESP_LOGI("esphome", "Configuring actuator safety gate max durations");
-          id(actuator_safety)->setMaxDuration("WaterValve", 600);       // 10 min - water fill max
-          id(actuator_safety)->setMaxDuration("AcidPump", 30);          // 30 sec - pH dosing (covers PH_MAX_DOSE_ML=10mL at lowered flow rate)
-          id(actuator_safety)->setMaxDuration("NutrientPumpA", 120);    // 120 sec - nutrient A (large doses at peak grow days)
-          id(actuator_safety)->setMaxDuration("NutrientPumpB", 120);    // 120 sec - nutrient B
-          id(actuator_safety)->setMaxDuration("NutrientPumpC", 120);    // 120 sec - nutrient C
-          id(actuator_safety)->setMaxDuration("AirPump", 0);            // 0 = unlimited (24/7 operation)
-          id(actuator_safety)->setMaxDuration("WastewaterPump", 1800);  // 30 min - slow pump
-
-          // Configure air pump cycling (disabled by default for Normal mode 24/7)
-          ESP_LOGI("esphome", "Configuring air pump cycling");
-          id(actuator_safety)->setCyclingPeriods("AirPump", 120, 60);  // Default: 2 min ON, 1 min OFF
-          id(actuator_safety)->enableCycling("AirPump", false);        // Default: Normal mode (24/7)
-
-          // Sync restored §15 PWM slider values into the HAL pump config so the
-          // slider is the single source of truth for pump duty cycle across reboots
-          ESP_LOGI("esphome", "Syncing PWM slider values into HAL pump config");
-          id(hal)->setPumpPwm("AcidPump",      id(pwm_gpio4_slider).state / 100.0f);
-          id(hal)->setPumpPwm("NutrientPumpA", id(pwm_gpio5_slider).state / 100.0f);
-          id(hal)->setPumpPwm("NutrientPumpB", id(pwm_gpio6_slider).state / 100.0f);
-          id(hal)->setPumpPwm("NutrientPumpC", id(pwm_gpio7_slider).state / 100.0f);
-
-          // Push EMA K-factor updates to the slider (only fires after a correction cycle, not on manual drag)
-          id(unified_controller)->set_ph_k_update_callback([](float k) {
-              id(ph_k_factor_slider).publish_state(k);
-          });
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -1608,6 +1576,12 @@ plantos_hal:
   pump_micro_pwm_intensity: 100%     # Micro pump (NutrientPumpB): PWM intensity (0-100%, CALIBRATED: 100%@5V)
   pump_bloom_flow_rate_ml_s: 0.75    # Bloom pump (NutrientPumpC): mL/second @ configured PWM (CALIBRATED 2026-06-06: 7.5mL/10s @ 100%)
   pump_bloom_pwm_intensity: 100%     # Bloom pump (NutrientPumpC): PWM intensity (0-100%, CALIBRATED: 100%@5V)
+  # PWM sliders (number entities): their restored value overrides the intensities above
+  # at boot, and every change applies at once (it does not switch the pump on)
+  pump_ph_pwm_number: pwm_gpio4_slider
+  pump_grow_pwm_number: pwm_gpio5_slider
+  pump_micro_pwm_number: pwm_gpio6_slider
+  pump_bloom_pwm_number: pwm_gpio7_slider
 
   # pH Reading Configuration
   ph_reading_interval: 2h     # How often to check pH (default: 2 hours)
@@ -1641,6 +1615,7 @@ plantos_controller:
   calendar: plant_calendar       # Calendar manager for grow schedule and nutrient dosing
   time_source: sntp_time         # NTP time source for automatic day calculation
   alert_service: alerts          # Alert dispatching (log backend; future: Telegram, HA)
+  ph_k_factor_number: ph_k_factor_slider  # EMA K-factor updates are published to this slider
 
   # Grow Cycle Configuration
   # grow_start_date: Date when grow cycle day 1 started (YYYY-MM-DD format)
@@ -1682,6 +1657,20 @@ plantos_controller:
 actuator_safety_gate:
   id: actuator_safety
   hal: hal  # Phase 2: Inject HAL dependency for hardware control
+  # Max ON time per actuator: a longer request is rejected, a longer run is reported.
+  max_durations:
+    WaterValve: 600s       # 10 min - water fill max
+    AcidPump: 30s          # pH dosing (covers PH_MAX_DOSE_ML=10mL at lowered flow rate)
+    NutrientPumpA: 120s    # nutrient A (large doses at peak grow days)
+    NutrientPumpB: 120s    # nutrient B
+    NutrientPumpC: 120s    # nutrient C
+    AirPump: 0s            # 0 = unlimited (24/7 operation)
+    WastewaterPump: 1800s  # 30 min - slow pump
+  # Air pump cycling periods set at boot; cycling itself starts OFF (Normal mode 24/7).
+  # The "Air Pump Cycling" switch turns it on with the "Air Pump ON/OFF Period" numbers.
+  air_pump_cycling:
+    on_period: 120s
+    off_period: 60s
 
 ################################################################################
 # EZO pH Sensor Component via I2C (Atlas Scientific)
@@ -2573,11 +2562,6 @@ number:
     restore_value: true
     unit_of_measurement: "%"
     mode: slider
-    set_action:
-      - lambda: 'id(hal)->setPumpPwm("AcidPump", x / 100.0f);'
-      - logger.log:
-          format: "PWM config: AcidPump set to %.0f%% (not activated)"
-          args: ['x']
 
   # [DEBUG] Pump PWM duty-cycle config - calibration/testing only
   - platform: template
@@ -2595,11 +2579,6 @@ number:
     restore_value: true
     unit_of_measurement: "%"
     mode: slider
-    set_action:
-      - lambda: 'id(hal)->setPumpPwm("NutrientPumpA", x / 100.0f);'
-      - logger.log:
-          format: "PWM config: NutrientPumpA set to %.0f%% (not activated)"
-          args: ['x']
 
   # [DEBUG] Pump PWM duty-cycle config - calibration/testing only
   - platform: template
@@ -2617,11 +2596,6 @@ number:
     restore_value: true
     unit_of_measurement: "%"
     mode: slider
-    set_action:
-      - lambda: 'id(hal)->setPumpPwm("NutrientPumpB", x / 100.0f);'
-      - logger.log:
-          format: "PWM config: NutrientPumpB set to %.0f%% (not activated)"
-          args: ['x']
 
   # [DEBUG] Pump PWM duty-cycle config - calibration/testing only
   - platform: template
@@ -2639,11 +2613,6 @@ number:
     restore_value: true
     unit_of_measurement: "%"
     mode: slider
-    set_action:
-      - lambda: 'id(hal)->setPumpPwm("NutrientPumpC", x / 100.0f);'
-      - logger.log:
-          format: "PWM config: NutrientPumpC set to %.0f%% (not activated)"
-          args: ['x']
 
   # === Air Pump Cycling Period Configuration ===
   - platform: template

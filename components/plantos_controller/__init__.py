@@ -6,6 +6,7 @@ Phase 8: Full Controller FSM with PSM integration and CentralStatusLogger owners
 """
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome.components import number
 from esphome.const import CONF_ID
 
 # Define namespaces
@@ -48,6 +49,7 @@ CONF_NIGHT_MODE_END_HOUR = 'night_mode_end_hour'
 CONF_ENHANCED_ERROR_HANDLING = 'enhanced_error_handling'
 CONF_ALERT_SERVICE = 'alert_service'
 CONF_PH_K_FACTOR = 'ph_k_factor'
+CONF_PH_K_FACTOR_NUMBER = 'ph_k_factor_number'
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -68,6 +70,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_ENHANCED_ERROR_HANDLING, default=True): cv.boolean,  # ignored, always on
     cv.Optional(CONF_ALERT_SERVICE): cv.use_id(AlertService),
     cv.Optional(CONF_PH_K_FACTOR, default=0.25): cv.float_range(min=0.01, max=0.50),
+    cv.Optional(CONF_PH_K_FACTOR_NUMBER): cv.use_id(number.Number),
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -126,3 +129,8 @@ async def to_code(config):
 
     # pH K-factor (acid dose aggressiveness)
     cg.add(var.set_ph_k_factor(config[CONF_PH_K_FACTOR]))
+
+    # Number entity that shows EMA K-factor updates (only after a correction cycle)
+    if CONF_PH_K_FACTOR_NUMBER in config:
+        k_number = await cg.get_variable(config[CONF_PH_K_FACTOR_NUMBER])
+        cg.add(var.set_ph_k_number(k_number))

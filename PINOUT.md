@@ -73,7 +73,7 @@ fork (the stock ADC does not compile on the C6). Details: `docs/EC_Sensor_Calibr
 the GPIOs only drive the gates. HIGH = on. The pumps and the valve need their own supply with a
 common ground.
 
-Maximum on-times enforced by the ActuatorSafetyGate (set in the `on_boot` lambda of `plantOS.yaml`):
+Maximum on-times enforced by the ActuatorSafetyGate (`max_durations:` in the `actuator_safety_gate:` block of `plantOS.yaml`):
 
 | Actuator | Max duration |
 |---|---|

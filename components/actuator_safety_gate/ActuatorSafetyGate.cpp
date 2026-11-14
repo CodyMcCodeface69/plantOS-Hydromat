@@ -21,6 +21,12 @@ void ActuatorSafetyGate::setup() {
     } else {
         ESP_LOGI(TAG, "HAL configured - actuators will be controlled via hardware abstraction layer");
     }
+
+    // Boot defaults for cycling (was the on_boot lambda in plantOS.yaml)
+    if (boot_cycling_id_) {
+        setCyclingPeriods(boot_cycling_id_, boot_cycling_on_s_, boot_cycling_off_s_);
+        enableCycling(boot_cycling_id_, false);
+    }
 }
 
 void ActuatorSafetyGate::setEnabled(bool enabled) {

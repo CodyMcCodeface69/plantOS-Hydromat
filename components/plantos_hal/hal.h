@@ -26,6 +26,9 @@ class BinarySensor;
 namespace switch_ {
 class Switch;
 }
+namespace number {
+class Number;
+}
 namespace output {
 class FloatOutput;
 }
@@ -631,6 +634,9 @@ public:
     PumpConfig getPumpConfig(const std::string& pumpId) const override;
     void setPumpConfig(const std::string& pumpId, float flowRateMLPerSec, float pwmIntensity) override;
     void setPumpPwm(const std::string& pumpId, float pwmIntensity) override;
+    /// Follow a 0-100 % number entity (the "... Pump PWM" sliders): every published state,
+    /// including the restored value at boot, goes to setPumpPwm(pumpId, x / 100).
+    void bindPumpPwmNumber(const char* pumpId, esphome::number::Number* number);
     void setTankVolumeDelta(float volumeLiters) override;
     float getTankVolumeDelta() const override;
     void setTotalTankVolume(float volumeLiters) override;

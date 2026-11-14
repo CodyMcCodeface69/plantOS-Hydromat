@@ -795,17 +795,10 @@ private:
      */
     bool shouldTriggerAutoReservoirChange();
 
-    /**
-     * Get current week number (weeks since Unix epoch)
-     * Used for weekly reservoir change limit tracking
-     * @return Week number, or 0 if NTP unavailable
-     */
-    int64_t getCurrentWeekNumber();
+    /// Local week index (schedule_math::weekNumber of the local date), 0 if no valid time
+    int32_t getCurrentWeekNumber();
 
-    /**
-     * Get current day of week
-     * @return Day of week (0=Sunday, 1=Monday, ..., 6=Saturday), or 255 if unavailable
-     */
+    /// Local day of week (0=Sunday ... 6=Saturday), 255 if no valid time
     uint8_t getCurrentDayOfWeek();
 
     // ========================================================================

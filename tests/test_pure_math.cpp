@@ -72,13 +72,15 @@ TEST(schedule_math, days_from_civil) {
   CHECK_EQ(daysFromCivil(2026, 11, 14), 20771);  // 56*365 + 14 + 304 + 13
 }
 
-TEST(schedule_math, week_number_and_weekday_are_utc) {
+TEST(schedule_math, week_number_and_weekday_from_local_day_ordinal) {
   CHECK_EQ(schedule_math::weekNumber(0), 0);
-  CHECK_EQ(schedule_math::weekNumber(7 * DAY - 1), 0);
-  CHECK_EQ(schedule_math::weekNumber(7 * DAY), 1);  // Thursday 1970-01-08 00:00 UTC
-  CHECK_EQ((int)schedule_math::dayOfWeek(0), 4);        // 1970-01-01 Thursday
-  CHECK_EQ((int)schedule_math::dayOfWeek(3 * DAY), 0);  // 1970-01-04 Sunday
-  CHECK_EQ((int)schedule_math::dayOfWeek(3 * DAY - 1), 6);
+  CHECK_EQ(schedule_math::weekNumber(6), 0);
+  CHECK_EQ(schedule_math::weekNumber(7), 1);           // Thursday 1970-01-08
+  CHECK_EQ(schedule_math::weekNumber(20771), 2967);    // 2026-11-14
+  CHECK_EQ((int)schedule_math::dayOfWeek(0), 4);       // 1970-01-01 Thursday
+  CHECK_EQ((int)schedule_math::dayOfWeek(3), 0);       // 1970-01-04 Sunday
+  CHECK_EQ((int)schedule_math::dayOfWeek(2), 6);       // Saturday
+  CHECK_EQ((int)schedule_math::dayOfWeek(20771), 6);   // 2026-11-14 Saturday
 }
 
 // ---------------------------------------------------------------------------

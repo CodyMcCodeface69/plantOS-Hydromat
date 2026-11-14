@@ -20,12 +20,13 @@ bool hourInNightWindow(uint8_t hour, uint8_t start_hour, uint8_t end_hour);
 /// Days since 1970-01-01 for a proleptic Gregorian civil date (Howard Hinnant's days_from_civil).
 int32_t daysFromCivil(int32_t y, uint32_t m, uint32_t d);
 
-/// Weeks since the Unix epoch from a UTC timestamp. Weeks therefore roll over on Thursday
-/// 00:00 UTC (known oddity, kept as is).
-int64_t weekNumber(int64_t timestamp);
+/// Week index from a LOCAL date ordinal (days since 1970-01-01, see daysFromCivil()).
+/// Weeks roll over on Thursday (1970-01-01 was a Thursday); the auto reservoir change only needs
+/// one distinct index per 7 days, so the boundary does not matter.
+int32_t weekNumber(int32_t local_days);
 
-/// Day of week from a UTC timestamp: 0 = Sunday ... 6 = Saturday (UTC day, not local).
-uint8_t dayOfWeek(int64_t timestamp);
+/// Day of week from a LOCAL date ordinal: 0 = Sunday ... 6 = Saturday.
+uint8_t dayOfWeek(int32_t local_days);
 
 /// Decision of the clock-based periodic pH check, with the values the caller logs.
 struct PhCheckSlot {

@@ -312,14 +312,18 @@ TEST(auto_reservoir, day_of_week_and_week_number) {
   }
 }
 
-TEST(auto_reservoir, day_of_week_is_utc_based) {
-  // SUSPECT: day-of-week and week number come from the UTC timestamp, the night-mode check
-  // and the feed date from local time. In CET the "configured weekday" runs 01:00 -> 01:00 local.
+TEST(auto_reservoir, day_of_week_and_week_are_local) {
+  // Fixed 2026-11-14: weekday and week come from the local date, like night mode and the feed date.
+  // (Before, they were UTC-based: in CET the configured weekday ran 01:00 -> 01:00 local.)
   ControllerFixture f;
-  f.set_time(2026, 11, 15, 0, 30, 0, 3600);  // local Sunday 00:30 CET
-  CHECK_EQ(f.ctrl.getCurrentDayOfWeek(), 6);  // still Saturday
-  f.set_time(2026, 11, 15, 1, 0, 0, 3600);
+  f.set_time(2026, 11, 14, 23, 59, 0, 3600);  // local Saturday 23:59 CET (22:59 UTC)
+  CHECK_EQ(f.ctrl.getCurrentDayOfWeek(), 6);
+  f.set_time(2026, 11, 15, 0, 30, 0, 3600);   // local Sunday 00:30 CET (UTC still Saturday)
   CHECK_EQ(f.ctrl.getCurrentDayOfWeek(), 0);
+  f.set_time(2026, 11, 19, 0, 30, 0, 7200);   // local Thursday 00:30 (UTC still Wednesday)
+  CHECK_EQ(f.ctrl.getCurrentWeekNumber(), 2968);
+  f.set_time(2026, 11, 18, 23, 30, 0, 7200);
+  CHECK_EQ(f.ctrl.getCurrentWeekNumber(), 2967);
 }
 
 TEST(auto_reservoir, triggers_on_configured_weekday_once_per_week) {
@@ -378,7 +382,7 @@ TEST(auto_reservoir, each_condition_blocks) {
   {
     ControllerFixture f;
     arm_auto_reservoir(f);
-    f.hal.timestamp = 0;  // HAL has no time
+    f.clock.set_invalid();  // no valid local time
     CHECK(!f.ctrl.shouldTriggerAutoReservoirChange());
   }
   {

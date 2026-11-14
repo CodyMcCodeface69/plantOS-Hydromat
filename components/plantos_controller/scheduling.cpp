@@ -187,7 +187,7 @@ bool PlantOSController::shouldTriggerAutoReservoirChange() {
     // ========================================================================
     // CHECK 5: Not already done this week (survives reboots via NVS)
     // ========================================================================
-    int64_t current_week = getCurrentWeekNumber();
+    int32_t current_week = getCurrentWeekNumber();
     if (current_week == 0) {
         ESP_LOGW(TAG, "[AUTO-RES] NTP time unavailable - cannot check week");
         return false;
@@ -218,36 +218,15 @@ void PlantOSController::markAutoResWeek(int32_t week) {
     }
 }
 
-int64_t PlantOSController::getCurrentWeekNumber() {
-    if (!hal_) {
-        return 0;
-    }
-
-    // Get current Unix timestamp
-    int64_t now = hal_->getCurrentTimestamp();
-
-    if (now == 0) {
-        ESP_LOGW(TAG, "[AUTO-RES] NTP time unavailable");
-        return 0;
-    }
-
-    // Week number = whole weeks since the Unix epoch (UTC)
-    return schedule_math::weekNumber(now);
+int32_t PlantOSController::getCurrentWeekNumber() {
+    // Local calendar week (same local date source as the feed date and night mode)
+    int32_t today = getLocalDateOrdinal();
+    return today > 0 ? schedule_math::weekNumber(today) : 0;
 }
 
 uint8_t PlantOSController::getCurrentDayOfWeek() {
-    if (!hal_) {
-        return 255;
-    }
-
-    // Get current Unix timestamp
-    int64_t now = hal_->getCurrentTimestamp();
-
-    if (now == 0) {
-        return 255;
-    }
-
-    // 0=Sunday, 1=Monday, ..., 6=Saturday (UTC day)
-    return schedule_math::dayOfWeek(now);
+    // 0=Sunday, 1=Monday, ..., 6=Saturday (local day), 255 = no valid time
+    int32_t today = getLocalDateOrdinal();
+    return today > 0 ? schedule_math::dayOfWeek(today) : 255;
 }
 } // namespace plantos_controller

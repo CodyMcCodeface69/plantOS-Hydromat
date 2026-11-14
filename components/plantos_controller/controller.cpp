@@ -789,7 +789,7 @@ void PlantOSController::handleIdle() {
         ESP_LOGI(TAG, "========================================");
 
         // Record this week (own NVS key, so it survives the PSM event that startReservoirChange() logs)
-        markAutoResWeek(static_cast<int32_t>(getCurrentWeekNumber()));
+        markAutoResWeek(getCurrentWeekNumber());
 
         // Start reservoir change sequence
         startReservoirChange();

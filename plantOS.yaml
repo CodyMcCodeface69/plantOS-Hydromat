@@ -11,10 +11,17 @@
 # packages/debug.yaml holds debug-only entities (verbose log switches, GPIO bypass,
 # HAL mirror text sensors, Shelly test buttons). They cost RAM, web UI sync time and
 # MQTT topics just by existing, so production builds leave them out.
-# Debug build: uncomment both lines below and flash.
+#
+# The compile-time log level lives here too, as an inline package, because a package
+# cannot override a key of the main file (the main file always wins), but a later
+# package overrides an earlier one. Production compiles at INFO: ESP_LOGD/ESP_LOGV
+# calls and their strings are not in the binary. The debug package raises it to DEBUG.
+#
+# Debug build: uncomment the `debug:` line below and build.
 ################################################################################
-# packages:
-#   debug: !include packages/debug.yaml
+packages:
+  log_level: {logger: {level: INFO}}
+  # debug: !include packages/debug.yaml
 
 esphome:
   name: plantos
@@ -73,37 +80,24 @@ esp32:
       CONFIG_LWIP_MAX_SOCKETS: "16"      # 16 sockets (was 10) for headroom
 
 logger:
-  # DEBUG level enables detailed component logging for development
-  # This helps diagnose FSM state transitions and sensor callbacks
-  # In production, consider INFO or WARN to reduce log noise
-  level: DEBUG
-  initial_level: DEBUG
+  # Compile-time level: INFO in production, DEBUG with the debug package. It is set in the
+  # `packages:` block at the top of this file (not here, so the debug package can raise it).
   # ESP32-C6 uses built-in USB Serial/JTAG controller for logging
   # This must be explicitly configured or boot will hang
   hardware_uart: USB_SERIAL_JTAG
 
-  # Component-specific log level overrides
-  # Use the "Debug: Logging" web UI switches to toggle verbose logging for these components
+  # Per-tag limits below the global level. A tag cannot be more verbose than the
+  # compile-time level; the DEBUG-era entries live in packages/debug.yaml.
   logs:
     adc: NONE              # Suppress ADC component messages
-    light: INFO            # Suppress LED brightness/color debug messages
-    sensor: INFO           # Suppress sensor state updates (web UI verbose toggle)
-    text_sensor: INFO      # Suppress text sensor state updates (web UI verbose toggle)
-    ezo_ph_uart: DEBUG      # Suppress EZO pH UART debug logs (web UI verbose toggle)
-    sensor_filter: WARN    # Suppress sensor filter buffer logs (web UI verbose toggle)
-    dallas.temp.sensor: INFO  # Suppress Dallas temp sensor logs (web UI verbose toggle)
-    plantos_controller: INFO  # Suppress controller PSM check logs (web UI verbose toggle)
-    plantos_hal: WARN       # Suppress HAL debug logs
-    gpio_status: INFO      # Suppress GPIO status logs (web UI verbose toggle)
-    component: ERROR       # Suppress component timing warnings (web UI verbose toggle)
-    esp-idf: INFO          # Suppress ESP-IDF GPIO logs (web UI verbose toggle)
-    time: WARN             # Suppress time synchronization logs (web UI verbose toggle)
+    sensor_filter: WARN    # Suppress sensor filter buffer logs
+    plantos_hal: WARN      # Suppress HAL info logs
+    component: ERROR       # Suppress component timing warnings
+    time: WARN             # Suppress time synchronization logs
     http_request: WARN
     wifi: WARN
-    shelly_poll: WARN   # Suppress Shelly polling logs
-    ledc.output: WARN  # Suppress LEDC output logs
-    tds_sensor: INFO   # TDS/EC sensor logs
-    template.number: INFO  # Suppress template number logs
+    shelly_poll: WARN      # Suppress Shelly polling logs
+    ledc.output: WARN      # Suppress LEDC output logs
 
 
 wifi:

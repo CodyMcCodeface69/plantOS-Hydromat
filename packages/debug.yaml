@@ -6,6 +6,23 @@
 # anything referenced by core lambdas (e.g. on_boot) out of this file.
 ################################################################################
 
+# Debug builds compile at DEBUG (production: INFO, see the `packages:` block in
+# plantOS.yaml). The per-tag entries keep the chatty tags at INFO until one of the
+# "Verbose: ..." switches below raises them at runtime (logger.set_level).
+logger:
+  level: DEBUG
+  logs:
+    light: INFO               # LED brightness/color debug messages
+    sensor: INFO              # sensor state updates
+    text_sensor: INFO         # text sensor state updates
+    ezo_ph_uart: DEBUG        # EZO pH UART debug logs on by default
+    dallas.temp.sensor: INFO
+    plantos_controller: INFO  # controller PSM check logs
+    gpio_status: INFO
+    esp-idf: INFO             # ESP-IDF GPIO logs
+    tds_sensor: INFO
+    template.number: INFO
+
 text_sensor:
   # [DEBUG] HAL mirror - duplicates the DS18B20 sensor value for HAL verification
   - platform: template

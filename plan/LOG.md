@@ -50,3 +50,15 @@ Work is split across subagents with path ownership; only one agent builds at a t
 - To fix with the controller work (2.4): `FSMINFO.md` says PH_MIXING 120 s but the code scales 30-600 s; stale comments
   in `controller.cpp/.h` cite deleted or archived docs and `/home/cody/...`; `controller.h:952` comment contradicts the function.
 - For presets (3.3): pH dosing uses `getTankVolumeDelta()` (27.4 L), not the total volume.
+
+## 2026-11-14: UI evaluation (4.1, 4.2) (Fable, subagent)
+- `plan/ui-eval/ASSESSMENT.md`, `README.md`, `prototype/index.html` (68 kB raw, 21 kB gzipped, mock mode, no CDN). `d291ae6`.
+- Recommendation: serve the page from the ESP at `/app` beside the v3 page (small custom handler on `web_server_base`,
+  about +21 kB); until a flash, the same file opened locally works against today's firmware. No Hetzner hosting
+  (mixed content, offline, incompatible with web auth).
+- Verified in the 2025.4.2 source: `js_include`/`css_include` only serve `/0.js`/`/0.css`; `local: true` serves
+  `INDEX_GZ` (76,654 B) at `/`; all responses carry `Access-Control-Allow-Origin: *`; only simple cross-origin requests
+  work; action URLs do not check the HTTP method; no web auth, API encryption or OTA password is configured.
+- Object id rule: lower-case, space → `_`, other chars outside `[a-zA-Z0-9_-]` → `_`, hyphens kept, no collapsing.
+- Tested only against a local fake of the API and in mock mode (dark theme looked at, light theme not).
+- Inputs for 3.5 added to `IMPLEMENTATION.md` (entity names, status text with pH band/EC target, "Last Refusal").

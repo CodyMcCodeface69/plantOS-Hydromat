@@ -140,6 +140,11 @@ Preset (3 fixed slots: anzucht, mutter, haupt)
       "Tank Volume LOW→HIGH" and "EMPTY→HIGH", five function switches, button "Restart Grow (Day 1)", text sensor with
       the active preset, day and phase. Entities whose function is off stay visible but their actions answer with the
       refusal reason. Add the preset name to logs; add it to `plantos/vitals` only as a **new** key (existing keys untouched).
+      From the UI evaluation: use the entity names the prototype maps (`Preset`, `Tank Volume LOW→HIGH`,
+      `Tank Volume EMPTY→HIGH`, `Function Nutrients / Water Fill / Drain / Air Pump / Grow Light`, `Restart Grow (Day 1)`,
+      `Preset Status`), or update the mapping table in `plan/ui-eval/prototype/index.html`. Put the calendar's pH band and
+      EC target into the status text (e.g. `Haupt · Day 69 · Bloom (pH 6.0-6.4, EC 2.20)`), and add a "Last Refusal" text
+      sensor so a refused operation is visible outside the log.
 - [ ] 3.6 Fold the existing "Mother Plant Nutrients" button / "Mother Mix Volume" number into the model
       (it needs NUTRIENTS; keep the feature in Haupt as today).
 - [ ] 3.7 Docs: `FSMINFO.md`, `AGENTS.md`, `MAP.md`, and complete `TO_MEASURE.md` (volumes, calendar values per preset,
@@ -149,10 +154,10 @@ Preset (3 fixed slots: anzucht, mutter, haupt)
 
 Runs in parallel as filler while builds run; finish after 3.5 so presets are in the concept.
 
-- [ ] 4.1 `plan/ui-eval/ASSESSMENT.md`: options (a) page served from the ESP, (b) external page against REST/SSE,
+- [x] 4.1 `plan/ui-eval/ASSESSMENT.md`: options (a) page served from the ESP, (b) external page against REST/SSE,
       (c) stay on v3 with better grouping. Flash cost from real numbers after phase 2, offline LAN use, maintenance
       across ESPHome versions, security (check `web_server` auth and the API encryption state in the YAML). Recommendation.
-- [ ] 4.2 `plan/ui-eval/prototype/index.html`: one static file, no build step, device address configurable, talks to
+- [x] 4.2 `plan/ui-eval/prototype/index.html`: one static file, no build step, device address configurable, talks to
       the 2025.4 REST/SSE endpoints (handles events without `domain`), has a mock mode so it can be looked at without
       the device. Shows status, main actions, presets, settings.
 

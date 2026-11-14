@@ -17,6 +17,14 @@ The owner answers asynchronously. Park a question here, pick a sensible default,
   (the system has been growing with it), the bug is documented and pinned by a host test.
 - **Soft-start**: the ASG PWM ramp is never configured, so pumps switch on at once. Was that deliberate? Default: leave off.
 
+- **Custom UI direction**: open `plan/ui-eval/prototype/index.html?mock` (5 minutes). Is this the direction? If yes:
+  serve it from the ESP at `/app` next to the ESPHome page (recommended, about +21 kB flash), or replace the ESPHome page?
+  Default: nothing is built into the firmware during this sprint (evaluation only).
+- **Security**: today there is no OTA password, no API encryption and no web auth; action URLs also accept GET with
+  `Access-Control-Allow-Origin: *`, so anyone (and any web page opened) inside the LAN can trigger actions or flash.
+  Set an OTA password and API encryption with the next flash? Default: unchanged for now (a new OTA password must not
+  lock out the first OTA after the sprint); `web_server: auth:` would rule out any externally opened page.
+
 ## Answered
 - Presets: runtime-switchable. They differ in tank volume, calendar and active actuators. (2026-11-14)
 - Custom UI: evaluation only. (2026-11-14)

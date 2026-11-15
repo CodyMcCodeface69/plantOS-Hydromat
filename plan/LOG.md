@@ -160,3 +160,20 @@ Work is split across subagents with path ownership; only one agent builds at a t
 - Placeholders: Mutter 10 / 15 L, Anzucht 5 / 8 L, function sets, settle factor → `TO_MEASURE.md`.
 - Side finding, not fixed yet: `startFillTank` logs the PSM event `WATER_FILL` but recovery checks `WATER_FILLING`.
 - **Next:** 2.3 `CentralStatusLogger`, the PSM name fix, 2.6 only if it can be done safely; then the wrap-up.
+
+## 2026-11-15: session paused by the owner (Fable)
+- Committed by the last subagent before it was stopped (its final report was never delivered, so the details below are
+  from the commit log only): `652266c` PSM recovery uses one set of event names (a crash during fill/drain/feed/reservoir
+  change now stops valve and drain pump); `155af76` status report rewrite (`CentralStatusLogger` is only the alert book
+  + I2C scan); `4caad97` `ezo_ph_uart` periodic read no longer blocks the main loop, with host tests; rows in
+  `TEST_ON_DEVICE.md`; 2.3 and 2.6 ticked.
+- The agent was stopped during its final checks with the debug package line enabled in `plantOS.yaml`; that edit was
+  reverted (`git checkout plantOS.yaml`). **The build directory may hold a debug build or a half-finished build.**
+- **Not verified in this state:** production `task test` / `task config_validate` / `task build` on HEAD, the debug
+  build, flash/RAM numbers after 2.3 and 2.6.
+- **Next session, in this order:** (1) `task test`, `task config_validate`, `task build` on `main`, record flash/RAM;
+  (2) review the three commits above (`git show --stat`), especially `4caad97`: the pH probe driver is the riskiest change
+  of the sprint and has no hardware test; decide whether its TEST_ON_DEVICE rows are sufficient; (3) update `AGENTS.md`
+  (`CentralStatusLogger` description, the `delay()` note in the coding rules, the "WiFi Scan" include line, entity count)
+  and `MAP.md`; (4) wrap-up section of `IMPLEMENTATION.md`: debug build, order `TEST_ON_DEVICE.md` as a first-flash
+  checklist with the rollback, check `TO_MEASURE.md` / `QUESTIONS.md` / `FSMINFO.md`, workstream table in `README.md`.

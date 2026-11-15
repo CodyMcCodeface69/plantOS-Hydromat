@@ -141,3 +141,22 @@ Work is split across subagents with path ownership; only one agent builds at a t
 - Owner note: the phase names from `docs/Hydroponik_Zielwerttabelle.csv` are shifted against the schedule values
   (days 78-98 carry "Späte Blüte" values under the "Mittlere Blüte" weeks). Labels only.
 - **Next:** 3.1 + 3.3-3.7 (preset store, capability gate in `canStart`, switch, UI), then 2.3, 2.6 if time, wrap-up.
+
+## 2026-11-15: presets (3.1, 3.3-3.7) (Opus subagent)
+- Commits `4dda0eb`, `8521ee2`, `d0ad899`, `24757cd`. **Build green: flash 1,409,922 B (76.8 %), RAM 37,356 B.**
+  Presets cost +28.9 KB (about 5 KB logic, the rest the new `select` and `script` ESPHome components). Host tests 274;
+  no pre-existing expectation changed (Haupt = today).
+- Model: store inside `plantos_controller` (`preset_model.h`, `grow_profile.*`, `presets.cpp`). NVS: `preset_active`,
+  `preset_slot_0..2` (written only on change; once a preset is edited in the UI its NVS record wins over YAML defaults).
+  YAML defaults under `plantos_controller: presets:`; tank volumes left the `plantos_hal` block.
+- Capability table in `operationFunctions()`, checked in `canStart()`; auto triggers use the same table silently; the
+  safety gate blocks ON for actuators the preset lacks. Without AIR_PUMP the mixing time is × `no_air_pump_settle_factor`
+  (2.0, placeholder). Feed/reservoir "done" markers are per preset (Haupt keeps the old keys).
+- Switch: only in IDLE/NIGHT/SHUTDOWN/PAUSE/ERROR; index persisted first; dosing pumps, valve, drain pump off; air pump
+  and light off only if the new preset lacks them; old-tank state (EC cycle, 12 h guard, pending checks, plausibility
+  history) reset. K-factors and auto switches stay global (owner questions).
+- UI: group `sg_preset` with select "Preset", two tank volume numbers, five function switches, "Restart Grow (Day 1)",
+  "Preset Status"; "Last Refusal" in status. `plantos/vitals` gained `"preset"` as the last key (consumers read by name).
+- Placeholders: Mutter 10 / 15 L, Anzucht 5 / 8 L, function sets, settle factor → `TO_MEASURE.md`.
+- Side finding, not fixed yet: `startFillTank` logs the PSM event `WATER_FILL` but recovery checks `WATER_FILLING`.
+- **Next:** 2.3 `CentralStatusLogger`, the PSM name fix, 2.6 only if it can be done safely; then the wrap-up.

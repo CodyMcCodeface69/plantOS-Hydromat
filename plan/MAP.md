@@ -39,7 +39,14 @@ Line numbers are approximate. Grep before you trust them.
 Python codegen per component: `components/<name>/__init__.py` (schema + `to_code`). Config keys
 reach C++ setters only through it. That is where any new config surface ends up.
 
-## Where configuration lives today (relevant for presets)
+## Controller files (after the split, 2026-11-15)
+
+`controller.cpp` (setup/loop/dispatch/API) · `ph_control.cpp` · `ec_control.cpp` · `water_ops.cpp` · `scheduling.cpp` ·
+`health_checks.cpp` · `operator_api.cpp` (what YAML lambdas call) · `presets.cpp` + `grow_profile.*` + `preset_model.h`
+(presets) · `dosing_math.*`, `schedule_math.*` (pure) · `calendar_manager/phase_table.h`, `phase_tables.py` (calendar tables).
+The table below describes the state BEFORE the sprint; tank volumes, calendars and max durations have moved (see `AGENTS.md`).
+
+## Where configuration lived before the sprint
 
 | Value | Where | Changeable at runtime? |
 |---|---|---|

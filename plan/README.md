@@ -51,8 +51,8 @@ lives in `.platformio/` inside the repo.
 | # | File | Status |
 |---|---|---|
 | 1 | `01-cleanup.md`, repo and code hygiene | done 2026-11-14 |
-| 2 | `02-lean-fast.md`, performance, flash, structure | open |
-| 3 | `03-presets.md`, runtime presets | open |
+| 2 | `02-lean-fast.md`, performance, flash, structure | mostly done (2.3, 2.6 open) |
+| 3 | `03-presets.md`, runtime presets | done 2026-11-15, untested on hardware (`TEST_ON_DEVICE.md`, `TO_MEASURE.md`) |
 | 4 | `04-ui-eval.md`, custom web UI evaluation | done 2026-11-14 (`plan/ui-eval/`), owner feedback open |
 
 Suggested order: 1 → 2 → 3, with 4 in parallel. Cleanup first makes everything after it

@@ -89,7 +89,7 @@ Layer 3  plantos_hal          ONLY place touching hardware: GPIO/PWM outputs, se
 | `GrowLight` | Shelly socket 3 | HTTP |
 
 Max durations are set under `actuator_safety_gate: max_durations:`; the PWM sliders are bound through `plantos_hal: pump_*_pwm_number:`.
-Pump flow rates (mL/s) are configured in the `plantos_hal:` block.
+Pump flow rates (mL/s) are configured in the `plantos_hal:` block; tank volumes come from the active preset.
 
 ### Sensors and pins
 
@@ -119,6 +119,19 @@ PSM recovery. **Update it** in the same change whenever you modify any of those 
 - pH dosing uses a K-factor (EMA-updated, exposed as the `ph_k_factor_slider` number).
   EC feeding uses `ec_K_feed_`.
 
+## Presets (Anzucht / Mutter / Haupt)
+
+The active preset is chosen at runtime (web UI group "Preset") and kept in NVS; first boot = Haupt. A preset = tank
+volumes + function mask (`NUTRIENTS`, `WATER_FILL`, `DRAIN`, `AIR_PUMP`, `GROW_LIGHT`; pH is always available) + the
+calendar of the same name with its own grow day. Defaults live in `plantos_controller: presets:` (the only place for
+tank volumes; `plantos_hal` no longer has them); UI edits override them per preset in NVS. Code:
+`plantos_controller/preset_model.h` (pure, host-tested), `grow_profile.*` (NVS store), `presets.cpp` (switch, edits,
+refusals). New operations must declare their functions in `operationFunctions()` (the only capability table) and start
+through `startAllowed()`; automatic triggers check `operationAvailable()`; never write `if (preset == ...)`. The
+ActuatorSafetyGate blocks ON commands for actuators the preset lacks (`setActuatorBlocked`). Switching and editing are
+allowed only in IDLE/NIGHT/SHUTDOWN/PAUSE/ERROR. `FSMINFO.md` "Presets" is authoritative. Placeholder values the owner
+still has to measure are listed in `plan/TO_MEASURE.md`.
+
 ## Component inventory (`components/`)
 
 Components used in `plantOS.yaml`:
@@ -137,7 +150,7 @@ Components used in `plantOS.yaml`:
 ## plantOS.yaml layout (approximate line numbers, grep before trusting them)
 
 ```
-22 packages · 26 esphome (no on_boot lambda) · 107 logger · 127 wifi · 183 web_server (10 sorting_groups)
+22 packages · 26 esphome (no on_boot lambda) · 107 logger · 127 wifi · 183 web_server (11 sorting_groups)
 233 api · 249 mqtt (TLS, Hetzner; publishes plantos/vitals every 30 s) · 280 external_components · 306 uart
 334 light (internal) · 369 output · 419 sensor · 582 binary_sensor · 648 text_sensor · 730 button
 1047 plantos_hal · 1133 plantos_controller · 1167 ASG · 1213 ezo_ph_uart · 1312 calendar_manager (phase tables)
@@ -155,7 +168,7 @@ leave it out; uncomment the two `packages:` lines in `plantOS.yaml` for a debug 
 anything that core lambdas reference by `id()` into it.
 
 There are about 82 web UI entities in the production build (~112 with the debug package). Each one carries `web_server: sorting_group_id`
-(`sg_status`, `sg_sensors`, `sg_controller_actions`, `sg_controller_settings`, `sg_calendar`,
+(`sg_status`, `sg_preset`, `sg_sensors`, `sg_controller_actions`, `sg_controller_settings`, `sg_calendar`,
 `sg_actuators`, `sg_system`, `sg_debug_logging`, `sg_debug_gpio`, `sg_debug_hal`).
 Give every new entity a group.
 

@@ -30,6 +30,7 @@ COMPONENT_SRCS := \
     persistent_state_manager/persistent_state_manager.cpp \
     actuator_safety_gate/ActuatorSafetyGate.cpp \
     alert_service/alert_service.cpp \
+    ezo_ph_uart/ezo_ph_uart.cpp \
     $(patsubst $(REPO)/components/%,%,$(wildcard $(REPO)/components/plantos_controller/*.cpp))
 
 TEST_SRCS := $(wildcard *.cpp) $(wildcard support/*.cpp) stubs/host_stubs.cpp

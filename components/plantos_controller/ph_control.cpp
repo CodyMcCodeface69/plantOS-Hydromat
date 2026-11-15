@@ -64,7 +64,7 @@ void PlantOSController::handlePhProcessing() {
 
         // Log event for crash recovery
         if (psm_) {
-            psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+            psm_->logEvent(psm_event::PH_CORRECTION, 0);  // 0 = STARTED
         }
 
         transitionTo(ControllerState::PH_MEASURING);
@@ -137,7 +137,7 @@ void PlantOSController::handlePhMeasuring() {
                 if (psm_) {
                     // Only log once per measurement cycle to avoid spam
                     if (ph_readings_.size() == 1) {
-                        psm_->logEvent("PH_CRITICAL", 2);  // 2 = ERROR status
+                        psm_->logEvent(psm_event::PH_CRITICAL, 2);  // 2 = ERROR status
                     }
                 }
 
@@ -147,7 +147,7 @@ void PlantOSController::handlePhMeasuring() {
                 status_logger_.updateAlertStatus("PH_CRITICAL", alert_msg);
             } else {
                 // pH back in safe range - clear critical event if it exists
-                if (ph_readings_.size() == 1 && clearPsmEventIf("PH_CRITICAL")) {
+                if (ph_readings_.size() == 1 && clearPsmEventIf(psm_event::PH_CRITICAL)) {
                     status_logger_.clearAlert("PH_CRITICAL");
                     ESP_LOGI(TAG, "pH back in safe range - PH_CRITICAL cleared");
                 }
@@ -176,7 +176,7 @@ void PlantOSController::handlePhMeasuring() {
 
                     sensor_retry_state_.reset();
 
-                    clearPsmEventIf("PH_CRITICAL");  // measurement failed
+                    clearPsmEventIf(psm_event::PH_CRITICAL);  // measurement failed
 
                     transitionTo(ControllerState::IDLE);
                     return;
@@ -221,7 +221,7 @@ void PlantOSController::handlePhMeasuring() {
             0
         );
 
-        clearPsmEventIf("PH_CRITICAL");  // measurement failed
+        clearPsmEventIf(psm_event::PH_CRITICAL);  // measurement failed
 
         transitionTo(ControllerState::ERROR);
         return;

@@ -127,6 +127,7 @@ void PlantOSController::loop() {
 
     updateStatusReport();
     updateActuatorTests();
+    resendRecoveryDrainOff();
 
     // Call state-specific handler
     switch (current_state_) {
@@ -366,65 +367,6 @@ void PlantOSController::handleInit() {
 
     uint32_t elapsed = getStateElapsed();
 
-    // On first entry (elapsed < 100ms): Check PSM for persisted states
-    // We check here (not in setup()) because PSM might initialize after controller
-    if (elapsed < 100 && !boot_restore_pending_) {
-        if (psm_) {
-            // Check if we were in SHUTDOWN or PAUSE state before power loss
-            if (psm_->hasEvent()) {
-                esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-                std::string eventID(event.eventID);
-
-                // Check if event ID is non-empty (not a cleared event)
-                if (!eventID.empty()) {
-                    if (eventID == "STATE_SHUTDOWN") {
-                        ESP_LOGW(TAG, "Recovery: SHUTDOWN in PSM (age %lld s), restoring after INIT",
-                                 (long long)psm_->getEventAge());
-                        boot_restore_state_ = ControllerState::SHUTDOWN;
-                        boot_restore_pending_ = true;
-                    } else if (eventID == "STATE_PAUSE") {
-                        ESP_LOGW(TAG, "Recovery: PAUSE in PSM (age %lld s), restoring after INIT",
-                                 (long long)psm_->getEventAge());
-                        boot_restore_state_ = ControllerState::PAUSE;
-                        boot_restore_pending_ = true;
-                    } else if (eventID == "WATER_FILLING") {
-                        ESP_LOGW(TAG, "Recovery: WATER_FILLING interrupted (age %lld s), closing water valve, PSM cleared",
-                                 (long long)psm_->getEventAge());
-                        // Close valve via SafetyGate
-                        if (safety_gate_) {
-                            safety_gate_->executeCommand(WATER_VALVE, false, 0);
-                        }
-                        // Clear PSM event
-                        psm_->clearEvent();
-                    } else if (eventID == "WATER_EMPTYING") {
-                        ESP_LOGW(TAG, "Recovery: WATER_EMPTYING interrupted (age %lld s), stopping wastewater pump, PSM cleared",
-                                 (long long)psm_->getEventAge());
-                        // Stop pump via SafetyGate
-                        if (safety_gate_) {
-                            safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0);
-                        }
-                        // Clear PSM event
-                        psm_->clearEvent();
-                    } else {
-                        // Some other operation was interrupted - log warning
-                        ESP_LOGW(TAG, "Recovery: %s interrupted (status %d, age %lld s), no automatic action",
-                                 eventID.c_str(), event.status, (long long)psm_->getEventAge());
-                        if (alert_service_) {
-                            alert_service_->alert(alert_service::AlertLevel::WARNING,
-                                "Operation interrupted",
-                                "Operation '" + eventID + "' was interrupted by power loss (age: " +
-                                std::to_string(psm_->getEventAge()) + "s) — verify system state");
-                        }
-                    }
-                } else {
-                    ESP_LOGD(TAG, "PSM event is empty (cleared) - no restoration needed");
-                }
-            } else {
-                ESP_LOGD(TAG, "No PSM event - clean boot");
-            }
-        }
-    }
-
     // ========================================================================
     // ONE-TIME BOOT ACTIONS (Phase 8 - Enhanced Reboot Recovery)
     // Runs once during INIT, regardless of elapsed time.
@@ -456,7 +398,10 @@ void PlantOSController::handleInit() {
     }
 
     if (elapsed >= INIT_DURATION) {
-        // Check if we need to restore a persisted state from PSM
+        // PSM recovery once, at the end of INIT: every component is set up by then. (Until
+        // 2026-11-15 it ran only while elapsed < 100 ms, a window the first loop() after boot
+        // usually misses; the IDLE hold check covered SHUTDOWN/PAUSE.)
+        recoverFromPsm();
         if (boot_restore_pending_) {
             boot_restore_pending_ = false;
 
@@ -485,6 +430,70 @@ void PlantOSController::handleInit() {
     }
 }
 
+void PlantOSController::recoverFromPsm() {
+    // Boot recovery from the PSM event (FSMINFO.md "Persistent State Manager (PSM) Events").
+    // Only OFF commands are sent: they pass the preset block and the forced flag skips the gate's
+    // "already off" debounce (after a reset the gate tracks every actuator as OFF).
+    if (!psm_ || !psm_->hasEvent()) {
+        ESP_LOGD(TAG, "No PSM event - clean boot");
+        return;
+    }
+    esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
+    const char *id = event.eventID;
+    long long age = (long long) psm_->getEventAge();
+    if (id[0] == '\0') {
+        return;
+    }
+    auto is = [id](const char *name) { return strcmp(id, name) == 0; };
+
+    if (is(psm_event::STATE_SHUTDOWN) || is(psm_event::STATE_PAUSE)) {
+        boot_restore_state_ = is(psm_event::STATE_SHUTDOWN) ? ControllerState::SHUTDOWN : ControllerState::PAUSE;
+        boot_restore_pending_ = true;
+        ESP_LOGW(TAG, "Recovery: %s in PSM (age %lld s), restoring after INIT", id, age);
+        return;
+    }
+
+    // Water operations: the valve is a GPIO output (off after a reset anyway), the drain pump a
+    // Shelly socket that keeps running through an ESP reset - switch both OFF explicitly.
+    bool stop_valve = is(psm_event::WATER_FILL) || is(psm_event::FEED_OPERATION) || is(psm_event::RESERVOIR_CHANGE);
+    bool stop_drain = is(psm_event::WATER_EMPTY) || is(psm_event::RESERVOIR_CHANGE);
+    std::string name(id);  // the event is cleared below
+    if (stop_valve && safety_gate_) {
+        safety_gate_->executeCommand(WATER_VALVE, false, 0, true);
+    }
+    if (stop_drain && safety_gate_) {
+        safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0, true);
+        recovery_drain_off_pending_ = true;  // WiFi is not up yet: repeat once the Shelly answers
+    }
+    if (stop_valve || stop_drain) {
+        psm_->clearEvent();
+        ESP_LOGW(TAG, "Recovery: %s interrupted (age %lld s), %s%s OFF, PSM cleared", name.c_str(), age,
+                 stop_valve ? "WaterValve" : "", stop_drain ? (stop_valve ? " + WastewaterPump" : "WastewaterPump") : "");
+    } else {
+        ESP_LOGW(TAG, "Recovery: %s interrupted (status %d, age %lld s), no automatic action", name.c_str(),
+                 event.status, age);
+    }
+    if (alert_service_) {
+        alert_service_->alert(alert_service::AlertLevel::WARNING, "Operation interrupted",
+                              "Operation '" + name + "' was interrupted by power loss (age: " + std::to_string(age) +
+                                  "s) — verify system state");
+    }
+}
+
+void PlantOSController::resendRecoveryDrainOff() {
+    // The recovery's drain OFF at INIT goes out before WiFi is up and usually fails; repeat it once
+    // the Shelly answers (a new drain started meanwhile wins).
+    if (!recovery_drain_off_pending_ || !hal_ || !hal_->isShellyReachable()) {
+        return;
+    }
+    recovery_drain_off_pending_ = false;
+    if (current_state_ == ControllerState::WATER_EMPTYING || !safety_gate_) {
+        return;
+    }
+    ESP_LOGI(TAG, "Recovery: WastewaterPump OFF repeated (Shelly reachable)");
+    safety_gate_->executeCommand(WASTEWATER_PUMP, false, 0, true);
+}
+
 bool PlantOSController::checkPersistedHoldState(uint32_t &last_check_ms, uint32_t now) {
     // Every 5 s in IDLE / NIGHT: a STATE_SHUTDOWN or STATE_PAUSE event in the PSM wins. This covers
     // a state set while running, a restore in INIT that failed on timing, and component init order.
@@ -499,9 +508,9 @@ bool PlantOSController::checkPersistedHoldState(uint32_t &last_check_ms, uint32_
     ESP_LOGD(TAG, "%s PSM check: '%s' status %d age %lld s", stateName(current_state_), event.eventID,
              event.status, (long long)psm_->getEventAge());
     ControllerState hold;
-    if (strcmp(event.eventID, "STATE_SHUTDOWN") == 0) {
+    if (strcmp(event.eventID, psm_event::STATE_SHUTDOWN) == 0) {
         hold = ControllerState::SHUTDOWN;
-    } else if (strcmp(event.eventID, "STATE_PAUSE") == 0) {
+    } else if (strcmp(event.eventID, psm_event::STATE_PAUSE) == 0) {
         hold = ControllerState::PAUSE;
     } else {
         return false;
@@ -729,7 +738,7 @@ void PlantOSController::handleShutdown() {
 
         // Persist SHUTDOWN state to NVS
         if (psm_) {
-            psm_->logEvent("STATE_SHUTDOWN", 1);  // 1 = ENTERED_SHUTDOWN
+            psm_->logEvent(psm_event::STATE_SHUTDOWN, 1);  // 1 = ENTERED_SHUTDOWN
             ESP_LOGI(TAG, "SHUTDOWN logged to PSM (%s)", psm_->hasEvent() ? "saved" : "NOT saved");
         } else {
             ESP_LOGE(TAG, "No PSM - SHUTDOWN not persisted");
@@ -756,7 +765,7 @@ void PlantOSController::handlePause() {
 
         // Persist PAUSE state to NVS
         if (psm_) {
-            psm_->logEvent("STATE_PAUSE", 1);  // 1 = ENTERED_PAUSE
+            psm_->logEvent(psm_event::STATE_PAUSE, 1);  // 1 = ENTERED_PAUSE
             ESP_LOGI(TAG, "PAUSE logged to PSM (%s)", psm_->hasEvent() ? "saved" : "NOT saved");
         } else {
             ESP_LOGE(TAG, "No PSM - PAUSE not persisted");
@@ -906,7 +915,7 @@ void PlantOSController::startPhCorrection() {
     ph_post_feed_stabilize_ = false;
 
     if (psm_) {
-        psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::PH_CORRECTION, 0);  // 0 = STARTED
     }
     transitionTo(ControllerState::PH_MEASURING);
 }
@@ -924,7 +933,7 @@ void PlantOSController::startPhCalibration() {
     logPhCalibrationPrompt(0);
 
     if (psm_) {
-        psm_->logEvent("PH_CALIBRATION", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::PH_CALIBRATION, 0);  // 0 = STARTED
     }
     transitionTo(ControllerState::PH_CALIBRATING);
 }
@@ -934,7 +943,7 @@ void PlantOSController::startFeeding() {
 
     ESP_LOGI(TAG, "Manual feeding");
     if (psm_) {
-        psm_->logEvent("FEEDING", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::FEEDING, 0);  // 0 = STARTED
     }
     transitionTo(ControllerState::FEEDING);
 }
@@ -957,7 +966,7 @@ void PlantOSController::startMotherNutrients(float liters) {
     ESP_LOGI(TAG, "Mother mix %.1f L: A %.2f mL, B %.2f mL, C %.2f mL (A->B->C->IDLE, no EC loop)",
              liters, ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
 
-    if (psm_) psm_->logEvent("MOTHER_MIX", 0);
+    if (psm_) psm_->logEvent(psm_event::MOTHER_MIX, 0);
     transitionTo(ControllerState::EC_FEEDING);
 }
 
@@ -970,7 +979,7 @@ void PlantOSController::startFillTank() {
     auto_ph_correction_pending_ = true;
 
     if (psm_) {
-        psm_->logEvent("WATER_FILL", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::WATER_FILL, 0);  // 0 = STARTED
     }
     transitionTo(ControllerState::WATER_FILLING);
 }
@@ -981,7 +990,7 @@ void PlantOSController::startEmptyTank() {
 
     ESP_LOGI(TAG, "Tank drain until EMPTY sensor clears");
     if (psm_) {
-        psm_->logEvent("WATER_EMPTY", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::WATER_EMPTY, 0);  // 0 = STARTED
     }
     transitionTo(ControllerState::WATER_EMPTYING);
 }
@@ -1006,7 +1015,7 @@ void PlantOSController::startFeed() {
     is_reservoir_change_ = false;  // normal feed doses for the delta volume (LOW->HIGH)
 
     if (psm_) {
-        psm_->logEvent("FEED_OPERATION", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::FEED_OPERATION, 0);  // 0 = STARTED
     }
     transitionTo(ControllerState::FEED_FILLING);
 }
@@ -1048,7 +1057,7 @@ void PlantOSController::startReservoirChange() {
     is_reservoir_change_ = true;  // reservoir change doses for the total volume (EMPTY->HIGH)
 
     if (psm_) {
-        psm_->logEvent("RESERVOIR_CHANGE", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::RESERVOIR_CHANGE, 0);  // 0 = STARTED
     }
     transitionTo(ControllerState::WATER_EMPTYING);
 }

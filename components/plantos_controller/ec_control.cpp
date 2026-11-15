@@ -68,7 +68,7 @@ void PlantOSController::handleFeeding() {
                  current_day, is_reservoir_change_ ? "total" : "delta", tank_volume_liters, ec_pre_feeding_,
                  schedule.ec_target, ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
 
-        if (psm_) psm_->logEvent("EC_FEEDING", 0);
+        if (psm_) psm_->logEvent(psm_event::EC_FEEDING, 0);
         transitionTo(ControllerState::EC_FEEDING);
     } else {
         // Fixed-dose fallback: single pass A → B → C when EC target not configured
@@ -81,7 +81,7 @@ void PlantOSController::handleFeeding() {
                  current_day, is_reservoir_change_ ? "total" : "delta", tank_volume_liters,
                  ec_dose_A_ml_, ec_dose_B_ml_, ec_dose_C_ml_);
 
-        if (psm_) psm_->logEvent("EC_FEEDING", 0);
+        if (psm_) psm_->logEvent(psm_event::EC_FEEDING, 0);
         transitionTo(ControllerState::EC_FEEDING);
     }
 }
@@ -187,7 +187,7 @@ void PlantOSController::handleEcProcessing() {
 
     // Log PSM event for crash recovery
     if (psm_) {
-        psm_->logEvent("EC_FEEDING", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::EC_FEEDING, 0);  // 0 = STARTED
     }
 
     transitionTo(ControllerState::EC_CALCULATING);
@@ -438,7 +438,7 @@ void PlantOSController::handleEcMeasuring() {
 
     if (psm_) {
         psm_->clearEvent();
-        psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+        psm_->logEvent(psm_event::PH_CORRECTION, 0);  // 0 = STARTED
     }
 
     transitionTo(ControllerState::PH_PROCESSING);
@@ -455,7 +455,7 @@ void PlantOSController::transitionAfterEcSkipped() {
 
         if (psm_) {
             psm_->clearEvent();
-            psm_->logEvent("PH_CORRECTION", 0);  // 0 = STARTED
+            psm_->logEvent(psm_event::PH_CORRECTION, 0);  // 0 = STARTED
         }
 
         transitionTo(ControllerState::PH_PROCESSING);

@@ -450,7 +450,7 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 
 | STATE              | ACTUATOR ACTIONS |
 |-------------------|------------------|
-| INIT               | - None (LED only: Red→Yellow→Green) |
+| INIT               | - None (LED only: Red→Yellow→Green)<br>- At 3 s: PSM recovery may switch WaterValve / WastewaterPump OFF (table "PSM Events") |
 | IDLE               | - None (LED only: Breathing Green) |
 | SHUTDOWN           | - Turn OFF all actuators (emergency safety) |
 | PAUSE              | - Maintain current actuator states (no changes) |
@@ -469,18 +469,41 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 
 ## Persistent State Manager (PSM) Events
 
-| STATE              | PSM EVENT LOGGED          | RECOVERY ACTION ON BOOT |
+The event names are the constants in `components/persistent_state_manager/psm_events.h`; `logEvent()`,
+the recovery, the IDLE/NIGHT hold check and `clearPsmEventIf()` all use them. Until 2026-11-15 the
+recovery compared against `WATER_FILLING` / `WATER_EMPTYING`, which no code ever logged, so a crash
+mid-fill or mid-drain fell through to "alert only" and the drain pump (a Shelly socket that keeps
+running through an ESP reset) was never switched off by the recovery.
+
+**When:** once, at the end of INIT (`elapsed >= 3 s`, `recoverFromPsm()`), when every component is set up.
+(Before 2026-11-15 only while INIT was < 100 ms old, a window the first `loop()` after boot usually
+misses; the IDLE/NIGHT hold check below then caught SHUTDOWN/PAUSE about 5 s later.)
+
+| LOGGED BY | PSM EVENT (status) | RECOVERY ACTION ON BOOT |
 |-------------------|---------------------------|------------------------|
-| SHUTDOWN           | "STATE_SHUTDOWN"          | Restore SHUTDOWN state after INIT (persists across reboot) |
-| PAUSE              | "STATE_PAUSE"             | Restore PAUSE state after INIT (persists across reboot) |
-| PH_MEASURING       | "PH_CORRECTION" (0)       | Operation interrupted, return to IDLE |
-| PH_INJECTING       | (inherited from MEASURING)| Operation interrupted, return to IDLE |
-| PH_MIXING          | (inherited from MEASURING)| Operation interrupted, return to IDLE |
-| FEEDING            | "EC_FEEDING" (0)          | Setup state — immediately enters EC_FEEDING; recovery returns to IDLE |
-| WATER_FILLING      | "WATER_FILL" (0)          | Force-close WaterValve, clear PSM |
-| WATER_EMPTYING     | "WATER_EMPTYING" (0)      | Force-stop WastewaterPump, clear PSM |
-| FEED_FILLING       | "FEED_OPERATION" (0)      | Force-close WaterValve, clear flags & PSM |
-| PH_PROCESSING      | (no PSM logging)          | N/A |
+| SHUTDOWN entry     | `STATE_SHUTDOWN` (1)      | INIT → SHUTDOWN, alert "State restored: SHUTDOWN" |
+| PAUSE entry        | `STATE_PAUSE` (1)         | INIT → PAUSE, alert "State restored: PAUSE" |
+| startFillTank()    | `WATER_FILL` (0)          | WaterValve OFF, PSM cleared, alert, INIT → IDLE |
+| startEmptyTank()   | `WATER_EMPTY` (0)         | WastewaterPump OFF (repeated once when the Shelly answers), PSM cleared, alert, INIT → IDLE |
+| startFeed()        | `FEED_OPERATION` (0)      | WaterValve OFF, PSM cleared, alert, INIT → IDLE |
+| startReservoirChange() | `RESERVOIR_CHANGE` (0) | WaterValve OFF + WastewaterPump OFF (drain repeated as above), PSM cleared, alert, INIT → IDLE |
+| startPhCorrection(), auto pH, post-feed pH | `PH_CORRECTION` (0) | Alert only, event kept, INIT → IDLE |
+| pH < 5.0 or > 7.5 while measuring | `PH_CRITICAL` (2) | Alert only, event kept; cleared by the next good measurement |
+| startPhCalibration() | `PH_CALIBRATION` (0)    | Alert only, event kept, INIT → IDLE |
+| startFeeding()     | `FEEDING` (0)             | Alert only, event kept, INIT → IDLE |
+| EC feeding loop    | `EC_FEEDING` (0)          | Alert only, event kept, INIT → IDLE |
+| startMotherNutrients() | `MOTHER_MIX` (0)      | Alert only, event kept, INIT → IDLE |
+
+- The alert for an interrupted operation is WARNING "Operation interrupted" with the event name and age.
+- The OFF commands go through the safety gate with `forceExecute` (after a reset the gate tracks every
+  actuator as OFF and would drop a plain OFF as "already requested"). OFF always passes the preset
+  block, so this is the same in every preset. Dosing pumps and the valve are GPIO/LEDC outputs and are
+  off after a reset anyway; the explicit valve OFF is a second line.
+- At INIT WiFi is usually not up, so the first Shelly OFF for the drain pump may fail. `resendRecoveryDrainOff()`
+  (every `loop()`) sends it once more when the Shelly is reachable, unless a new drain (WATER_EMPTYING) runs.
+  The last backstop stays the gate's max duration: when the Shelly poll reports the pump ON, the gate starts
+  tracking it and switches it off after 1800 s.
+- IDLE/NIGHT hold check (every 5 s): `STATE_SHUTDOWN` / `STATE_PAUSE` in the PSM → SHUTDOWN / PAUSE.
 
 ## External Triggers (Public API)
 
@@ -584,7 +607,7 @@ All actuator commands flow through ActuatorSafetyGate which provides:
 
 ## 4. Persistent State Recovery (PSM)
 - SHUTDOWN and PAUSE states persist across power loss
-- Water operations force-close valves/pumps on boot recovery
+- Water operations (fill, drain, feed, reservoir change) switch the valve / drain pump OFF on boot recovery (table "PSM Events")
 - All operations logged with timestamps for age tracking
 
 ## 5. Maximum Attempt Limits
@@ -741,8 +764,8 @@ date sync all run later from `loop()`, so they already see the active preset.
 
 PSM recovery cannot resume an operation under a different preset: a switch is only possible when
 no operation runs, and the index is persisted before anything else. Recovery itself only closes
-the valve / stops the drain pump (safe in every preset) or restores SHUTDOWN/PAUSE; other events
-only raise an alert. The PSM record is therefore unchanged (no preset field).
+the valve / stops the drain pump (OFF commands, safe in every preset) or restores SHUTDOWN/PAUSE;
+other events only raise an alert. The PSM record is therefore unchanged (no preset field).
 
 ## NVS
 

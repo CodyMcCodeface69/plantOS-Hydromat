@@ -4,6 +4,7 @@
 #include "esphome/core/preferences.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
+#include "psm_events.h"
 #include <cstring>
 #include <ctime>
 

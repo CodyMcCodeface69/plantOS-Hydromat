@@ -105,7 +105,7 @@ void PersistentStateManager::logEvent(const char* id, int status) {
         // CRITICAL FIX: Removed 200ms blocking delay that could contribute to WDT timeouts
         // sync() should be synchronous and wait for completion internally
         // Critical for STATE_SHUTDOWN and STATE_PAUSE persistence
-        if (strcmp(id, "STATE_SHUTDOWN") == 0 || strcmp(id, "STATE_PAUSE") == 0) {
+        if (strcmp(id, psm_event::STATE_SHUTDOWN) == 0 || strcmp(id, psm_event::STATE_PAUSE) == 0) {
             // Verify what was actually written to NVS
             CriticalEventLog verify_event;
             if (pref_.load(&verify_event)) {

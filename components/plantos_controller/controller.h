@@ -5,6 +5,7 @@
 #include "led_behavior.h"
 #include "CentralStatusLogger.h"  // Local copy owned by controller
 #include "grow_profile.h"
+#include "esphome/components/persistent_state_manager/psm_events.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,6 +42,8 @@ class AlertService;
 }
 
 namespace plantos_controller {
+
+namespace psm_event = esphome::persistent_state_manager::psm_event;
 
 /**
  * ControllerState - Unified FSM states for PlantOS Controller
@@ -551,6 +554,7 @@ private:
     // Boot recovery: State to restore after INIT completes (if PSM had persisted state)
     ControllerState boot_restore_state_{ControllerState::IDLE};
     bool boot_restore_pending_{false};
+    bool recovery_drain_off_pending_{false};  // repeat the recovery's drain OFF once the Shelly answers
 
     // Guards one-time boot actions (sensor check, cooldown init, reboot alert)
     bool boot_alert_sent_{false};
@@ -836,6 +840,8 @@ private:
     // ========================================================================
 
     void handleInit();
+    void recoverFromPsm();
+    void resendRecoveryDrainOff();
     void handleIdle();
     // handleIdle / handleNight / loop parts (controller.cpp)
     bool checkPersistedHoldState(uint32_t &last_check_ms, uint32_t now);

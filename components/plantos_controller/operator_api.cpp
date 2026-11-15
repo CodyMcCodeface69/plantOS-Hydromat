@@ -161,8 +161,7 @@ bool PlantOSController::changeGrowDay(int delta) {
 }
 
 void PlantOSController::onWifiConnected(const std::string& ip) {
-    status_logger_.updateIP(ip);
-    status_logger_.updateWebServerStatus(true, false);
+    snprintf(wifi_ip_, sizeof(wifi_ip_), "%s", ip.c_str());
 }
 
 // ============================================================================

@@ -310,7 +310,7 @@ public:
     /// Calendar day +1 / -1 (manual correction)
     bool changeGrowDay(int delta);
 
-    /// WiFi connected: IP and web server state into the status report
+    /// WiFi connected: IP for the status report header
     void onWifiConnected(const std::string& ip);
 
     /// Text sensor values (formatted exactly like the former YAML lambdas)
@@ -491,14 +491,9 @@ public:
     void requestStatusReport() { status_report_requested_ = true; }
 
     /**
-     * Configure status logger behavior
-     * Called from Python during component initialization
-     * @param enableReports Enable/disable periodic status reports
-     * @param reportIntervalMs Report interval in milliseconds
-     * @param verboseMode Enable instant verbose logging (filters out LED changes)
-     * @param enable420Mode Enable 420 easter egg at 4:20 AM/PM
+     * Periodic status report every 60 s on/off (debug switch "System Status Reports"; off at boot)
      */
-    void configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode, bool enable420Mode);
+    void setPeriodicStatusReport(bool enabled);
 
 private:
     /**
@@ -581,6 +576,10 @@ private:
 
     volatile bool temperature_changed_{false};  // Set by ISR callback, cleared by loop()
     bool status_report_requested_{false};       // Set by requestStatusReport(), cleared by loop()
+    bool status_report_periodic_{false};        // setPeriodicStatusReport()
+    uint32_t last_status_report_ms_{0};
+    static constexpr uint32_t STATUS_REPORT_INTERVAL_MS = 60000;
+    char wifi_ip_[16]{};                        // onWifiConnected(), report header only
     float last_temperature_{0.0f};              // Last temperature value received
 
     // ========================================================================
@@ -849,6 +848,7 @@ private:
     bool checkPeriodicPh(uint32_t now);
     bool checkAutoTriggers();
     void updateStatusReport();
+    void printStatusReport();
     void controlGrowLight();
     void handleNight();
     void handleShutdown();
@@ -1169,8 +1169,7 @@ private:
     bool requestPumpAdaptive(const char *pumpId, bool state, uint32_t requested_duration_sec, bool forceExecute);
 
     /**
-     * Check Shelly device health via HTTP ping
-     * Updates CentralStatusLogger with device status
+     * Shelly reachability (cached by the HAL's worker) -> SHELLY_OFFLINE alert
      * Called periodically from IDLE state (every 30 seconds)
      */
     void checkShellyHealth();

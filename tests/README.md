@@ -39,6 +39,9 @@ downloaded. All build output goes to `tests/build/` (git-ignored).
 | `test_idle_parts.cpp` | PSM hold check in IDLE/NIGHT, grow light schedule (`controlGrowLight`) |
 | `test_presets.cpp` | `preset_model.h` (names, function texts, volume and record validation, status text) and the NVS store `GrowProfile` (first boot = Haupt, persistence, write only on change, corrupt records) |
 | `test_preset_controller.cpp` | Presets in the controller: capability table for every operation × each missing function, auto triggers per function, mixing without air pump, grow light, safety gate block, switch rules / side effects / reboot, edits, per-preset feed markers, texts |
+| `test_psm_recovery.cpp` | PSM crash recovery: real `start*()` logs the event, "reboot" on the same NVS, INIT recovery (valve / drain OFF, PSM cleared, alert, hold states), drain OFF repeat when the Shelly answers |
+| `test_alerts.cpp` | `CentralStatusLogger` alert book: raise / update / resolve / clear, the "Alert State" texts (two `SUSPECT` behaviors pinned) |
+| `test_status_report.cpp` | `printStatusReport()` lines (captured through `host::log_sink`), missing values, level names, on-request and 60 s periodic report |
 | `test_robust_averager.cpp` | `sensor_filter/RobustAverager.h` |
 | `test_safety_gate.cpp` | `ActuatorSafetyGate`: debounce, max duration, watchdog, interlock, ramping, cycling |
 

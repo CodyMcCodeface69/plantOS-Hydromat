@@ -1089,6 +1089,9 @@ plantos_hal:
   ph_sensor: ph_sensor_real  # Real EZO pH UART sensor with filtering
   ph_sensor_component: ezo_ph_uart_component  # EZO pH UART component for calibration and direct readings
   temperature_sensor: water_temperature  # DS18B20 temperature sensor on GPIO3 (WTR_TEMP)
+  air_temperature_sensor: bme280_temperature  # BME280 (status report only)
+  air_humidity_sensor: bme280_humidity
+  air_pressure_sensor: bme280_pressure
   ec_sensor: ec_sensor                   # TDS/EC sensor (KS0429 via ADC on GPIO0)
   tds_sensor_component: ec_sensor        # TDS sensor component for EC calibration factor (NVS)
   water_level_high_sensor: water_level_high_sensor  # XKC-Y23-V capacitive sensor on GPIO17 (WTR_HI)
@@ -1178,15 +1181,8 @@ plantos_controller:
   night_mode_end_hour: 9        # Hour when night mode ends (0-23, default: 9 = 9 AM)
                                 # During night mode: no pH correction, feeding, or water filling
 
-  # Status Logger Configuration
-  enable_status_reports: false  # Enable/disable periodic status reports (default: false, use "System Status Reports" switch)
-  status_report_interval: 60s   # How often to print status reports (default: 30s)
-  verbose_mode: false           # Enable instant verbose logging of all events (default: false)
-                                # Verbose mode logs state changes, sensor readings, and actuator
-                                # commands in real-time without waiting for periodic reports.
-                                # Note: LED changes are automatically filtered out.
-  enable_420_mode: true         # Enable 420 easter egg at 4:20 AM/PM (default: true)
-                                # When enabled, displays ASCII art in status logs at 4:20
+  # Status report: "Print Status Report" button; periodic every 60 s only via the debug
+  # switch "System Status Reports" (off at boot).
 
   # pH Dosing K-Factor
   # dose_ml = (current_pH - 5.85) × tank_L × K

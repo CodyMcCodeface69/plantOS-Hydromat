@@ -5,6 +5,7 @@
 #include <map>
 #include <vector>
 #include <atomic>
+#include <cmath>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -417,6 +418,15 @@ public:
     virtual void onTemperatureChange(std::function<void(float)> callback) = 0;
 
     /**
+     * BME280 air values for the status report; NAN for a value without a reading
+     * @return true if at least one value is valid
+     */
+    virtual bool readAir(float &temp_c, float &humidity_pct, float &pressure_hpa) {
+        temp_c = humidity_pct = pressure_hpa = NAN;
+        return false;
+    }
+
+    /**
      * Read EC (Electrical Conductivity) value from TDS sensor
      * @return EC value in uS/cm, or 0.0 if not available
      */
@@ -594,6 +604,12 @@ public:
     void set_ph_sensor(esphome::sensor::Sensor* ph_sensor);
     void set_ph_sensor_component(esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component);
     void set_temperature_sensor(esphome::sensor::Sensor* temperature_sensor);
+    void set_air_sensors(esphome::sensor::Sensor* temp, esphome::sensor::Sensor* humidity,
+                         esphome::sensor::Sensor* pressure) {
+        air_temperature_sensor_ = temp;
+        air_humidity_sensor_ = humidity;
+        air_pressure_sensor_ = pressure;
+    }
     void set_water_level_high_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_low_sensor(esphome::binary_sensor::BinarySensor* sensor);
     void set_water_level_empty_sensor(esphome::binary_sensor::BinarySensor* sensor);
@@ -678,6 +694,7 @@ public:
     float readTemperature() override;
     bool hasTemperature() const override;
     void onTemperatureChange(std::function<void(float)> callback) override;
+    bool readAir(float &temp_c, float &humidity_pct, float &pressure_hpa) override;
     bool sendPhTemperatureCompensation(float temperature) override;
 
     float readEC() override;
@@ -720,6 +737,9 @@ private:
     esphome::sensor::Sensor* ph_sensor_{nullptr};
     esphome::ezo_ph_uart::EZOPHUARTComponent* ph_sensor_component_{nullptr};
     esphome::sensor::Sensor* temperature_sensor_{nullptr};
+    esphome::sensor::Sensor* air_temperature_sensor_{nullptr};
+    esphome::sensor::Sensor* air_humidity_sensor_{nullptr};
+    esphome::sensor::Sensor* air_pressure_sensor_{nullptr};
     esphome::sensor::Sensor* ec_sensor_{nullptr};
     tds_sensor::TDSSensor* tds_sensor_component_{nullptr};
     esphome::binary_sensor::BinarySensor* water_level_high_sensor_{nullptr};

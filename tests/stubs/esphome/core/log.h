@@ -3,8 +3,13 @@
 #include <cstdarg>
 #include <cstdio>
 
+#include <string>
+#include <vector>
+
 namespace host {
 extern bool log_enabled;
+// When set, every log line ("[I][tag] text") is also appended here (tests that check log output)
+extern std::vector<std::string> *log_sink;
 void log_line(char level, const char *tag, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
 }  // namespace host
 

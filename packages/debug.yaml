@@ -525,7 +525,7 @@ switch:
     name: "System Status Reports"
     id: enable_status_reports
     optimistic: true
-    restore_mode: ALWAYS_OFF  # ~60-line burst every 60s; use "Print Status Report" for one-off dumps
+    restore_mode: ALWAYS_OFF  # ~12-line report every 60s; use "Print Status Report" for one-off dumps
     icon: "mdi:file-document-outline"
     web_server:
       sorting_group_id: sg_debug_logging
@@ -534,22 +534,12 @@ switch:
       - logger.log:
           format: "Enabling periodic system status reports"
           level: INFO
-      - lambda: |-
-          // Enable status reports with configured interval (60s) and verbose mode
-          auto logger = id(unified_controller)->getStatusLogger();
-          if (logger) {
-            logger->configure(true, 60000, false);  // Use configured 60s interval
-          }
+      - lambda: id(unified_controller)->setPeriodicStatusReport(true);
     turn_off_action:
       - logger.log:
           format: "Disabling periodic system status reports"
           level: INFO
-      - lambda: |-
-          // Disable status reports
-          auto logger = id(unified_controller)->getStatusLogger();
-          if (logger) {
-            logger->configure(false, 60000, false);
-          }
+      - lambda: id(unified_controller)->setPeriodicStatusReport(false);
 
   # [DEBUG] Verbose log toggle - tag: time
   - platform: template

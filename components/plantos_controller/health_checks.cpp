@@ -29,36 +29,15 @@ void PlantOSController::checkShellyHealth() {
     }
     last_shelly_check_time_ = now;
 
-    // Shelly switched off on purpose: report it as disabled, not as an offline alert
+    // Shelly switched off on purpose: no offline alert
     if (!hal_->isShellyEnabled()) {
-        std::vector<ShellyDeviceInfo> devices;
-        devices.push_back(ShellyDeviceInfo("Shelly Plus 4PM", "192.168.0.130", false, false, "Disabled"));
-        status_logger_.updateShellyHardwareStatus(devices);
         status_logger_.clearAlert("SHELLY_OFFLINE");
         return;
     }
 
-    // Read cached Shelly health status from HAL (polled by the HAL's Shelly worker task)
+    // Cached by the HAL's Shelly worker task
     bool reachable = hal_->isShellyReachable();
-    uint32_t uptime = hal_->getShellyUptime();
-
-    ESP_LOGD(TAG, "Shelly health status: %s (uptime: %us)",
-             reachable ? "ONLINE" : "OFFLINE", (unsigned)uptime);
-
-    // Update CentralStatusLogger with result
-    std::vector<ShellyDeviceInfo> devices;
-    devices.push_back(ShellyDeviceInfo(
-        "Shelly Plus 4PM",
-        "192.168.0.130",
-        reachable,
-        true,  // Critical device
-        reachable ? "Online" : "Offline"
-    ));
-    if (reachable) {
-        devices[0].uptime_seconds = uptime;
-        devices[0].last_seen_ms = now;
-    }
-    status_logger_.updateShellyHardwareStatus(devices);
+    ESP_LOGD(TAG, "Shelly %s (uptime %us)", reachable ? "online" : "offline", (unsigned) hal_->getShellyUptime());
 
     // Update alert status based on reachability
     if (!reachable) {

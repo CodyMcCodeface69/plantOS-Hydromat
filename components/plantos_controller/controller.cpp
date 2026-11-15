@@ -36,9 +36,6 @@ PlantOSController::PlantOSController() {
 // ============================================================================
 
 void PlantOSController::setup() {
-    // Initialize status logger
-    status_logger_.begin();
-
     // Verify critical dependencies
     if (!hal_) {
         ESP_LOGE(TAG, "HAL not configured - Controller cannot function!");
@@ -156,159 +153,6 @@ void PlantOSController::loop() {
     }
 
     controlGrowLight();
-}
-
-void PlantOSController::updateStatusReport() {
-    // Check if we should print periodic status report (or one was requested on demand)
-    bool forced_report = status_report_requested_;
-    if (status_logger_.shouldPrintStatusReport() || forced_report) {
-        status_report_requested_ = false;
-        // Update status logger with current pH before printing
-        if (hal_->hasPhValue()) {
-            status_logger_.updateStatus(hal_->readPH(), "");
-        }
-
-        // Update UART hardware status (EZO pH sensor)
-        if (hal_) {
-            std::vector<UARTDeviceInfo> uartDevices;
-            std::string status = "";
-
-            // Check if sensor is ready
-            bool isReady = hal_->isPhSensorReady();
-
-            // Add calibration status if available
-            // Note: Calibration query would require async call, so we just show ready status
-            if (isReady) {
-                status = "Ready";
-            } else {
-                status = "Not responding";
-            }
-
-            uartDevices.push_back(UARTDeviceInfo(
-                "EZO pH Sensor",
-                "TX=GPIO18, RX=GPIO19 (uart_bus)",
-                isReady,
-                true,  // critical
-                status
-            ));
-
-            status_logger_.updateUARTHardwareStatus(uartDevices);
-        }
-
-        // Update 1-Wire hardware status (DS18B20 temperature sensor)
-        // Always report if configured, even if waiting for first reading
-        std::vector<OneWireDeviceInfo> oneWireDevices;
-
-        bool hasReading = hal_->hasTemperature();
-        std::string status;
-        float temp = 0.0f;
-
-        if (hasReading) {
-            temp = hal_->readTemperature();
-            char statusBuf[32];
-            snprintf(statusBuf, sizeof(statusBuf), "%.1f°C", temp);
-            status = std::string(statusBuf);
-        } else {
-            status = "Waiting for first reading";
-        }
-
-        oneWireDevices.push_back(OneWireDeviceInfo(
-            "DS18B20 Temperature",
-            "GPIO3",
-            hasReading,  // ready when has reading
-            true,        // critical for pH compensation
-            status
-        ));
-
-        status_logger_.updateOneWireHardwareStatus(oneWireDevices);
-
-        // Update water temperature in sensor data section
-        status_logger_.updateWaterTemperature(temp, hasReading);
-
-        // Update EC sensor data in status logger
-        status_logger_.updateEC(hal_->readEC(), hal_->hasECValue());
-
-        // Update water level sensors in sensor data section (3-sensor system)
-        bool hasWaterLevelSensors = hal_->hasWaterLevelSensors();
-        bool highSensor = false;
-        bool lowSensor = false;
-        bool emptySensor = false;
-
-        if (hasWaterLevelSensors) {
-            highSensor = hal_->readWaterLevelHigh();
-            lowSensor = hal_->readWaterLevelLow();
-            emptySensor = hal_->readWaterLevelEmpty();
-        }
-
-        status_logger_.updateWaterLevelSensors(highSensor, lowSensor, emptySensor, hasWaterLevelSensors);
-
-        // Update pump configurations in status logger
-        std::vector<PumpConfigInfo> pumpConfigs;
-        pumpConfigs.push_back(PumpConfigInfo(
-            "pH Pump (AcidPump)",
-            hal_->getPumpConfig("AcidPump").flow_rate_ml_s,
-            hal_->getPumpConfig("AcidPump").pwm_intensity
-        ));
-        pumpConfigs.push_back(PumpConfigInfo(
-            "Grow Pump (NutrientPumpA)",
-            hal_->getPumpConfig("NutrientPumpA").flow_rate_ml_s,
-            hal_->getPumpConfig("NutrientPumpA").pwm_intensity
-        ));
-        pumpConfigs.push_back(PumpConfigInfo(
-            "Micro Pump (NutrientPumpB)",
-            hal_->getPumpConfig("NutrientPumpB").flow_rate_ml_s,
-            hal_->getPumpConfig("NutrientPumpB").pwm_intensity
-        ));
-        pumpConfigs.push_back(PumpConfigInfo(
-            "Bloom Pump (NutrientPumpC)",
-            hal_->getPumpConfig("NutrientPumpC").flow_rate_ml_s,
-            hal_->getPumpConfig("NutrientPumpC").pwm_intensity
-        ));
-        status_logger_.updatePumpConfigurations(pumpConfigs);
-
-        // Update PSM event info in status logger
-        if (psm_) {
-            if (psm_->hasEvent()) {
-                esphome::persistent_state_manager::CriticalEventLog event = psm_->getLastEvent();
-                status_logger_.updatePSMEvent(event.eventID, event.status, psm_->getEventAge());
-            } else {
-                // No event - clear PSM info in status logger
-                status_logger_.updatePSMEvent("", 0, -1);
-            }
-        }
-
-        // Update calendar status in status logger
-        if (calendar_manager_) {
-            // Use calendar manager's actual current day (not timestamp-based calculation)
-            uint16_t currentDay = calendar_manager_->get_current_day();
-            esphome::calendar_manager::DailySchedule schedule = calendar_manager_->get_schedule(currentDay);
-            status_logger_.updateCalendarStatus(
-                profile_.active_name(),
-                currentDay,
-                calendar_manager_->get_defined_days(),
-                schedule.target_ph_min,
-                schedule.target_ph_max,
-                schedule.nutrient_A_ml_per_liter,
-                schedule.nutrient_B_ml_per_liter,
-                schedule.nutrient_C_ml_per_liter,
-                calendar_manager_->is_safe_mode(),
-                schedule.ec_target,
-                ec_target_multiplier_
-            );
-        }
-
-        status_logger_.logStatus(forced_report);
-
-        // Log water level status with ASCII art visualization (3-sensor system)
-        if (hal_->hasWaterLevelSensors()) {
-            bool high = hal_->readWaterLevelHigh();
-            bool low = hal_->readWaterLevelLow();
-            bool empty = hal_->readWaterLevelEmpty();
-            status_logger_.logWaterLevelStatus(high, low, empty, true);
-        } else {
-            status_logger_.logWaterLevelStatus(false, false, false, false);  // Sensors offline
-        }
-    }
 }
 
 void PlantOSController::controlGrowLight() {
@@ -744,9 +588,6 @@ void PlantOSController::handleShutdown() {
             ESP_LOGE(TAG, "No PSM - SHUTDOWN not persisted");
         }
 
-        // Update status logger
-        status_logger_.updateMaintenanceMode(true);
-
         return;
     }
 
@@ -1086,7 +927,6 @@ void PlantOSController::setToIdle() {
         if (psm_) {
             psm_->clearEvent();
         }
-        status_logger_.updateMaintenanceMode(false);
         transitionTo(ControllerState::IDLE);
     } else {
         ESP_LOGW(TAG, "Resume ignored: not in SHUTDOWN/PAUSE (state %s)", stateName(current_state_));
@@ -1108,11 +948,6 @@ void PlantOSController::resetToInit() {
     ESP_LOGI(TAG, "Reset to INIT requested");
     turnOffAllPumps();
     transitionTo(ControllerState::INIT);
-}
-
-void PlantOSController::configureStatusLogger(bool enableReports, uint32_t reportIntervalMs, bool verboseMode, bool enable420Mode) {
-    status_logger_.configure(enableReports, reportIntervalMs, verboseMode);
-    status_logger_.set420Mode(enable420Mode);
 }
 
 const char *PlantOSController::stateName(ControllerState state) {
@@ -1143,8 +978,6 @@ void PlantOSController::transitionTo(ControllerState newState) {
     const char* newStateName = stateName(newState);
     ESP_LOGI(TAG, "State %s -> %s (after %us)", stateName(current_state_), newStateName,
              (unsigned)(getStateElapsed() / 1000));
-
-    status_logger_.updateControllerState(newStateName);
 
     current_state_ = newState;
     state_start_time_ = esphome::millis();

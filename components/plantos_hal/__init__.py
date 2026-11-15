@@ -29,6 +29,9 @@ CONF_SYSTEM_LED = 'system_led'
 CONF_PH_SENSOR = 'ph_sensor'
 CONF_PH_SENSOR_COMPONENT = 'ph_sensor_component'
 CONF_TEMPERATURE_SENSOR = 'temperature_sensor'
+CONF_AIR_TEMPERATURE_SENSOR = 'air_temperature_sensor'
+CONF_AIR_HUMIDITY_SENSOR = 'air_humidity_sensor'
+CONF_AIR_PRESSURE_SENSOR = 'air_pressure_sensor'
 CONF_EC_SENSOR = 'ec_sensor'
 CONF_TDS_SENSOR_COMPONENT = 'tds_sensor_component'
 CONF_WATER_LEVEL_HIGH_SENSOR = 'water_level_high_sensor'
@@ -85,6 +88,9 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_PH_SENSOR): cv.use_id(sensor.Sensor),
     cv.Required(CONF_PH_SENSOR_COMPONENT): cv.use_id(cg.PollingComponent),  # EZO pH UART component
     cv.Optional(CONF_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
+    cv.Optional(CONF_AIR_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
+    cv.Optional(CONF_AIR_HUMIDITY_SENSOR): cv.use_id(sensor.Sensor),
+    cv.Optional(CONF_AIR_PRESSURE_SENSOR): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_EC_SENSOR): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_TDS_SENSOR_COMPONENT): cv.use_id(sensor.Sensor),
     cv.Optional(CONF_WATER_LEVEL_HIGH_SENSOR): cv.use_id(binary_sensor.BinarySensor),
@@ -154,6 +160,13 @@ async def to_code(config):
     if CONF_TEMPERATURE_SENSOR in config:
         temperature_sensor = await cg.get_variable(config[CONF_TEMPERATURE_SENSOR])
         cg.add(var.set_temperature_sensor(temperature_sensor))
+
+    # BME280 air sensors (optional, status report only)
+    air = []
+    for key in (CONF_AIR_TEMPERATURE_SENSOR, CONF_AIR_HUMIDITY_SENSOR, CONF_AIR_PRESSURE_SENSOR):
+        air.append(await cg.get_variable(config[key]) if key in config else cg.nullptr)
+    if any(key in config for key in (CONF_AIR_TEMPERATURE_SENSOR, CONF_AIR_HUMIDITY_SENSOR, CONF_AIR_PRESSURE_SENSOR)):
+        cg.add(var.set_air_sensors(*air))
 
     # Inject EC sensor dependency (optional)
     if CONF_EC_SENSOR in config:

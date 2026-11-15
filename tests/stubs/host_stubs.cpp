@@ -21,7 +21,10 @@ int nvs_save_count = 0;
 void set_millis(uint32_t ms) { g_millis = ms; }
 void advance_millis(uint32_t ms) { g_millis += ms; }
 void set_unix_time(int64_t t) { g_unix_time = t; }
+std::vector<std::string> *log_sink = nullptr;
+
 void reset() {
+  log_sink = nullptr;
   g_millis = 0;
   g_unix_time = 0;
   nvs.clear();
@@ -30,6 +33,15 @@ void reset() {
 }
 
 void log_line(char level, const char *tag, const char *fmt, ...) {
+  if (log_sink) {
+    char buf[512];
+    int n = snprintf(buf, sizeof(buf), "[%c][%s] ", level, tag);
+    va_list cp;
+    va_start(cp, fmt);
+    vsnprintf(buf + n, sizeof(buf) - n, fmt, cp);
+    va_end(cp);
+    log_sink->push_back(buf);
+  }
   if (!log_enabled) return;
   va_list ap;
   va_start(ap, fmt);

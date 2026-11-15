@@ -714,6 +714,14 @@ float ESPHomeHAL::readTemperature() {
     return temperature_sensor_->state;
 }
 
+bool ESPHomeHAL::readAir(float &temp_c, float &humidity_pct, float &pressure_hpa) {
+    auto value = [](esphome::sensor::Sensor *s) { return s && s->has_state() ? s->state : NAN; };
+    temp_c = value(air_temperature_sensor_);
+    humidity_pct = value(air_humidity_sensor_);
+    pressure_hpa = value(air_pressure_sensor_);
+    return !std::isnan(temp_c) || !std::isnan(humidity_pct) || !std::isnan(pressure_hpa);
+}
+
 bool ESPHomeHAL::hasTemperature() const {
     return temperature_sensor_ && temperature_sensor_->has_state();
 }

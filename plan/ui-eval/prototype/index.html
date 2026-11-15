@@ -452,18 +452,19 @@ const ENTITIES = {
   motherVol:    {d:'number', name:'Mother Mix Volume', min:1, max:15, step:0.5, unit:'L'},
   airOn:        {d:'number', name:'Air Pump ON Period', min:10, max:3600, step:10, unit:'s'},
   airOff:       {d:'number', name:'Air Pump OFF Period', min:10, max:3600, step:10, unit:'s'},
-  // ---- planned (phase 3.5), names are proposals --------------------------------------
-  preset:       {d:'select', name:'Preset', planned:true, options:['Anzucht','Mutter','Haupt']},
-  volDelta:     {d:'number', name:'Tank Volume LOW→HIGH', planned:true, min:1, max:200, step:0.1, unit:'L'},
-  volTotal:     {d:'number', name:'Tank Volume EMPTY→HIGH', planned:true, min:1, max:300, step:0.1, unit:'L'},
-  fnNutrients:  {d:'switch', name:'Function Nutrients', planned:true},
-  fnWaterFill:  {d:'switch', name:'Function Water Fill', planned:true},
-  fnDrain:      {d:'switch', name:'Function Drain', planned:true},
-  fnAirPump:    {d:'switch', name:'Function Air Pump', planned:true},
-  fnGrowLight:  {d:'switch', name:'Function Grow Light', planned:true},
-  btnRestart:   {d:'button', name:'Restart Grow (Day 1)', planned:true},
-  // proposed text: "Haupt · Day 69 · Bloom (pH 6.0-6.4, EC 2.20)" - the targets in it feed the gauges
-  presetStatus: {d:'text_sensor', name:'Preset Status', planned:true},
+  // ---- presets (phase 3.5): in the firmware since 2026-11-15, ids checked against ESPHome 2025.4.2 ----
+  preset:       {d:'select', name:'Preset', planned:false, options:['Anzucht','Mutter','Haupt']},
+  volDelta:     {d:'number', name:'Tank Volume LOW→HIGH', planned:false, min:1, max:200, step:0.1, unit:'L'},
+  volTotal:     {d:'number', name:'Tank Volume EMPTY→HIGH', planned:false, min:1, max:300, step:0.1, unit:'L'},
+  fnNutrients:  {d:'switch', name:'Function Nutrients', planned:false},
+  fnWaterFill:  {d:'switch', name:'Function Water Fill', planned:false},
+  fnDrain:      {d:'switch', name:'Function Drain', planned:false},
+  fnAirPump:    {d:'switch', name:'Function Air Pump', planned:false},
+  fnGrowLight:  {d:'switch', name:'Function Grow Light', planned:false},
+  btnRestart:   {d:'button', name:'Restart Grow (Day 1)', planned:false},
+  // text: "Haupt · Day 69 · Bloom (pH 6.0-6.4, EC 2.20)" - the targets in it feed the gauges
+  presetStatus: {d:'text_sensor', name:'Preset Status', planned:false},
+  lastRefusal:  {d:'text_sensor', name:'Last Refusal', planned:false},  // "HH:MM <action>: <reason>", "None"
 };
 const DEFAULT_ADDR = 'http://192.168.0.201';
 // Used for the gauges while the firmware does not publish the calendar targets.
@@ -845,7 +846,7 @@ function render(){
   // switches and numbers
   document.querySelectorAll('[data-sw]').forEach(b => { const k = b.dataset.sw, av = mockMode || available(k);
     b.disabled = !av; if (ent(k)) b.setAttribute('aria-checked', String(isOn(k)));
-    b.closest('.row').classList.toggle('off', !!ent(k) && !isOn(k) && !!ENTITIES[k].planned); });
+    b.closest('.row').classList.toggle('off', !!ent(k) && !isOn(k) && /^fn/.test(k)); });
   document.querySelectorAll('[data-num]').forEach(i => { const k = i.dataset.num, e = ENTITIES[k], v = num(k);
     i.disabled = !(mockMode || available(k));
     if (document.activeElement !== i) i.value = isFinite(v) ? v.toFixed(decimals(e.step)) : ''; });

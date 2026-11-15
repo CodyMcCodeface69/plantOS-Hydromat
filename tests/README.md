@@ -37,6 +37,8 @@ downloaded. All build output goes to `tests/build/` (git-ignored).
 | `test_ph_calibration.cpp` | `handlePhCalibrating` driven through all 3 points (command times and reading counts pinned), failures |
 | `test_water_ops.cpp` | `handleWaterFilling`, `handleWaterEmptying`, `handleFeedFilling` tick by tick: success, timeouts, refusals |
 | `test_idle_parts.cpp` | PSM hold check in IDLE/NIGHT, grow light schedule (`controlGrowLight`) |
+| `test_presets.cpp` | `preset_model.h` (names, function texts, volume and record validation, status text) and the NVS store `GrowProfile` (first boot = Haupt, persistence, write only on change, corrupt records) |
+| `test_preset_controller.cpp` | Presets in the controller: capability table for every operation × each missing function, auto triggers per function, mixing without air pump, grow light, safety gate block, switch rules / side effects / reboot, edits, per-preset feed markers, texts |
 | `test_robust_averager.cpp` | `sensor_filter/RobustAverager.h` |
 | `test_safety_gate.cpp` | `ActuatorSafetyGate`: debounce, max duration, watchdog, interlock, ramping, cycling |
 

@@ -199,6 +199,9 @@ web_server:
     - id: sg_status
       name: "Status"
       sorting_weight: 10
+    - id: sg_preset
+      name: "Preset"
+      sorting_weight: 15
     - id: sg_sensors
       name: "Sensors"
       sorting_weight: 20
@@ -722,6 +725,28 @@ text_sensor:
     # Update every 60 seconds
     update_interval: 60s
 
+  # === Preset status: "Haupt · Day 69/120 · Bloom (pH 6.0-6.4, EC 2.20)" ===
+  - platform: template
+    name: "Preset Status"
+    id: preset_status_text
+    icon: "mdi:sprout"
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 5
+    lambda: return id(unified_controller)->presetStatusText();
+    update_interval: 60s
+
+  # Why the last action was refused ("HH:MM Feed: night mode"), "None" before the first
+  - platform: template
+    name: "Last Refusal"
+    id: last_refusal_text
+    icon: "mdi:hand-back-left"
+    web_server:
+      sorting_group_id: sg_status
+      sorting_weight: 25
+    lambda: return id(unified_controller)->lastRefusalText();
+    update_interval: 10s
+
 ################################################################################
 # Button: Controller Management and Manual Routines
 #
@@ -1028,6 +1053,7 @@ button:
     on_press:
       - lambda: id(unified_controller)->changeGrowDay(+1);
       - component.update: current_grow_day_text
+      - component.update: preset_status_text
 
   - platform: template
     name: "Calendar Day -1"
@@ -1037,6 +1063,19 @@ button:
     on_press:
       - lambda: id(unified_controller)->changeGrowDay(-1);
       - component.update: current_grow_day_text
+      - component.update: preset_status_text
+
+  # === Preset: restart the active preset's grow at day 1 (today) ===
+  - platform: template
+    name: "Restart Grow (Day 1)"
+    id: preset_restart_grow
+    icon: "mdi:restart"
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 20
+    on_press:
+      - lambda: id(unified_controller)->restartGrow();
+      - script.execute: refresh_preset_ui
 
 ################################################################################
 # PlantOS HAL (Hardware Abstraction Layer) - Layer 3
@@ -1904,6 +1943,86 @@ switch:
     turn_off_action:
       - lambda: id(unified_controller)->setGrowLightScheduleEnabled(false);
 
+  # === Preset: functions of the ACTIVE preset (FSMINFO.md "Presets") ===
+  # The lambda shows the active preset's value (evaluated every loop, cached in RAM).
+  # restore_mode DISABLED: no action at boot, the preset store is the source.
+  # Turning a function off turns its actuators off; refused while an operation runs.
+  - platform: template
+    name: "Function Nutrients"
+    id: preset_fn_nutrients
+    icon: "mdi:bottle-tonic"
+    restore_mode: DISABLED
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 60
+    lambda: return id(unified_controller)->hasFunction(plantos_controller::preset_model::FN_NUTRIENTS);
+    turn_on_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_NUTRIENTS, true);
+      - script.execute: refresh_preset_ui
+    turn_off_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_NUTRIENTS, false);
+      - script.execute: refresh_preset_ui
+  - platform: template
+    name: "Function Water Fill"
+    id: preset_fn_water_fill
+    icon: "mdi:water-plus"
+    restore_mode: DISABLED
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 70
+    lambda: return id(unified_controller)->hasFunction(plantos_controller::preset_model::FN_WATER_FILL);
+    turn_on_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_WATER_FILL, true);
+      - script.execute: refresh_preset_ui
+    turn_off_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_WATER_FILL, false);
+      - script.execute: refresh_preset_ui
+  - platform: template
+    name: "Function Drain"
+    id: preset_fn_drain
+    icon: "mdi:water-minus"
+    restore_mode: DISABLED
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 80
+    lambda: return id(unified_controller)->hasFunction(plantos_controller::preset_model::FN_DRAIN);
+    turn_on_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_DRAIN, true);
+      - script.execute: refresh_preset_ui
+    turn_off_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_DRAIN, false);
+      - script.execute: refresh_preset_ui
+  - platform: template
+    name: "Function Air Pump"
+    id: preset_fn_air_pump
+    icon: "mdi:air-filter"
+    restore_mode: DISABLED
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 90
+    lambda: return id(unified_controller)->hasFunction(plantos_controller::preset_model::FN_AIR_PUMP);
+    turn_on_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_AIR_PUMP, true);
+      - script.execute: refresh_preset_ui
+    turn_off_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_AIR_PUMP, false);
+      - script.execute: refresh_preset_ui
+  - platform: template
+    name: "Function Grow Light"
+    id: preset_fn_grow_light
+    icon: "mdi:lightbulb-on"
+    restore_mode: DISABLED
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 100
+    lambda: return id(unified_controller)->hasFunction(plantos_controller::preset_model::FN_GROW_LIGHT);
+    turn_on_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_GROW_LIGHT, true);
+      - script.execute: refresh_preset_ui
+    turn_off_action:
+      - lambda: id(unified_controller)->setPresetFunction(plantos_controller::preset_model::FN_GROW_LIGHT, false);
+      - script.execute: refresh_preset_ui
+
 number:
   # === EC Target Multiplier ===
   - platform: template
@@ -2141,6 +2260,81 @@ number:
     unit_of_measurement: "s"
     mode: box
 
+  # === Preset: tank volumes of the ACTIVE preset (FSMINFO.md "Presets") ===
+  # Shows the active preset's values (after a switch too); a change is stored in NVS for
+  # that preset. Refused while an operation runs (see "Last Refusal").
+  - platform: template
+    id: preset_volume_delta
+    name: "Tank Volume LOW→HIGH"
+    icon: "mdi:cup-water"
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 30
+    min_value: 1
+    max_value: 200
+    step: 0.1
+    unit_of_measurement: "L"
+    mode: box
+    update_interval: 60s
+    lambda: return id(unified_controller)->presetVolumeDelta();
+    set_action:
+      - lambda: id(unified_controller)->setPresetVolumeDelta(x);
+      - script.execute: refresh_preset_ui
+
+  - platform: template
+    id: preset_volume_total
+    name: "Tank Volume EMPTY→HIGH"
+    icon: "mdi:cup-water"
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 40
+    min_value: 1
+    max_value: 300
+    step: 0.1
+    unit_of_measurement: "L"
+    mode: box
+    update_interval: 60s
+    lambda: return id(unified_controller)->presetVolumeTotal();
+    set_action:
+      - lambda: id(unified_controller)->setPresetVolumeTotal(x);
+      - script.execute: refresh_preset_ui
+
+################################################################################
+# Preset selection (FSMINFO.md "Presets")
+################################################################################
+select:
+  # Switches the active preset. Allowed only in IDLE, NIGHT, SHUTDOWN, PAUSE or ERROR;
+  # otherwise refused (see "Last Refusal") and the select snaps back to the active preset.
+  - platform: template
+    name: "Preset"
+    id: preset_select
+    icon: "mdi:sprout-outline"
+    options:
+      - "Anzucht"
+      - "Mutter"
+      - "Haupt"
+    web_server:
+      sorting_group_id: sg_preset
+      sorting_weight: 10
+    update_interval: 60s
+    lambda: return id(unified_controller)->activePresetName();
+    set_action:
+      - lambda: id(unified_controller)->requestPresetByName(x);
+      - script.execute: refresh_preset_ui
+
+script:
+  # Publish every preset-dependent entity at once after a preset action (switch states follow
+  # by themselves: their lambdas run every loop)
+  - id: refresh_preset_ui
+    then:
+      - component.update: preset_select
+      - component.update: preset_volume_delta
+      - component.update: preset_volume_total
+      - component.update: preset_status_text
+      - component.update: current_grow_day_text
+      - component.update: tank_volume_text
+      - component.update: last_refusal_text
+
 ################################################################################
 # Intervals
 ################################################################################
@@ -2162,3 +2356,5 @@ interval:
             root["water_high"]  = id(water_level_high_sensor).state;
             root["water_low"]   = id(water_level_low_sensor).state;
             root["water_empty"] = id(water_level_empty_sensor).state;
+            // Appended 2026-11-15 (new key at the end; consumers read keys by name)
+            root["preset"]      = id(unified_controller)->activePresetName();

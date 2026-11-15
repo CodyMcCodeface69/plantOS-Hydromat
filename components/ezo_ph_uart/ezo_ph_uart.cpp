@@ -646,6 +646,12 @@ bool EZOPHUARTComponent::send_command_(const char *cmd) {
 }
 
 bool EZOPHUARTComponent::read_response_(char *buffer, size_t len) {
+  // A blocking (operator-triggered) command takes over the UART. Drop a periodic read that is
+  // still pending: otherwise poll_line_() could keep the first bytes of a line while this
+  // read gets the rest, or the periodic read could later take this command's answer.
+  this->line_reading_ = false;
+  this->reading_state_ = ReadingState::IDLE;
+
   // Clear buffer before reading
   memset(buffer, 0, len);
 

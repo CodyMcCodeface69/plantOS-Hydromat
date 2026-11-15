@@ -72,7 +72,7 @@ Order by expected gain per risk. Measure after each step and stop a line of work
 - [x] 2.2 **Log diet in custom code**: the 890 `ESP_LOGI` are the real string mass. Remove banner/ASCII-art/multi-line
       decoration, demote chatter to `LOGD`, merge multi-call blocks into one line, drop logs that repeat the state name.
       Keep every log that tells an operator *why* something happened (transitions, dose amounts, aborts, alerts).
-- [ ] 2.3 **`CentralStatusLogger`** (1.3k lines): reduce to a compact on-demand report built into a fixed buffer.
+- [x] 2.3 **`CentralStatusLogger`** (1.3k lines): reduce to a compact on-demand report built into a fixed buffer.
       Decide whether the 420 easter egg stays (default: keep it tiny or drop it; list in `LOG.md`).
 - [x] 2.4 **Split and simplify the controller.** Target layout inside `plantos_controller/` (names for roles, not features):
       `controller.cpp` (setup/loop/dispatch/transitions/public API), `ph_control.cpp`, `ec_control.cpp`,
@@ -84,7 +84,7 @@ Order by expected gain per risk. Measure after each step and stop a line of work
 - [x] 2.5 **YAML lambdas → C++.** Move the `on_boot` configuration (max durations, PWM sync) into component config or
       controller setup, collapse the button/switch/number lambdas to one-line calls, and remove per-lambda logging.
       Goal: no business logic left in `plantOS.yaml`, and far fewer than 110 lambdas.
-- [ ] 2.6 **`ezo_ph_uart` `delay()`**: turn the command paths into a small non-blocking state machine. High risk without
+- [x] 2.6 (periodic read converted; operator command paths stay blocking, map in the file header) **`ezo_ph_uart` `delay()`**: turn the command paths into a small non-blocking state machine. High risk without
       the probe attached, so it goes last in this phase, gets host tests for the parser, and detailed
       `TEST_ON_DEVICE.md` rows (calibration, temperature compensation, reading cadence). Skip it if time runs short.
 - [x] 2.7 **8 MB flash, prepared only**: partition CSV + the `flash_size: 8MB` lines as a commented opt-in, with a

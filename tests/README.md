@@ -42,6 +42,7 @@ downloaded. All build output goes to `tests/build/` (git-ignored).
 | `test_psm_recovery.cpp` | PSM crash recovery: real `start*()` logs the event, "reboot" on the same NVS, INIT recovery (valve / drain OFF, PSM cleared, alert, hold states), drain OFF repeat when the Shelly answers |
 | `test_alerts.cpp` | `CentralStatusLogger` alert book: raise / update / resolve / clear, the "Alert State" texts (two `SUSPECT` behaviors pinned) |
 | `test_status_report.cpp` | `printStatusReport()` lines (captured through `host::log_sink`), missing values, level names, on-request and 60 s periodic report |
+| `test_ezo_ph_uart.cpp` | `ezo_ph_uart` against a fake EZO circuit on a fake UART (`stubs/esphome/components/uart/uart.h`): parser, command strings, periodic T -> R sequence and timing, errors / unplugged probe, calibration commands, and that `loop()` never blocks |
 | `test_robust_averager.cpp` | `sensor_filter/RobustAverager.h` |
 | `test_safety_gate.cpp` | `ActuatorSafetyGate`: debounce, max duration, watchdog, interlock, ramping, cycling |
 

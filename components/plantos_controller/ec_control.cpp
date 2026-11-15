@@ -35,7 +35,7 @@ void PlantOSController::handleFeeding() {
 
     sendTemperatureCompensation();
 
-    uint8_t current_day = calendar_manager_->get_current_day();
+    uint16_t current_day = calendar_manager_->get_current_day();
     auto schedule = calendar_manager_->get_schedule(current_day);
 
     float tank_volume_liters = is_reservoir_change_
@@ -94,6 +94,15 @@ void PlantOSController::handleEcProcessing() {
     // Yellow pulse - check EC reading and decide if feeding is needed
     if (!hal_) {
         transitionTo(ControllerState::ERROR);
+        return;
+    }
+
+    // Guard: the active preset has nutrient pumps (without them the check would only measure;
+    // the post-fill chain continues with the pH correction)
+    if (!profile_.has(preset_model::FN_NUTRIENTS)) {
+        ESP_LOGI(TAG, "[EC_PROCESSING] Preset %s has no nutrient pumps - EC check skipped", profile_.active_name());
+        auto_ec_check_pending_ = false;
+        transitionAfterEcSkipped();
         return;
     }
 
@@ -337,7 +346,8 @@ void PlantOSController::handleEcMixing() {
         state_entry_executed_ = true;
     }
 
-    if (elapsed >= EC_MIXING_DURATION_MS) {
+    // Preset without air pump: settle by time only, longer (applyNoAirSettle, presets.cpp)
+    if (elapsed >= applyNoAirSettle(EC_MIXING_DURATION_MS)) {
         transitionTo(ControllerState::EC_MEASURING);
     }
 }

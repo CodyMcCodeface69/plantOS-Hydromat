@@ -25,6 +25,7 @@ void CalendarManager::setup() {
     if (this->safe_mode_) {
         ESP_LOGW(TAG, "SAFE MODE ENABLED - Automated routines disabled");
     }
+    this->setup_done_ = true;
     this->log_today_("Active");
 }
 
@@ -102,7 +103,9 @@ bool CalendarManager::set_active_calendar(uint8_t index) {
     }
     if (index != this->active_) {
         this->active_ = index;
-        this->log_today_("Switched to");
+        if (this->setup_done_) {  // before setup() the day slots are not loaded yet
+            this->log_today_("Switched to");
+        }
     }
     return true;
 }

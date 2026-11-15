@@ -84,6 +84,12 @@ bool PlantOSController::shouldTriggerAutoFeeding() {
         return false;
     }
 
+    // CHECK 1b: The active preset can run a feed (fill + nutrients). A preset with water fill
+    // but no nutrient pumps tops up through auto-fill instead (no half feed).
+    if (!operationAvailable(Operation::FEED)) {
+        return false;
+    }
+
     // ========================================================================
     // CHECK 2: Must be in IDLE state (not busy)
     // ========================================================================
@@ -129,9 +135,21 @@ bool PlantOSController::shouldTriggerAutoFeeding() {
     return today != lastAutoFeedDay();
 }
 
+// Per-day markers are per preset, so a feed in Haupt does not block Mutter's feed the same day.
+// Haupt keeps the keys of the pre-preset firmware (no migration needed).
+const char *PlantOSController::autoFeedDayKey() const {
+    static const char *const KEYS[preset_model::PRESET_COUNT] = {"AutoFeedDay0", "AutoFeedDay1", "AutoFeedDay"};
+    return KEYS[profile_.active()];
+}
+
+const char *PlantOSController::autoResWeekKey() const {
+    static const char *const KEYS[preset_model::PRESET_COUNT] = {"AutoResWeek0", "AutoResWeek1", "AutoResWeek"};
+    return KEYS[profile_.active()];
+}
+
 int32_t PlantOSController::lastAutoFeedDay() {
     if (last_auto_feed_day_ < 0) {
-        last_auto_feed_day_ = psm_ ? psm_->loadInt32(NVS_KEY_AUTO_FEED_DAY, 0) : 0;
+        last_auto_feed_day_ = psm_ ? psm_->loadInt32(autoFeedDayKey(), 0) : 0;
     }
     return last_auto_feed_day_;
 }
@@ -142,7 +160,7 @@ void PlantOSController::markAutoFeedDay(int32_t day) {
     }
     last_auto_feed_day_ = day;
     if (psm_) {
-        psm_->saveInt32(NVS_KEY_AUTO_FEED_DAY, day);
+        psm_->saveInt32(autoFeedDayKey(), day);
     }
 }
 
@@ -155,6 +173,11 @@ bool PlantOSController::shouldTriggerAutoReservoirChange() {
     // CHECK 1: Auto reservoir change must be enabled
     // ========================================================================
     if (!auto_reservoir_change_enabled_) {
+        return false;
+    }
+
+    // CHECK 1b: The active preset can run a reservoir change (drain + fill + nutrients)
+    if (!operationAvailable(Operation::RESERVOIR_CHANGE)) {
         return false;
     }
 
@@ -202,7 +225,7 @@ bool PlantOSController::shouldTriggerAutoReservoirChange() {
 
 int32_t PlantOSController::lastAutoResWeek() {
     if (last_auto_res_week_ < 0) {
-        last_auto_res_week_ = psm_ ? psm_->loadInt32(NVS_KEY_AUTO_RES_WEEK, 0) : 0;
+        last_auto_res_week_ = psm_ ? psm_->loadInt32(autoResWeekKey(), 0) : 0;
     }
     return last_auto_res_week_;
 }
@@ -213,7 +236,7 @@ void PlantOSController::markAutoResWeek(int32_t week) {
     }
     last_auto_res_week_ = week;
     if (psm_) {
-        psm_->saveInt32(NVS_KEY_AUTO_RES_WEEK, week);
+        psm_->saveInt32(autoResWeekKey(), week);
     }
 }
 

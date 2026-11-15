@@ -1074,14 +1074,7 @@ plantos_hal:
   # ActuatorSafetyGate reference (for state sync on Shelly poll - consolidated HTTP)
   actuator_safety_gate: actuator_safety
 
-  # Tank Volume Configuration (for mL/L dosing calculations)
-  # Tank Volume Delta: Measured volume between LOW and HIGH water level sensors
-  # Used for normal daily feeding operations (auto-feed fills from LOW to HIGH)
-  tank_volume_delta_liters: 27.4    # Volume from LOW to HIGH sensors | 57x37x13cm = 27.417L
-
-  # Total Tank Volume: Measured volume from EMPTY to HIGH water level sensors
-  # Used for complete reservoir change operations (drains to EMPTY, refills to HIGH)
-  total_tank_volume_liters: 47.5    # Volume from EMPTY to HIGH sensors | 57x37x22.5cm = 47.498L
+  # Tank volumes are per preset: `plantos_controller: presets:` below.
 
   # Magnetic Valve Flow Rate (for automated water addition)
   # IMPORTANT: Calibrate using 10s test button (even though valve is ON/OFF only)
@@ -1161,6 +1154,37 @@ plantos_controller:
   # Increase if pH corrections are too small; decrease if overdosing.
   # The EMA learning will refine this value automatically over time.
   ph_k_factor: 0.25
+
+  # Runtime presets (FSMINFO.md "Presets"). The active preset is chosen in the web UI ("Preset"
+  # select) and kept in NVS; first boot of this firmware = Haupt. Each preset uses the calendar of
+  # the same name (calendar_manager: calendars:) with its own grow day.
+  # These are the DEFAULTS, the one place in YAML for them. The web UI entities "Tank Volume
+  # LOW→HIGH", "Tank Volume EMPTY→HIGH" and "Function ..." edit the active preset; once a preset
+  # was edited there, its NVS record wins over these lines (reflashing does not reset it).
+  #   tank_volume_delta_liters: LOW -> HIGH sensor (daily feed dose, acid dose, mixing time)
+  #   total_tank_volume_liters: EMPTY -> HIGH sensor (reservoir change dose)
+  #   functions: hardware the preset has. pH measurement + correction (probe, acid pump) always.
+  #     nutrients  = pumps A/B/C (feeding, EC feeding, mother mix)
+  #     water_fill = water valve + level sensors (fill, top-up, feed fill)
+  #     drain      = wastewater pump, Shelly 2 (empty tank, reservoir change)
+  #     air_pump   = Shelly 0 (aeration; without it pH/EC mixing settles by time only)
+  #     grow_light = Shelly 3 (light schedule)
+  presets:
+    haupt:                              # production tank
+      tank_volume_delta_liters: 27.4    # LOW -> HIGH | 57x37x13cm = 27.417L
+      total_tank_volume_liters: 47.5    # EMPTY -> HIGH | 57x37x22.5cm = 47.498L
+      functions: [nutrients, water_fill, drain, air_pump, grow_light]
+    mutter:                             # PLACEHOLDER volumes (plan/TO_MEASURE.md)
+      tank_volume_delta_liters: 10.0
+      total_tank_volume_liters: 15.0
+      functions: [nutrients, water_fill, drain]
+    anzucht:                            # PLACEHOLDER volumes and functions (plan/TO_MEASURE.md)
+      tank_volume_delta_liters: 5.0
+      total_tank_volume_liters: 8.0
+      functions: []                     # pH only
+  # pH / EC mixing time in a preset without air pump = normal time x this factor (max 20 min).
+  # PLACEHOLDER (plan/TO_MEASURE.md).
+  no_air_pump_settle_factor: 2.0
 
 # Actuator Safety Gate (Layer 2) - Debouncing, Duration Limits, Soft-Start/Stop
 # See components/actuator_safety_gate/README.md for complete documentation.

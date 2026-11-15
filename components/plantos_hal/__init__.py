@@ -56,9 +56,8 @@ CONF_GROW_LIGHT_SWITCH = 'grow_light_switch'
 # ActuatorSafetyGate reference (for state sync on Shelly poll)
 CONF_ACTUATOR_SAFETY_GATE = 'actuator_safety_gate'
 
-# Tank volume and valve configuration
-CONF_TANK_VOLUME_DELTA_LITERS = 'tank_volume_delta_liters'  # Volume from LOW to HIGH (for normal daily feeding)
-CONF_TOTAL_TANK_VOLUME_LITERS = 'total_tank_volume_liters'  # Volume from EMPTY to HIGH (for reservoir change)
+# Valve configuration. The tank volumes are per preset: `plantos_controller: presets:`
+# (the controller pushes the active preset's volumes into the HAL at boot and on every change).
 CONF_MAG_VALVE_FLOW_RATE = 'mag_valve_flow_rate_ml_s'
 
 # Pump configuration keys (flow rate and PWM intensity for calibration)
@@ -113,9 +112,7 @@ CONFIG_SCHEMA = cv.Schema({
     # ActuatorSafetyGate reference (for state sync on Shelly poll)
     cv.Optional(CONF_ACTUATOR_SAFETY_GATE): cv.use_id(ActuatorSafetyGate),
 
-    # Tank volume and valve configuration
-    cv.Optional(CONF_TANK_VOLUME_DELTA_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
-    cv.Optional(CONF_TOTAL_TANK_VOLUME_LITERS, default=10.0): cv.float_range(min=0.1, max=1000.0),
+    # Valve configuration (tank volumes: plantos_controller presets)
     cv.Optional(CONF_MAG_VALVE_FLOW_RATE, default=50.0): cv.float_range(min=0.001, max=1000.0),
 
     # Pump calibration configuration (flow rates and PWM intensities)
@@ -236,9 +233,7 @@ async def to_code(config):
         cg.add(var.set_actuator_safety_gate(asg))
 
 
-    # Inject tank volume and valve configuration
-    cg.add(var.setTankVolumeDelta(config[CONF_TANK_VOLUME_DELTA_LITERS]))
-    cg.add(var.setTotalTankVolume(config[CONF_TOTAL_TANK_VOLUME_LITERS]))
+    # Inject valve configuration
     cg.add(var.setMagValveFlowRate(config[CONF_MAG_VALVE_FLOW_RATE]))
 
     # Inject pump configurations (flow rates and PWM intensities)

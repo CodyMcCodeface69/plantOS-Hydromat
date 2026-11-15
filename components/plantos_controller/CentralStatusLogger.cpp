@@ -314,10 +314,13 @@ void CentralStatusLogger::updatePumpConfigurations(const std::vector<PumpConfigI
     pumpConfigsUpdated = true;
 }
 
-void CentralStatusLogger::updateCalendarStatus(uint8_t currentDay, float phMin, float phMax,
+void CentralStatusLogger::updateCalendarStatus(const char* presetName, uint16_t currentDay, uint16_t definedDays,
+                                               float phMin, float phMax,
                                                float nutrientA, float nutrientB, float nutrientC,
                                                bool safeMode, float ecTarget, float ecTargetMult) {
+    calendarPresetName = presetName ? presetName : "";
     calendarCurrentDay = currentDay;
+    calendarDefinedDays = definedDays;
     calendarPhMin = phMin;
     calendarPhMax = phMax;
     calendarNutrientA = nutrientA;
@@ -467,8 +470,14 @@ void CentralStatusLogger::logStatus(bool force) {
     // Calendar Status
     ESP_LOGI(TAG, "--- CALENDAR ---");
     if (calendarStatusUpdated) {
-        ESP_LOGI(TAG, "  Day: %d/120 | pH: %.1f-%.1f | Auto: %s",
-                 calendarCurrentDay, calendarPhMin, calendarPhMax,
+        char day_s[16];
+        if (calendarDefinedDays > 0) {
+            snprintf(day_s, sizeof(day_s), "%u/%u", (unsigned)calendarCurrentDay, (unsigned)calendarDefinedDays);
+        } else {
+            snprintf(day_s, sizeof(day_s), "%u", (unsigned)calendarCurrentDay);
+        }
+        ESP_LOGI(TAG, "  %s day: %s | pH: %.1f-%.1f | Auto: %s",
+                 calendarPresetName, day_s, calendarPhMin, calendarPhMax,
                  calendarSafeMode ? "OFF" : "ON");
         ESP_LOGI(TAG, "  Nutrients (mL/L): A=%.2f; B=%.2f; C=%.2f",
                  calendarNutrientA, calendarNutrientB, calendarNutrientC);

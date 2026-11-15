@@ -303,6 +303,16 @@ public:
      */
     bool isCyclingEnabled(const char* actuatorID) const;
 
+    /**
+     * Preset block (second line of defense behind the controller's capability check):
+     * a blocked actuator is not part of the active preset. ON commands, air pump patterns and
+     * "air pump on" are rejected for it; OFF commands always pass. The AirPump cycling mode is
+     * still stored while blocked, so it applies again once the actuator is unblocked.
+     * Set by the controller at boot and on every preset or function change.
+     */
+    void setActuatorBlocked(const char* actuatorID, bool blocked);
+    bool isActuatorAllowed(const char* actuatorID) const;
+
     // ========================================================================
     // SHELLY PATTERN API VALIDATION
     // ========================================================================
@@ -528,6 +538,9 @@ private:
 
     // Map of actuator ID to state tracking info
     std::map<std::string, ActuatorState> actuators_;
+
+    // Actuators the active preset lacks (setActuatorBlocked)
+    std::vector<std::string> blocked_;
 
     // ========================================================================
     // SHELLY AIRPUMP CYCLING STATE

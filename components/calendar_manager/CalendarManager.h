@@ -115,6 +115,7 @@ private:
     uint8_t active_{CAL_HAUPT};
     Slot slots_[CAL_COUNT];
     int32_t last_seen_ordinal_{0};      // last valid date passed to sync_to_date (RAM only)
+    bool setup_done_{false};
 
     bool safe_mode_{false};
     bool verbose_{false};

@@ -48,6 +48,34 @@ CONF_NIGHT_MODE_END_HOUR = 'night_mode_end_hour'
 CONF_ALERT_SERVICE = 'alert_service'
 CONF_PH_K_FACTOR = 'ph_k_factor'
 CONF_PH_K_FACTOR_NUMBER = 'ph_k_factor_number'
+CONF_PRESETS = 'presets'
+CONF_TANK_VOLUME_DELTA = 'tank_volume_delta_liters'
+CONF_TANK_VOLUME_TOTAL = 'total_tank_volume_liters'
+CONF_FUNCTIONS = 'functions'
+CONF_NO_AIR_PUMP_SETTLE_FACTOR = 'no_air_pump_settle_factor'
+
+# Preset index = calendar index (preset_model.h, calendar_manager CAL_*)
+PRESET_INDEX = {'anzucht': 0, 'mutter': 1, 'haupt': 2}
+# Function bits (preset_model.h FN_*)
+FUNCTION_BITS = {'nutrients': 1, 'water_fill': 2, 'drain': 4, 'air_pump': 8, 'grow_light': 16}
+VOLUME_MIN_L = 1.0
+VOLUME_MAX_L = 300.0
+
+
+def _validate_preset(value):
+    if value[CONF_TANK_VOLUME_DELTA] > value[CONF_TANK_VOLUME_TOTAL]:
+        raise cv.Invalid(f"{CONF_TANK_VOLUME_DELTA} must not be larger than {CONF_TANK_VOLUME_TOTAL}")
+    return value
+
+
+PRESET_SCHEMA = cv.All(cv.Schema({
+    cv.Required(CONF_TANK_VOLUME_DELTA): cv.float_range(min=VOLUME_MIN_L, max=VOLUME_MAX_L),
+    cv.Required(CONF_TANK_VOLUME_TOTAL): cv.float_range(min=VOLUME_MIN_L, max=VOLUME_MAX_L),
+    cv.Required(CONF_FUNCTIONS): cv.ensure_list(cv.one_of(*FUNCTION_BITS, lower=True)),
+}), _validate_preset)
+
+# Without a `presets:` block (or a preset in it) the built-in defaults of preset_model.h apply.
+PRESETS_SCHEMA = cv.Schema({cv.Optional(name): PRESET_SCHEMA for name in PRESET_INDEX})
 
 # Configuration schema
 CONFIG_SCHEMA = cv.Schema({
@@ -67,6 +95,8 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_ALERT_SERVICE): cv.use_id(AlertService),
     cv.Optional(CONF_PH_K_FACTOR, default=0.25): cv.float_range(min=0.01, max=0.50),
     cv.Optional(CONF_PH_K_FACTOR_NUMBER): cv.use_id(number.Number),
+    cv.Optional(CONF_PRESETS, default={}): PRESETS_SCHEMA,
+    cv.Optional(CONF_NO_AIR_PUMP_SETTLE_FACTOR, default=2.0): cv.float_range(min=1.0, max=5.0),
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
@@ -124,3 +154,13 @@ async def to_code(config):
     if CONF_PH_K_FACTOR_NUMBER in config:
         k_number = await cg.get_variable(config[CONF_PH_K_FACTOR_NUMBER])
         cg.add(var.set_ph_k_number(k_number))
+
+    # Preset defaults (YAML); the NVS store of the controller overrides a preset once it was
+    # edited in the web UI
+    for name, preset in config[CONF_PRESETS].items():
+        mask = 0
+        for fn in preset[CONF_FUNCTIONS]:
+            mask |= FUNCTION_BITS[fn]
+        cg.add(var.setPresetDefaults(PRESET_INDEX[name], preset[CONF_TANK_VOLUME_DELTA],
+                                     preset[CONF_TANK_VOLUME_TOTAL], mask))
+    cg.add(var.setNoAirPumpSettleFactor(config[CONF_NO_AIR_PUMP_SETTLE_FACTOR]))

@@ -1080,7 +1080,9 @@ void ESPHomeHAL::handleShellyResult(const ShellyResult& result) {
              result.states[0], result.states[2], result.states[3], result.uptime);
 
     // AirPump should run continuously in Normal mode - turn it back on if the Shelly reports OFF
+    // (only when the active preset has the air pump)
     if (result.states[0] == 0 && actuator_safety_gate_ &&
+        actuator_safety_gate_->isActuatorAllowed("AirPump") &&
         !actuator_safety_gate_->isCyclingEnabled("AirPump")) {
         ESP_LOGI(TAG, "AirPump OFF but Normal mode desired - activating via ASG");
         actuator_safety_gate_->enableCycling("AirPump", false);

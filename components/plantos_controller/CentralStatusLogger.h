@@ -355,7 +355,8 @@ public:
      * @param ecTarget Calendar EC target in µS/cm (0 = EC feeding disabled today)
      * @param ecTargetMultiplier Runtime EC target multiplier (effective target = ecTarget * multiplier)
      */
-    void updateCalendarStatus(uint8_t currentDay, float phMin, float phMax,
+    void updateCalendarStatus(const char* presetName, uint16_t currentDay, uint16_t definedDays,
+                              float phMin, float phMax,
                              float nutrientA, float nutrientB, float nutrientC,
                              bool safeMode, float ecTarget, float ecTargetMultiplier);
 
@@ -483,7 +484,9 @@ private:
     bool pumpConfigsUpdated;
 
     // Calendar status
-    uint8_t calendarCurrentDay;
+    const char* calendarPresetName{""};   // static string (preset name)
+    uint16_t calendarCurrentDay;
+    uint16_t calendarDefinedDays{0};
     float calendarPhMin;
     float calendarPhMax;
     float calendarNutrientA;

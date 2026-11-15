@@ -49,6 +49,10 @@ void PlantOSController::setup() {
         ESP_LOGW(TAG, "SafetyGate not configured - Actuator control disabled");
     }
 
+    // Active preset first: tank volumes, blocked actuators and calendar index must be in place
+    // before INIT, PSM recovery and the first calendar date sync (all run from loop()).
+    setupPresets();
+
     if (psm_) {
         // Load auto-feeding state from NVS
         auto_feeding_enabled_ = psm_->loadState(NVS_KEY_AUTO_FEED_ENABLE, true);
@@ -275,10 +279,12 @@ void PlantOSController::updateStatusReport() {
         // Update calendar status in status logger
         if (calendar_manager_) {
             // Use calendar manager's actual current day (not timestamp-based calculation)
-            uint8_t currentDay = calendar_manager_->get_current_day();
+            uint16_t currentDay = calendar_manager_->get_current_day();
             esphome::calendar_manager::DailySchedule schedule = calendar_manager_->get_schedule(currentDay);
             status_logger_.updateCalendarStatus(
+                profile_.active_name(),
                 currentDay,
+                calendar_manager_->get_defined_days(),
                 schedule.target_ph_min,
                 schedule.target_ph_max,
                 schedule.nutrient_A_ml_per_liter,
@@ -312,7 +318,8 @@ void PlantOSController::controlGrowLight() {
     // Only run when:
     // - Grow light schedule is enabled (default: disabled, use Shelly scripts instead)
     // - System is operational (not in SHUTDOWN, PAUSE, or ERROR)
-    if (grow_light_schedule_enabled_ && calendar_manager_ && time_source_ &&
+    // - The active preset has the grow light (FN_GROW_LIGHT)
+    if (grow_light_schedule_enabled_ && profile_.has(preset_model::FN_GROW_LIGHT) && calendar_manager_ && time_source_ &&
         current_state_ != ControllerState::SHUTDOWN &&
         current_state_ != ControllerState::PAUSE &&
         current_state_ != ControllerState::ERROR) {
@@ -608,7 +615,7 @@ bool PlantOSController::checkAutoTriggers() {
     // ========================================================================
     // AUTOMATIC WATER FILL CHECK - When EMPTY sensor triggers (Phase 6)
     // ========================================================================
-    if (auto_fill_enabled_ && hal_ && hal_->hasWaterLevelSensors()) {
+    if (auto_fill_enabled_ && operationAvailable(Operation::FILL) && hal_ && hal_->hasWaterLevelSensors()) {
         // Trigger when tank is empty (HIGH=OFF, LOW=OFF, EMPTY=ON)
         // and not in night mode / not auto-feeding about to trigger
         bool high = hal_->readWaterLevelHigh();
@@ -826,6 +833,12 @@ bool PlantOSController::canStart(Operation op, const char **reason) const {
         *reason = "busy";
         return false;
     }
+    // Functions of the active preset (capability table: operationFunctions(), presets.cpp)
+    const uint8_t missing = preset_model::missingFunctions(operationFunctions(op), profile_.current().mask);
+    if (missing != 0) {
+        *reason = missingFunctionsReason(missing);
+        return false;
+    }
     // Hardware each operation needs
     switch (op) {
         case Operation::FILL:
@@ -865,6 +878,7 @@ bool PlantOSController::startAllowed(Operation op, const char *name) {
         return true;
     }
     ESP_LOGW(TAG, "Cannot start %s: %s (state %s)", name, reason, stateName(current_state_));
+    recordRefusal(name, reason);
     return false;
 }
 
@@ -1072,6 +1086,10 @@ void PlantOSController::setToIdle() {
 
 void PlantOSController::activateAirPump() {
     // Single forced ON command (WiFi on_connect), unlimited duration, bypasses debouncing
+    if (!profile_.has(preset_model::FN_AIR_PUMP)) {
+        ESP_LOGD(TAG, "Air pump activation skipped: not in preset %s", profile_.active_name());
+        return;
+    }
     if (!requestPump(AIR_PUMP, true, 0, true)) {
         ESP_LOGW(TAG, "Air pump activation (WiFi connect) rejected");
     }

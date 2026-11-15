@@ -4,7 +4,7 @@
 
 **Location**: `/home/cody/plantOS-testlab/FSMINFO.md`
 **Component**: `components/plantos_controller/controller.cpp` and `controller.h`
-**Last Updated**: 2026-03-08
+**Last Updated**: 2026-11-15 (presets)
 
 ---
 
@@ -486,6 +486,8 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 
 ### Manual Triggers
 
+Every `start*()` below also needs the functions of the active preset (see "Presets", capability table).
+
 | PUBLIC METHOD              | PRECONDITION       | TRANSITION TO        | DESCRIPTION |
 |---------------------------|--------------------|----------------------|-------------|
 | startPhCorrection()        | Must be in IDLE    | PH_MEASURING         | Manual pH correction (web UI button)<br>**Blocked in NIGHT state** |
@@ -498,6 +500,8 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | startFillTank()            | Must be in IDLE<br>Water level sensors available | WATER_FILLING        | Fill tank → EC check → pH correction (post-fill sequence)<br>**Rejected with error if water level sensors unavailable (overflow risk)**<br>**Blocked in NIGHT state** |
 | startEmptyTank()           | Must be in IDLE<br>Shelly integration enabled | WATER_EMPTYING       | Drain via WastewaterPump (Shelly socket 2) → IDLE<br>**Rejected with error if Shelly integration disabled**<br>**Blocked in NIGHT state** |
 | startFeed()                | Must be in IDLE<br>Water level sensors available<br>Tank must be empty | FEED_FILLING         | Complete feed: Fill→Nutrients→pH<br>(safety checks: sensors available, all 3 sensors OFF)<br>**Blocked in NIGHT state** |
+| requestPreset(i) / requestPresetByName() | IDLE, NIGHT, SHUTDOWN, PAUSE or ERROR | (no transition) | Switch preset, see "Presets" |
+| setPresetFunction(), setPresetVolumeDelta/Total(), restartGrow() | IDLE, NIGHT, SHUTDOWN, PAUSE or ERROR | (no transition) | Edit the active preset / restart its grow at day 1 |
 | startReservoirChange()     | Must be in IDLE<br>Shelly integration enabled | WATER_EMPTYING       | Drain → FEED_FILLING → FEEDING → pH correction (total tank volume)<br>**Rejected with error if Shelly integration disabled**<br>**Blocked in NIGHT state** |
 | setToShutdown()            | Any state          | SHUTDOWN             | Emergency shutdown (persists) |
 | setToPause()               | Any state          | PAUSE                | Pause system (persists) |
@@ -509,12 +513,13 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | AUTOMATIC TRIGGER         | PRECONDITION       | TRANSITION TO        | DESCRIPTION |
 |---------------------------|--------------------|----------------------|-------------|
 | Every 2 hours (in IDLE)    | System in IDLE<br>**Auto pH correction enabled** (switch 04_10)<br>**Not in night mode hours** | PH_PROCESSING        | Periodic pH monitoring (**NOT triggered in NIGHT or when night mode hours are active**)<br>Skipped silently when 04_10 switch is OFF or 22:00–09:00 |
-| **Automatic Feeding** ⚡   | **Water level LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)**<br>System in IDLE<br>Auto-feeding enabled (switch **04_11**)<br>NOT in NIGHT/SHUTDOWN/PAUSE<br>NOT already fed today (NVS check) | **FEED_FILLING → FEEDING → EC_FEEDING** | **Once-per-day automatic feeding when water reaches LOW level**<br>Stores the local date (days since 1970-01-01) in its own NVS key `AutoFeedDay` (int32, written only when it changes)<br>Prevents duplicate feeds after power cycles<br>Resets at local midnight (same date as the calendar day advance)<br>Toggle via Web UI switch: **04_11_Auto EC/Feeding Correction** |
-| Auto reservoir change (weekly) | System in IDLE<br>Auto reservoir change enabled (switch)<br>Not in night mode hours<br>Local weekday == configured day (0=Sun..6=Sat)<br>Not already done this local week (NVS `AutoResWeek`) | WATER_EMPTYING → FEED_FILLING → FEEDING → pH | Weekday and week index come from the LOCAL date (`getLocalDateOrdinal()`, same as night mode and the feed date; UTC-based until 2026-11-14). The week index is `local_days / 7` (rolls over on Thursdays). The week is stored in its own NVS key `AutoResWeek` (int32, written only when it changes) |
+| **Automatic Feeding** ⚡   | **Water level LOW (HIGH=OFF, LOW=OFF, EMPTY=ON)**<br>Active preset has Water Fill + Nutrients<br>System in IDLE<br>Auto-feeding enabled (switch **04_11**)<br>NOT in NIGHT/SHUTDOWN/PAUSE<br>NOT already fed today (NVS check) | **FEED_FILLING → FEEDING → EC_FEEDING** | **Once-per-day automatic feeding when water reaches LOW level**<br>Stores the local date (days since 1970-01-01) in its own NVS key, per preset: `AutoFeedDay` (Haupt), `AutoFeedDay1` (Mutter), `AutoFeedDay0` (Anzucht) (int32, written only when it changes)<br>Prevents duplicate feeds after power cycles<br>Resets at local midnight (same date as the calendar day advance)<br>Toggle via Web UI switch: **04_11_Auto EC/Feeding Correction** |
+| Auto-fill (level LOW) | System in IDLE<br>"Auto Water Level" switch on<br>Active preset has Water Fill<br>Not in night mode hours<br>Not triggered by auto-feed first | WATER_FILLING → (EC check) → pH | Checked after auto-feed in `checkAutoTriggers()`; tops up a preset that has water fill but no nutrient pumps |
+| Auto reservoir change (weekly) | System in IDLE<br>Active preset has Drain + Water Fill + Nutrients<br>Auto reservoir change enabled (switch)<br>Not in night mode hours<br>Local weekday == configured day (0=Sun..6=Sat)<br>Not already done this local week (NVS `AutoResWeek`) | WATER_EMPTYING → FEED_FILLING → FEEDING → pH | Weekday and week index come from the LOCAL date (`getLocalDateOrdinal()`, same as night mode and the feed date; UTC-based until 2026-11-14). The week index is `local_days / 7` (rolls over on Thursdays). The week is stored in its own NVS key, per preset: `AutoResWeek` (Haupt), `AutoResWeek1`, `AutoResWeek0` (int32, written only when it changes) |
 | Night mode hours start     | IDLE + night mode enabled + current hour in range | NIGHT | Automatic transition to night mode |
 | Night mode hours end       | NIGHT + (night mode disabled OR hour out of range) | IDLE | Automatic transition back to idle |
 | PSM recovery check         | Boot from INIT     | SHUTDOWN or PAUSE    | Restore persisted state after power loss |
-| Time-based grow light      | Calendar + Time    | (no state change)    | Control GrowLight via HAL based on schedule |
+| Time-based grow light      | Calendar + Time<br>"Grow Light Schedule" on<br>Active preset has Grow Light | (no state change)    | Control GrowLight via HAL based on schedule |
 
 ## State Timeout Values
 
@@ -526,7 +531,8 @@ FEED OPERATION (complete sequence: Fill → Nutrients → pH)
 | ERROR              | 5 seconds                  | → INIT (automatic recovery) |
 | PH_MEASURING       | 30s (normal) / 5min (post EC feeding) / 10min (post water fill) | → PH_CALCULATING |
 | PH_INJECTING       | Calculated dose + 200ms    | → PH_MIXING |
-| PH_MIXING          | 2 minutes (120s)           | → PH_MEASURING (loop back to verify) |
+| PH_MIXING          | Tank-volume based, 30–600 s (`calculatePhMixingDuration`); without the preset's air pump × `no_air_pump_settle_factor` (max 20 min) | → PH_MEASURING (loop back to verify) |
+| EC_MIXING          | 300 s; without the preset's air pump × `no_air_pump_settle_factor` (max 20 min) | → EC_MEASURING |
 | WATER_FILLING      | 10min (safety backup) or HIGH sensor | → IDLE (sets `auto_ec_check_pending_`; IDLE dispatches EC_PROCESSING when not night mode)<br>Immediate abort → IDLE if water level sensors unavailable |
 | WATER_EMPTYING     | 300s (fallback) or EMPTY sensor OFF | → IDLE |
 | FEED_FILLING       | Calculated or sensor       | → FEEDING<br>Immediate abort → IDLE if water level sensors unavailable |
@@ -628,6 +634,130 @@ Sent to pH sensor before all critical readings:
 
 ---
 
+# Presets (Anzucht / Mutter / Haupt)
+
+Added 2026-11-15 (overhaul phase 3). Code: `components/plantos_controller/presets.cpp` (switch, edits,
+capability table, refusals), `grow_profile.{h,cpp}` (NVS store), `preset_model.h` (pure model, host-tested).
+
+## Model
+
+One firmware, three presets, chosen at runtime in the web UI ("Preset" select) and kept in NVS.
+A preset has:
+
+| Part | Where | Editable |
+|---|---|---|
+| Tank volume LOW→HIGH (delta) and EMPTY→HIGH (total) | `plantos_controller: presets:` (YAML default), NVS record per preset | UI numbers "Tank Volume LOW→HIGH" / "Tank Volume EMPTY→HIGH" (active preset) |
+| Function mask (`NUTRIENTS`, `WATER_FILL`, `DRAIN`, `AIR_PUMP`, `GROW_LIGHT`) | same | UI switches "Function ..." (active preset) |
+| Calendar (phases, light window, doses, EC target) | `calendar_manager: calendars:` (same name) | YAML only (reflash) |
+| Grow day / sync date | calendar_manager slot per calendar (NVS) | "Restart Grow (Day 1)", "Calendar Day +1/-1" |
+
+pH measurement and pH correction (probe + acid pump) are always available. Global, not per preset:
+night mode, auto switches (Auto pH / Auto EC/Feeding / Auto Water Level / Auto Reservoir Change),
+pump flow rates and PWM, Shelly wiring, pH and EC K-factors.
+
+Defaults: **Haupt** = all functions, 27.4 / 47.5 L (the production values). **Mutter** = Nutrients +
+Water Fill + Drain, 10 / 15 L (placeholder). **Anzucht** = no function (pH only), 5 / 8 L (placeholder).
+First boot of the preset firmware: no NVS record → Haupt with the YAML values = the behavior before presets.
+
+The active preset's volumes are pushed into the HAL (`setTankVolumeDelta/Total`), so every dosing
+formula reads them unchanged through `getTankVolumeDelta()` / `getTotalTankVolume()` / `getTankVolume()`.
+
+## Capability table (the one place: `operationFunctions()`)
+
+| Operation (start*) | Needs |
+|---|---|
+| pH correction, pH calibration, EC calibration | – |
+| Feeding ("Add Nutrients"), EC check ("EC Correction"), mother mix | Nutrients |
+| Fill tank | Water Fill |
+| Empty tank | Drain |
+| Feed (fill + nutrients + pH) | Water Fill + Nutrients |
+| Reservoir change (drain + fill + nutrients + pH) | Drain + Water Fill + Nutrients |
+
+`canStart()` checks state first ("night mode" / "busy"), then the mask, then the hardware (sensors,
+Shelly). A refusal reads `not available in preset Mutter (needs Drain)`; it is logged
+(`Cannot start ...`) and shown in the "Last Refusal" text sensor (`HH:MM <operation>: <reason>`).
+
+Automatic triggers use the same table, silently (no refusal entry):
+
+| Trigger | Without the function |
+|---|---|
+| Periodic pH check | always runs |
+| Auto-feed (level LOW, once a day) | needs Feed (Water Fill + Nutrients); otherwise not triggered and no feed day marked. A preset with Water Fill but no Nutrients tops up through **auto-fill** (if "Auto Water Level" is on), never a half feed |
+| Auto-fill (level LOW) | needs Water Fill |
+| Auto reservoir change (weekly) | needs Drain + Water Fill + Nutrients |
+| Post-fill EC check (EC_PROCESSING) | without Nutrients: skipped, the chain goes on to the pH correction (`transitionAfterEcSkipped()`) |
+| Grow light schedule (`controlGrowLight`) | without Grow Light the light is never commanded. The calendar's light window still defines "night" for night mode |
+| Air pump "normal mode" re-activation (HAL Shelly poll), WiFi-connect activation | without Air Pump nothing is sent |
+
+Second line of defense: the controller pushes the mask into the ActuatorSafetyGate
+(`setActuatorBlocked`). For a blocked actuator the gate rejects ON commands, air pump patterns and
+"air pump on"; OFF always passes. Manual actuator switches and actuator test buttons are refused
+by the controller first (with the Last Refusal reason). The AcidPump is never blocked.
+Emergency stop, shutdown and pause work in every preset.
+
+## Without the air pump
+
+The mixing states never command the air pump (also in Haupt: it runs 24/7 on its own). Without
+the Air Pump function the tank is not aerated, so PH_MIXING and EC_MIXING wait longer:
+`mixing time × no_air_pump_settle_factor` (YAML, default 2.0, placeholder), capped at 20 min
+(never shorter than the normal time). Haupt (air pump on) is unchanged. The "Air Pump Cycling"
+switch only stores the mode in the gate; it applies once a preset with the air pump is active.
+
+## Switching (`requestPreset()`)
+
+Allowed only in **IDLE, NIGHT, SHUTDOWN, PAUSE, ERROR**; in any other state (INIT and every
+operation state) it is refused with `operation running (<STATE>)` (no queueing). The same rule
+applies to editing the volumes and functions and to "Restart Grow (Day 1)". Switching to the
+active preset is a no-op. The state itself does not change (a switch in PAUSE stays in PAUSE).
+
+On a switch, in this order:
+1. The new index is written to NVS (`preset_active`) before anything else.
+2. HAL volumes, gate blocks and the active calendar follow the new preset.
+3. Actuators: nutrient pumps, acid pump, water valve and wastewater pump OFF (only those that are
+   on; running actuator tests end). Air pump and grow light OFF only if the new preset lacks them;
+   if it has them they stay as they are (no Shelly toggling), and an air pump that the old preset
+   lacked gets its stored mode (normal / cycling) back at once.
+4. Per-tank state of the old preset is reset: queued post-fill EC and pH checks
+   (`auto_ec_check_pending_`, `auto_ph_correction_pending_`), post-fill/post-feed stabilize flags,
+   the pH cycle (`resetPhCycle()`) and sensor retry state, the EC cycle (pre-feeding EC, mL/L total,
+   attempts, doses, manual mode, mother-mix and reservoir-change flags), the 12 h EC feeding guard
+   (`last_ec_feeding_timestamp_`), the pH/EC plausibility history (no jump alert across tanks) and
+   the cached auto-feed day / reservoir week (reloaded from the new preset's keys).
+   Not reset: the pH check slot schedule (clock-based), the K-factors (global), the auto switches.
+5. The new calendar catches up by date at once (`sync_to_date`), and the grow light is
+   re-evaluated in the same loop.
+6. One INFO line: `Preset Haupt -> Mutter: tank 10.0 / 15.0 L, functions ..., day N`.
+
+Per-day markers are per preset: `AutoFeedDay` / `AutoResWeek` (Haupt, the old keys),
+`AutoFeedDay1` / `AutoResWeek1` (Mutter), `AutoFeedDay0` / `AutoResWeek0` (Anzucht). A feed in
+Haupt does not block Mutter's feed the same day.
+
+## Boot order and recovery
+
+All components involved run at the default setup priority and are set up in registration order:
+HAL → **controller** (`setupPresets()`: store loaded, volumes, gate blocks, calendar index) →
+safety gate → PSM → calendar (loads the day slots). INIT, the PSM recovery and the first calendar
+date sync all run later from `loop()`, so they already see the active preset.
+
+PSM recovery cannot resume an operation under a different preset: a switch is only possible when
+no operation runs, and the index is persisted before anything else. Recovery itself only closes
+the valve / stops the drain pump (safe in every preset) or restores SHUTDOWN/PAUSE; other events
+only raise an alert. The PSM record is therefore unchanged (no preset field).
+
+## NVS
+
+| Key | Content |
+|---|---|
+| `preset_active` | `{uint16 version=1, uint8 index, uint8 0}` |
+| `preset_slot_0/1/2` | `{float delta_l, float total_l, uint16 version=1, uint8 mask, uint8 0}`, written only when a value changes; an invalid record is ignored (YAML defaults) |
+| `calendar_slot_0/1/2` | grow day + sync date per calendar (calendar_manager) |
+| `AutoFeedDay[0/1]`, `AutoResWeek[0/1]` | per-preset feed day / reservoir week (see above) |
+
+Once a preset was edited in the UI its record holds all of its values, and later YAML default
+changes no longer apply to it.
+
+---
+
 # Air Pump Control System
 
 ## Overview
@@ -645,7 +775,12 @@ The air pump control system operates in both IDLE and NIGHT states, providing co
 - Automatically corrects manual shutoffs via Shelly web interface
 - Handles network failures and dropped HTTP commands
 
-**Implementation**:
+**Correction 2026-11-15**: the code below is history. Today the HAL's Shelly poll (every 30 s,
+`hal.cpp`, any controller state) turns the air pump back on through the gate
+(`enableCycling("AirPump", false)`) when the Shelly reports it OFF, cycling is off and the active
+preset has the Air Pump function.
+
+**Implementation (old)**:
 ```cpp
 // In handleIdle() and handleNight()
 if (!safety_gate_->isCyclingEnabled(AIR_PUMP)) {

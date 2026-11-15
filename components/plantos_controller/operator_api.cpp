@@ -24,7 +24,9 @@ void PlantOSController::set_ph_k_number(esphome::number::Number* number) {
 // ============================================================================
 
 bool PlantOSController::commandActuator(const char* actuator_id, bool on) {
-    // The gate logs approvals and rejections itself
+    // ON for an actuator the active preset lacks: refused here with the reason (the gate would
+    // reject it too). OFF always passes. The gate logs approvals and rejections itself.
+    if (on && !actuatorAvailable(actuator_id, actuator_id)) return false;
     return requestPump(actuator_id, on, 0);
 }
 
@@ -41,6 +43,7 @@ void PlantOSController::startActuatorTest(const char* actuator_id, uint32_t run_
         ESP_LOGW(TAG, "Test %s refused: too many tests running", actuator_id);
         return;
     }
+    if (!actuatorAvailable(actuator_id, "Actuator test")) return;
     if (!requestPump(actuator_id, true, gate_max_s)) {
         ESP_LOGW(TAG, "Test %s rejected by safety gate", actuator_id);
         return;
@@ -99,6 +102,11 @@ void PlantOSController::cancelActuatorTests() {
 
 void PlantOSController::setAirPumpCycling(bool enabled, float on_period_s, float off_period_s) {
     if (!safety_gate_) return;
+    if (!profile_.has(preset_model::FN_AIR_PUMP)) {
+        // The gate stores the mode and sends nothing; it applies once a preset has the air pump
+        ESP_LOGI(TAG, "Air pump cycling %s stored: preset %s has no air pump", enabled ? "ON" : "OFF",
+                 profile_.active_name());
+    }
     if (enabled) {
         uint32_t on_s = static_cast<uint32_t>(on_period_s);
         uint32_t off_s = static_cast<uint32_t>(off_period_s);
@@ -197,8 +205,8 @@ std::string PlantOSController::currentTimeText() const {
 std::string PlantOSController::growDayText() const {
     if (!calendar_manager_) return "";
     char buf[32];
-    snprintf(buf, sizeof(buf), "Day %d / 120", calendar_manager_->get_current_day());
-    return buf;
+    return preset_model::formatGrowDay(buf, sizeof(buf), calendar_manager_->get_current_day(),
+                                       calendar_manager_->get_defined_days());
 }
 
 }  // namespace plantos_controller

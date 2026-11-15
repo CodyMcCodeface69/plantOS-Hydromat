@@ -4,6 +4,7 @@
 #include "esphome/core/log.h"
 #include "led_behavior.h"
 #include "CentralStatusLogger.h"  // Local copy owned by controller
+#include "grow_profile.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -142,6 +143,11 @@ public:
      */
     void setAlertService(alert_service::AlertService* service) {
         alert_service_ = service;
+    }
+
+    /// YAML default of one preset (`presets:` block), applied before setup() reads NVS
+    void setPresetDefaults(uint8_t index, float delta_l, float total_l, uint8_t mask) {
+        profile_.set_defaults(index, delta_l, total_l, mask);
     }
 
     void set_ph_k_factor(float k) {
@@ -310,6 +316,34 @@ public:
     std::string tankVolumeText() const;
     std::string currentTimeText() const;
     std::string growDayText() const;
+
+    // ---- Presets (presets.cpp). Changes are refused unless the state is IDLE, NIGHT,
+    // SHUTDOWN, PAUSE or ERROR; a refusal shows in lastRefusalText(). ----
+
+    /// Switch to preset `index` (preset_model::ANZUCHT / MUTTER / HAUPT); true if active now
+    bool requestPreset(uint8_t index);
+    /// Same, by name ("Anzucht" / "Mutter" / "Haupt"): the "Preset" select
+    bool requestPresetByName(const std::string& name);
+    /// Turn one function (preset_model::FN_*) of the active preset on or off
+    bool setPresetFunction(uint8_t fn, bool on);
+    /// Tank volumes of the active preset (liters)
+    bool setPresetVolumeDelta(float liters);
+    bool setPresetVolumeTotal(float liters);
+    /// "Restart Grow (Day 1)": the active preset's calendar starts again at day 1 today
+    bool restartGrow();
+
+    uint8_t activePreset() const { return profile_.active(); }
+    std::string activePresetName() const { return profile_.active_name(); }
+    bool hasFunction(uint8_t fn) const { return profile_.has(fn); }
+    float presetVolumeDelta() const { return profile_.current().delta_l; }
+    float presetVolumeTotal() const { return profile_.current().total_l; }
+    /// "Haupt · Day 69/120 · Bloom (pH 6.0-6.4, EC 2.20)"
+    std::string presetStatusText() const;
+    /// Last refused action with its reason ("HH:MM Feed: night mode"), "None" before the first
+    std::string lastRefusalText() const;
+
+    /// Settle time factor for pH / EC mixing in presets without the air pump (placeholder, TO_MEASURE.md)
+    void setNoAirPumpSettleFactor(float factor) { no_air_settle_factor_ = factor; }
 
     /**
      * Enable or disable automatic periodic pH correction
@@ -497,6 +531,14 @@ private:
     // Status logger (owned by controller, not injected)
     CentralStatusLogger status_logger_;
 
+    // Runtime presets (grow_profile.h, presets.cpp)
+    GrowProfile profile_;
+    /// setup(): read the preset store and apply the active preset (HAL volumes, gate, calendar)
+    void setupPresets();
+    /// Push the active preset into the HAL (tank volumes), the safety gate (blocked actuators)
+    /// and the calendar manager (active calendar)
+    void applyPresetToHardware();
+
     // ========================================================================
     // FSM State Management
     // ========================================================================
@@ -554,8 +596,9 @@ private:
     /// -1 = not read from NVS yet (read lazily on the first trigger check).
     int32_t last_auto_feed_day_{-1};
 
-    /// NVS key (int32) for last_auto_feed_day_. Written only when the day changes (<= once a day).
-    static constexpr const char* NVS_KEY_AUTO_FEED_DAY = "AutoFeedDay";
+    /// NVS key (int32) for last_auto_feed_day_, per preset (Haupt: "AutoFeedDay").
+    /// Written only when the day changes (<= once a day).
+    const char* autoFeedDayKey() const;
 
     /// NVS key for auto-feeding enable/disable state
     static constexpr const char* NVS_KEY_AUTO_FEED_ENABLE = "AutoFeedEnable";
@@ -593,8 +636,9 @@ private:
     /// -1 = not read from NVS yet (read lazily on the first trigger check).
     int32_t last_auto_res_week_{-1};
 
-    /// NVS key (int32) for last_auto_res_week_. Written only when the week changes.
-    static constexpr const char* NVS_KEY_AUTO_RES_WEEK = "AutoResWeek";
+    /// NVS key (int32) for last_auto_res_week_, per preset (Haupt: "AutoResWeek").
+    /// Written only when the week changes.
+    const char* autoResWeekKey() const;
 
     /// NVS key for auto reservoir change enable/disable state
     static constexpr const char* NVS_KEY_AUTO_RES_ENABLE = "AutoResEnable";
@@ -861,6 +905,35 @@ private:
 
     /// canStart() + a "Cannot start <name>: <reason>" warning on refusal.
     bool startAllowed(Operation op, const char *name);
+
+    // ---- Presets (presets.cpp) ----
+    /// Functions (preset_model::FN_*) an operation needs: the capability table
+    static uint8_t operationFunctions(Operation op);
+    /// The active preset has every function `op` needs (state not checked)
+    bool operationAvailable(Operation op) const;
+    /// "not available in preset Mutter (needs Drain)" in refusal_reason_
+    const char *missingFunctionsReason(uint8_t missing) const;
+    /// false + refusal if the active preset lacks the actuator's function
+    bool actuatorAvailable(const char *actuator_id, const char *what);
+    /// Preset switch / edit allowed in this state? Refuses (log + Last Refusal) if not.
+    bool presetChangeAllowed(const char *what);
+    /// WARN log + Last Refusal / Last Refusal only
+    void refuse(const char *what, const char *reason);
+    void recordRefusal(const char *what, const char *reason);
+    void stopActuatorIfOn(const char *id);
+    /// Turn off the actuators of the functions in `mask` (only those that are on)
+    void stopFunctionActuators(uint8_t mask);
+    void restoreAirPumpMode();
+    /// Forget the per-tank cycle state of the previous preset (queued checks, EC/pH cycles, guards)
+    void resetTankState();
+    bool setPresetVolumes(float delta_l, float total_l, const char *what);
+    /// Mixing time without the air pump: x no_air_settle_factor_, capped at NO_AIR_MAX_MIX_MS
+    uint32_t applyNoAirSettle(uint32_t mix_ms) const;
+
+    mutable char refusal_reason_[96]{};
+    std::string last_refusal_;
+    float no_air_settle_factor_{2.0f};
+    static constexpr uint32_t NO_AIR_MAX_MIX_MS = 1200000;  // 20 min
 
     /// Reset the pH correction cycle state before a new correction run
     void resetPhCycle();

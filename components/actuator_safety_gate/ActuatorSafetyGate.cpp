@@ -55,6 +55,12 @@ bool ActuatorSafetyGate::executeCommand(const char* actuatorID,
         return false;
     }
 
+    // PRESET BLOCK: the active preset lacks this actuator (OFF always passes)
+    if (targetState && !isActuatorAllowed(actuatorID)) {
+        logRejection(actuatorID, "not available in the active preset");
+        return false;
+    }
+
     std::string id(actuatorID);
     ActuatorState& state = getOrCreateState(id);
     uint32_t currentTime = esphome::millis();
@@ -204,6 +210,13 @@ void ActuatorSafetyGate::enableCycling(const char* actuatorID, bool enabled) {
 
     state.cyclingEnabled = enabled;
 
+    // Air pump not part of the active preset: remember the mode, send nothing
+    if (id == "AirPump" && !isActuatorAllowed(actuatorID)) {
+        shelly_cycling_active_ = false;
+        ESP_LOGD(TAG, "AirPump %s mode stored (not in the active preset)", enabled ? "cycling" : "normal");
+        return;
+    }
+
     // ========================================================================
     // SPECIAL HANDLING FOR AIRPUMP - Use Shelly Pattern API
     // ========================================================================
@@ -292,6 +305,34 @@ void ActuatorSafetyGate::enableCycling(const char* actuatorID, bool enabled) {
         // NOTE: Controller's Normal mode health check will turn pump back ON within 30s
         executeCommand(actuatorID, false);
     }
+}
+
+void ActuatorSafetyGate::setActuatorBlocked(const char* actuatorID, bool blocked) {
+    if (actuatorID == nullptr) return;
+    bool now_allowed = isActuatorAllowed(actuatorID);
+    if (blocked == !now_allowed) return;  // no change
+    if (blocked) {
+        blocked_.emplace_back(actuatorID);
+        if (strcmp(actuatorID, "AirPump") == 0) {
+            shelly_cycling_active_ = false;  // no pattern refresh for a pump that is not there
+        }
+    } else {
+        for (auto it = blocked_.begin(); it != blocked_.end(); ++it) {
+            if (*it == actuatorID) {
+                blocked_.erase(it);
+                break;
+            }
+        }
+    }
+    ESP_LOGI(TAG, "%s %s by preset", actuatorID, blocked ? "blocked" : "allowed");
+}
+
+bool ActuatorSafetyGate::isActuatorAllowed(const char* actuatorID) const {
+    if (actuatorID == nullptr) return true;
+    for (const auto& b : blocked_) {
+        if (b == actuatorID) return false;
+    }
+    return true;
 }
 
 void ActuatorSafetyGate::setCyclingPeriods(const char* actuatorID, uint32_t onPeriodSec, uint32_t offPeriodSec) {
@@ -679,6 +720,11 @@ bool ActuatorSafetyGate::setAirPumpPattern(const std::vector<uint32_t>& pattern,
         return false;
     }
 
+    if (!isActuatorAllowed("AirPump")) {
+        logRejection("AirPump", "pattern: not available in the active preset");
+        return false;
+    }
+
     // Validate pattern against max duration limits
     if (!validateAirPumpPattern(pattern)) {
         ESP_LOGW(TAG, "setAirPumpPattern: Pattern validation failed");
@@ -694,6 +740,11 @@ bool ActuatorSafetyGate::setAirPumpPattern(const std::vector<uint32_t>& pattern,
 bool ActuatorSafetyGate::stopAirPumpSequence(bool finalState) {
     if (!hal_) {
         ESP_LOGW(TAG, "stopAirPumpSequence: HAL not configured");
+        return false;
+    }
+
+    if (finalState && !isActuatorAllowed("AirPump")) {
+        logRejection("AirPump", "not available in the active preset");
         return false;
     }
 

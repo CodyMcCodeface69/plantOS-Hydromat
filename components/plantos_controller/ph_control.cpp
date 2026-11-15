@@ -243,7 +243,7 @@ void PlantOSController::handlePhCalculating() {
 
     if (calendar_manager_) {
         // Use calendar manager's actual current day (not timestamp-based calculation)
-        uint8_t current_day = calendar_manager_->get_current_day();
+        uint16_t current_day = calendar_manager_->get_current_day();
         auto schedule = calendar_manager_->get_schedule(current_day);
         target_min = schedule.target_ph_min;
         target_max = schedule.target_ph_max;
@@ -425,7 +425,8 @@ void PlantOSController::handlePhMixing() {
         // Calculate mixing duration based on tank volume (linear: 1.7L→30s, 70L→600s)
         ph_mixing_duration_ms_ = calculatePhMixingDuration();
 
-        ESP_LOGI(TAG, "pH mixing %u s", (unsigned)(ph_mixing_duration_ms_ / 1000));
+        ESP_LOGI(TAG, "pH mixing %u s%s", (unsigned)(ph_mixing_duration_ms_ / 1000),
+                 profile_.has(preset_model::FN_AIR_PUMP) ? "" : " (no air pump: settle by time)");
 
         // No air pump commands here - Shelly pattern handles the full injection+mixing duration
     }
@@ -722,7 +723,8 @@ uint32_t PlantOSController::calculatePhMixingDuration() const {
     uint32_t duration_ms_int = static_cast<uint32_t>(duration_ms);
     ESP_LOGD(TAG, "pH mixing %.1f s for %.1f L", duration_ms / 1000.0f, volume_L);
 
-    return duration_ms_int;
+    // Preset without air pump: settle by time only, longer (applyNoAirSettle, presets.cpp)
+    return applyNoAirSettle(duration_ms_int);
 }
 
 float PlantOSController::calculateAcidDoseML(float current_ph) {

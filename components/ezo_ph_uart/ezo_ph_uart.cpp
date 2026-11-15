@@ -9,6 +9,30 @@ namespace ezo_ph_uart {
 
 static const char *const TAG = "ezo_ph_uart";
 
+// Blocking map (checked 2026-11-15, host tests: tests/test_ezo_ph_uart.cpp)
+//
+// Periodic path (update() every 5 s + loop()): NON-BLOCKING. Until 2026-11-15 loop() called
+// read_response_(), which polls with delay(1) until a line or a 1 s timeout: ~600 ms per R
+// (the reading takes ~900 ms, the read starts at 300 ms) plus a full 1000 ms per T in
+// RESPONSE,0 mode (T has no answer), i.e. ~1.6 s of every 5 s cycle (~19 min per hour) the
+// main loop stood still. loop() now uses poll_line_() with the same line rules and timeouts.
+//
+// Still blocking, operator-triggered only (left as is; the controller's calibration flow
+// calls them synchronously):
+//   take_single_reading()      pH calibration batches, 1 per s for ~5.5 min per point:
+//                              300 ms + T read (0-1000 ms) + 300 ms + R read (~600 ms, max 2 s)
+//   calibrate_mid/low/high()   300 ms + read (max 1-2 s), once per calibration point
+//   query_calibration_status() 300 ms + read, button and end of calibration
+//   calibrate_clear(), set_led() 300 ms + read (not called from the YAML)
+//   enable/disable_continuous_reading() 50 + 300 + read + 50 ms, "Continuous pH Reading"
+//                              switch (and its turn_off at boot)
+//   send_temperature_compensation() 50 ms: start of every pH measuring run, FEEDING entry,
+//                              calibration start, two buttons
+//   update() in continuous mode: read_response_() only once bytes are available
+// Worst single block: ~3.6 s (take_single_reading with echo and timeouts), far below the
+// 20 s wdt_manager timeout. These paths share the UART with the periodic read: a command
+// issued while a periodic read is pending can take its answer (as before the change).
+
 // ============================================================================
 // Component Lifecycle Methods
 // ============================================================================
@@ -141,12 +165,17 @@ void EZOPHUARTComponent::loop() {
     return;  // Not ready yet - exit immediately (non-blocking)
   }
 
-  // Time has passed - read response
-  char response[RESPONSE_BUFFER_SIZE];
+  // Time has passed - read the response line without blocking (poll_line_ keeps the rules
+  // and the 1 s timeout of read_response_, spread over several loop() calls)
+  LineResult line = this->poll_line_();
+  if (line == LineResult::PENDING) {
+    return;
+  }
+  const char *response = this->line_buf_;
 
   if (this->reading_state_ == ReadingState::SENT_TEMP_COMP) {
     // Handle temperature compensation response
-    if (this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+    if (line == LineResult::LINE) {
       if (this->check_response_code_(response)) {
         ESP_LOGV(TAG, "Temperature compensation acknowledged");
       }
@@ -174,7 +203,7 @@ void EZOPHUARTComponent::loop() {
 
   if (this->reading_state_ == ReadingState::SENT_READ_CMD) {
     // Handle pH reading response
-    if (!this->read_response_(response, RESPONSE_BUFFER_SIZE)) {
+    if (line != LineResult::LINE) {
       ESP_LOGW(TAG, "Failed to read pH value from UART");
       this->reading_state_ = ReadingState::IDLE;
       this->error_count_++;
@@ -709,6 +738,64 @@ bool EZOPHUARTComponent::read_response_(char *buffer, size_t len) {
   }
 
   return pos > 0;
+}
+
+EZOPHUARTComponent::LineResult EZOPHUARTComponent::poll_line_() {
+  // Same rules as read_response_(): skip leading CR/LF, a line ends at CR/LF or after 31
+  // characters, 1 s timeout per read (a partial line at the timeout counts), trailing blanks
+  // cut, a single R/C/T/i is a command echo and the next line is read (once).
+  static_assert(sizeof(line_buf_) == RESPONSE_BUFFER_SIZE, "line buffer = response buffer");
+  const size_t len = sizeof(this->line_buf_);
+  if (!this->line_reading_) {
+    memset(this->line_buf_, 0, len);
+    this->line_pos_ = 0;
+    this->line_start_ = millis();
+    this->line_reading_ = true;
+    this->line_echo_seen_ = false;
+  }
+  for (;;) {
+    bool done = false;
+    while (this->line_pos_ < len - 1 && this->available()) {
+      uint8_t byte;
+      this->read_byte(&byte);
+      if (byte == '\r' || byte == '\n') {
+        if (this->line_pos_ > 0) {
+          done = true;
+          break;
+        }
+        continue;
+      }
+      this->line_buf_[this->line_pos_++] = byte;
+    }
+    if (this->line_pos_ >= len - 1 || millis() - this->line_start_ >= 1000) {
+      done = true;
+    }
+    if (!done) {
+      return LineResult::PENDING;
+    }
+    this->line_buf_[this->line_pos_] = '\0';
+    while (this->line_pos_ > 0 &&
+           (this->line_buf_[this->line_pos_ - 1] == ' ' || this->line_buf_[this->line_pos_ - 1] == '\t')) {
+      this->line_buf_[--this->line_pos_] = '\0';
+    }
+    char c = this->line_buf_[0];
+    if (!this->line_echo_seen_ && this->line_pos_ == 1 && (c == 'R' || c == 'C' || c == 'T' || c == 'i')) {
+      ESP_LOGW(TAG, "Detected command echo: '%s' - reading actual response...", this->line_buf_);
+      memset(this->line_buf_, 0, len);
+      this->line_pos_ = 0;
+      this->line_start_ = millis();
+      this->line_echo_seen_ = true;
+      continue;  // read the real answer (same call if it is already there)
+    }
+    break;
+  }
+  this->line_reading_ = false;
+  if (this->verbose_) {
+    ESP_LOGI(TAG, "← RX: %s", this->line_buf_);
+  } else {
+    ESP_LOGV(TAG, "Received UART response: %s (length: %d)", this->line_buf_, this->line_pos_);
+  }
+  return this->line_pos_ > 0 ? LineResult::LINE : LineResult::NONE;
 }
 
 bool EZOPHUARTComponent::parse_ph_value_(const char *response, float &value) {

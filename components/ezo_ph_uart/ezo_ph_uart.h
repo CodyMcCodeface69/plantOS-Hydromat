@@ -232,6 +232,10 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
    * @return true if response was read successfully
    */
   bool read_response_(char *buffer, size_t len);
+  /// Non-blocking read_response_() for the periodic path: PENDING until a line, the 1 s
+  /// timeout or the echo re-read finishes; then LINE (text in line_buf_) or NONE.
+  enum class LineResult { PENDING, LINE, NONE };
+  LineResult poll_line_();
 
   /**
    * @brief Parse pH value from ASCII response
@@ -301,6 +305,12 @@ class EZOPHUARTComponent : public PollingComponent, public uart::UARTDevice {
   };
   ReadingState reading_state_{ReadingState::IDLE};  ///< Current state in non-blocking FSM
   uint32_t command_sent_time_{0};                   ///< Timestamp when last command was sent (millis())
+  // poll_line_() state
+  char line_buf_[32]{};                             ///< RESPONSE_BUFFER_SIZE
+  uint8_t line_pos_{0};
+  uint32_t line_start_{0};                          ///< millis() when the (re-)read started
+  bool line_reading_{false};
+  bool line_echo_seen_{false};
 
   // Stability detection buffer (rolling window for standard deviation)
   static constexpr size_t STABILITY_BUFFER_SIZE = 10;  ///< Number of readings to track

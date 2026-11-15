@@ -281,6 +281,28 @@ TEST(ezo_ph_uart, bad_values_count_as_errors_good_value_resets) {
   CHECK_NEAR(r.c.get_last_reading(), 5.90f, 1e-5);
 }
 
+TEST(ezo_ph_uart, periodic_path_never_blocks_the_loop) {
+  for (bool ok : {true, false}) {
+    for (bool echo : {false, true}) {
+      host::reset();
+      host::set_millis(10000);
+      Rig r;
+      r.ezo.ok_codes = ok;
+      r.ezo.echo = echo;
+      r.run(40000, 10000);
+      if (r.max_block != 0) fprintf(stderr, "    ok_codes %d echo %d: loop blocked %u ms\n", ok, echo, r.max_block);
+      CHECK_EQ(r.max_block, (uint32_t) 0);
+      CHECK_EQ(r.ph.published.size(), (size_t) (ok ? 2 : 6));  // ok: see ok_codes_on_shift_the_lines_by_one
+    }
+  }
+  host::reset();
+  host::set_millis(10000);
+  Rig dead;
+  dead.ezo.dead = true;
+  dead.run(40000, 10000);
+  CHECK_EQ(dead.max_block, (uint32_t) 0);
+}
+
 // ---------------------------------------------------------------------------
 // Operator-triggered command paths (blocking by design, see the file header)
 // ---------------------------------------------------------------------------

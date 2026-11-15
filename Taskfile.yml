@@ -374,8 +374,8 @@ tasks:
           fi
 
           echo "Attempting network reboot at $DEVICE_IP..."
-          # Try the restart button endpoint (ESPHome web server v2)
-          if curl -X POST "http://$DEVICE_IP/button/03_01_Reboot_Device/press" --max-time 5 --silent --show-error 2>/dev/null; then
+          # Restart button "Reboot Device" (object id reboot_device), web_server REST API
+          if curl -X POST "http://$DEVICE_IP/button/reboot_device/press" --fail --max-time 5 --silent --show-error 2>/dev/null; then
             echo "✓ Reboot command sent via network successfully"
             echo "Waiting for device to restart..."
             sleep 5

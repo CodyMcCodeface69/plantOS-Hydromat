@@ -312,13 +312,13 @@ TEST(ezo_ph_uart, calibration_commands) {
   CHECK_EQ(cmds[2], std::string("Cal,high,10.01"));
   CHECK_EQ(esphome::millis() - 10000, (uint32_t) 900);  // 3 x 300 ms
   r.c.query_calibration_status();
-  CHECK_EQ(r.cmds().back(), std::string("Cal,?"));
+  CHECK_EQ(std::string(r.cmds().back()), std::string("Cal,?"));
 }
 
 TEST(ezo_ph_uart, temperature_compensation_command) {
   host::set_millis(10000);
   Rig r;
   CHECK(r.c.send_temperature_compensation(19.5f));
-  CHECK_EQ(r.cmds().back(), std::string("T,19.5"));
+  CHECK_EQ(std::string(r.cmds().back()), std::string("T,19.5"));
   CHECK_EQ(esphome::millis() - 10000, (uint32_t) 50);
 }

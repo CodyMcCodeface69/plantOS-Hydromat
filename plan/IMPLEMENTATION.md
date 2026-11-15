@@ -117,7 +117,7 @@ Preset (3 fixed slots: anzucht, mutter, haupt)
 
 ### Steps
 
-- [ ] 3.1 **Capability gate, one place.** Each operation declares the functions it needs in a small table
+- [x] 3.1 **Capability gate, one place.** Each operation declares the functions it needs in a small table
       (`operation → required function mask`). The `start*()` entry points and the auto-trigger checks ask one helper,
       `canRun(op)`. If it says no: refuse, log once, raise a UI-visible reason. No `if (preset…)` inside state handlers.
       Second line of defense: the ASG rejects commands for actuators the active preset lacks.
@@ -128,15 +128,15 @@ Preset (3 fixed slots: anzucht, mutter, haupt)
       as `const` arrays (no runtime JSON parse, `ArduinoJson` drops out of the calendar). Lookup = last phase with
       `from_day <= day`; past the end holds the last phase. A script check proves the Haupt phases expand to exactly
       today's 120 rows before the JSON is deleted. Host tests cover lookup and hold.
-- [ ] 3.3 **Preset store** (a component named for its role, e.g. `grow_profile`): active preset index, per-preset
+- [x] 3.3 **Preset store** (a component named for its role, e.g. `grow_profile`): active preset index, per-preset
       volumes, function mask and start date in NVS, with YAML defaults and a version field. The HAL's
       `getTankVolumeDelta()/getTotalTankVolume()` read from it, so the dosing code does not change.
       Existing NVS day data migrates to the Haupt slot on first boot (argued from code, row in `TEST_ON_DEVICE.md`).
-- [ ] 3.4 **Switching.** Allowed only in IDLE, NIGHT, SHUTDOWN, PAUSE or ERROR. During a running operation the request
+- [x] 3.4 **Switching.** Allowed only in IDLE, NIGHT, SHUTDOWN, PAUSE or ERROR. During a running operation the request
       is refused with a message (no queueing). On a switch: all actuators off through the ASG, auto-trigger timers and
       retry state reset, calendar and light state re-evaluated, PSM recovery records carry the preset so a crash recovery
       never resumes an operation under a different preset. Document in `FSMINFO.md`.
-- [ ] 3.5 **UI** (every entity gets a sorting group, probably a new `sg_preset`): `select` "Preset", numbers
+- [x] 3.5 **UI** (every entity gets a sorting group, probably a new `sg_preset`): `select` "Preset", numbers
       "Tank Volume LOW→HIGH" and "EMPTY→HIGH", five function switches, button "Restart Grow (Day 1)", text sensor with
       the active preset, day and phase. Entities whose function is off stay visible but their actions answer with the
       refusal reason. Add the preset name to logs; add it to `plantos/vitals` only as a **new** key (existing keys untouched).
@@ -145,9 +145,9 @@ Preset (3 fixed slots: anzucht, mutter, haupt)
       `Preset Status`), or update the mapping table in `plan/ui-eval/prototype/index.html`. Put the calendar's pH band and
       EC target into the status text (e.g. `Haupt · Day 69 · Bloom (pH 6.0-6.4, EC 2.20)`), and add a "Last Refusal" text
       sensor so a refused operation is visible outside the log.
-- [ ] 3.6 Fold the existing "Mother Plant Nutrients" button / "Mother Mix Volume" number into the model
+- [x] 3.6 Fold the existing "Mother Plant Nutrients" button / "Mother Mix Volume" number into the model
       (it needs NUTRIENTS; keep the feature in Haupt as today).
-- [ ] 3.7 Docs: `FSMINFO.md`, `AGENTS.md`, `MAP.md`, and complete `TO_MEASURE.md` (volumes, calendar values per preset,
+- [x] 3.7 (FSMINFO, TO_MEASURE done; AGENTS.md / MAP.md paragraph handed to the coordinator) Docs: `FSMINFO.md`, `AGENTS.md`, `MAP.md`, and complete `TO_MEASURE.md` (volumes, calendar values per preset,
       settle time without air pump, function sets to confirm) with the exact UI entity or YAML line for each value.
 
 ## Phase 4: UI evaluation (`04-ui-eval.md`)

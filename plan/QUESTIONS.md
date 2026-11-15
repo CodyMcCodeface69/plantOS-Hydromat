@@ -31,6 +31,15 @@ The owner answers asynchronously. Park a question here, pick a sensible default,
 - **Error names**: turning off `CONFIG_ESP_ERR_TO_NAME_LOOKUP` would save about 7.5 KB but turn ESP-IDF error names in
   logs into "UNKNOWN ERROR". Default: not done.
 
+- **Presets: K-factors** (2026-11-15): the pH and EC K-factors stay global, so a factor learned on the Haupt tank
+  is reused after a switch to Mutter or Anzucht; the EMA adapts within a few corrections. Per-preset K-factors?
+  Default: global (as decided).
+- **Presets: auto switches** (2026-11-15): Auto pH / Auto EC/Feeding / Auto Water Level / Auto Reservoir Change and the
+  Grow Light Schedule switch are global, not per preset. Per preset? Default: global.
+- **Presets: grow light without schedule** (2026-11-15): with "Grow Light Schedule" off (Shelly scripts run the
+  light), a switch to a preset without Grow Light turns the light off, and switching back does not turn it on again
+  (that is up to the Shelly script). OK? Default: as described.
+
 ## Answered
 - Presets: runtime-switchable. They differ in tank volume, calendar and active actuators. (2026-11-14)
 - Custom UI: evaluation only. (2026-11-14)
